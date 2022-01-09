@@ -127,3 +127,12 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# cache or large products dir
+cobaya/cache/
+cobaya/chains/
+tests/reg/**/test_*.npz
+tests/reg/**/test_*.yml
+
+# vscode
+.vscode/

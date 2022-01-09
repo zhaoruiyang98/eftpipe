@@ -1,0 +1,50 @@
+label:
+nsampled:
+extra_args:
+# single tracer example
+  # mode: single
+  # data:
+  #   pklinfo:
+  #     kmin: 0.007
+  #     kmax: 0.30
+  #     ls: [0, 2]
+  #     pkl_path: testdata/LRG/LRG_NGC_FS_cobaya.txt
+  #   cov_path: testdata/LRG/LRG_NGC_FS_cov_cobaya.txt
+  # theory:
+  #   prefix: NGC_
+  #   z: 0.698
+  #   cache_dir_path: cache
+  #   projection_config:
+  #     Om_AP: 0.31
+  #     z_AP: 0.698
+  #     windows_fourier_path: cache/LRG_NGC_window.npy
+  #     binning: True
+# two tracer example
+  # mode: two
+  # data:
+  #   pklinfo:
+  #     - pkl_path: data/mock/LRG_NGC.txt
+  #     - pkl_path: data/mock/ELG_NGC.txt
+  #   common:
+  #     ls: [0, 2]
+  #     kmin: 0.02
+  #     kmax: 0.15
+  #   cov_path: data/cov/cov_SGC_L024E024.txt
+  #   Nreal: 1000
+  # theory:
+  #   prefix: [LRG_NGC_, ELG_NGC_]
+  #   theory_info:
+  #     - z: 0.70
+  #       projection_config:
+  #         z_AP: 0.70
+  #         windows_fourier_path: cache/LRG_NGC_GB_interp.npy
+  #     - z: 0.845
+  #       projection_config:
+  #         z_AP: 0.845
+  #         windows_fourier_path: cache/ELG_NGC_interp.npy
+  #   common:
+  #     cache_dir_path: cache
+  #     projection_config:
+  #       Om_AP: 0.307115
+  #       binning: True
+      

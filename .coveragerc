@@ -1,0 +1,9 @@
+[run]
+branch = True
+source = eftpipe/
+
+[xml]
+output = tests/coverage.xml
+
+[html]
+directory = tests/htmlcov
