@@ -68,7 +68,7 @@ setup(
         'dev': test_requires + gui_requires + ['pyyaml>=5.1']
     },
     package_data={
-        'eftpipe': ['*.yaml', '*.bibtex']
+        'eftpipe': ['*.yaml', '*.bibtex', 'py.typed']
     },
     classifiers=classifiers,
     zip_safe=False,
