@@ -15,6 +15,7 @@ else:
     from typing_extensions import Protocol, TypedDict
 
 Location = Union[str, Path]
+LogFunc = Callable[[str], None]
 
 
 class GaussianData(Protocol):
