@@ -58,7 +58,7 @@ setup(
     author='Ruiyang Zhao and Xiaoyong Mu',
     author_email='zhaoruiyang19@mails.ucas.edu.cn',
     license='MIT',
-    python_requires='>=3.7',
+    python_requires='>=3.7, <3.10',
     keywords='cosmology perturbation EFT',
     packages=packages,
     install_requires=install_requires,
