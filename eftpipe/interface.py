@@ -31,7 +31,7 @@ class CambProvider:
                 H0=H0, tau=0.079, mnu=mnu
             )
             mypars.InitPower.set_params(
-                ns=ns, As=1e-10*np.exp(logA))  # type: ignore
+                ns=ns, As=1e-10 * np.exp(logA))  # type: ignore
             mypars.set_matter_power(redshifts=(z,), nonlinear=False)
             results = camb.get_results(mypars)
         self.results = results
@@ -58,6 +58,9 @@ class CambProvider:
 
     def get_sigma8_z(self, z: float) -> float:
         return float(self.results.get_sigma8())
+
+    def get_rdrag(self) -> float:
+        return self.results.get_derived_params()['rdrag']
 
     def cosmo_updated(self):
         return True
@@ -93,6 +96,9 @@ class CobayaCambProvider:
 
     def get_sigma8_z(self, z):
         return float(self.provider.get_sigma8_z(z))
+
+    def get_rdrag(self):
+        return float(self.provider.get_param('rdrag'))  # type: ignore
 
     def cosmo_updated(self):
         return True

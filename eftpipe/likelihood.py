@@ -9,7 +9,6 @@ from numpy import ndarray as NDArray
 from typing import (
     Optional,
     List,
-    Union,
     Dict,
     Any,
     Tuple,
@@ -121,7 +120,6 @@ class SingleTracerEFT:
         self._required_params = requires
 
     def theory_vector(self, all_params_dict: Dict[str, Any]) -> NDArray:
-        rdrag_true = all_params_dict.get('rdrag', None)
         prefix = self.prefix
         (
             b1, b2, b3, b4,
@@ -135,12 +133,12 @@ class SingleTracerEFT:
             'knl', 'km', 'nd',
         )]
         bs = [
-            b1, b2, b3, b4, cct/knl**2, cr1/km**2, cr2/km**2,
+            b1, b2, b3, b4, cct / knl**2, cr1 / km**2, cr2 / km**2,
         ]
         es = [
-            ce0/nd, cemono/nd/km**2, cequad/nd/km**2,
+            ce0 / nd, cemono / nd / km**2, cequad / nd / km**2,
         ]
-        return self.theory.theory_vector(bs, es=es, rdrag_true=rdrag_true)
+        return self.theory.theory_vector(bs, es=es)
 
 
 class TwoTracerEFT:
@@ -195,7 +193,6 @@ class TwoTracerEFT:
         self._required_params = requires
 
     def theory_vector(self, all_params_dict: Dict[str, Any]) -> NDArray:
-        rdrag_true = all_params_dict.get('rdrag', None)
         vectors = []
         for (prefix, theory) in zip(self.prefixes, self.theories):
             (
@@ -210,13 +207,12 @@ class TwoTracerEFT:
                 'knl', 'km', 'nd',
             )]
             bs = [
-                b1, b2, b3, b4, cct/knl**2, cr1/km**2, cr2/km**2,
+                b1, b2, b3, b4, cct / knl**2, cr1 / km**2, cr2 / km**2,
             ]
             es = [
-                ce0/nd, cemono/nd/km**2, cequad/nd/km**2,
+                ce0 / nd, cemono / nd / km**2, cequad / nd / km**2,
             ]
-            vectors.append(theory.theory_vector(
-                bs, es=es, rdrag_true=rdrag_true))
+            vectors.append(theory.theory_vector(bs, es=es))
         return np.hstack(vectors)
 
 
@@ -303,7 +299,6 @@ class TwoTracerCrossEFT:
 
     def theory_vector(self, all_params_dict: Dict[str, Any]) -> NDArray:
         # TODO: stupid implementation, should be improved
-        rdrag_true = all_params_dict.get('rdrag', None)
         eft_params_names = [
             'b1', 'b2', 'b3', 'b4',
             'cct', 'cr1', 'cr2',
@@ -312,7 +307,8 @@ class TwoTracerCrossEFT:
         ]
         cross_params_names = ['ce0', 'cemono', 'cequad', 'km']
         Aindex, Bindex, xindex = [
-            self._index_mapping[key] for key in ('A', 'B', 'x')]
+            self._index_mapping[key] for key in ('A', 'B', 'x')
+        ]
         prefixA = self.prefixes[Aindex]
         prefixB = self.prefixes[Bindex]
         prefixx = self.prefixes[xindex]
@@ -322,29 +318,28 @@ class TwoTracerCrossEFT:
             ce0A, cemonoA, cequadA,
             knlA, kmA, ndA
         ) = [all_params_dict[prefixA + name] for name in eft_params_names]
-        bsA = [b1A, b2A, b3A, b4A, cctA/knlA, cr1A/kmA**2, cr2A/kmA**2]
-        esA = [ce0A/ndA, cemonoA/ndA/kmA**2, cequadA/ndA/kmA**2]
+        bsA = [b1A, b2A, b3A, b4A, cctA / knlA, cr1A / kmA**2, cr2A / kmA**2]
+        esA = [ce0A / ndA, cemonoA / ndA / kmA**2, cequadA / ndA / kmA**2]
         (
             b1B, b2B, b3B, b4B,
             cctB, cr1B, cr2B,
             ce0B, cemonoB, cequadB,
             knlB, kmB, ndB
         ) = [all_params_dict[prefixB + name] for name in eft_params_names]
-        bsB = [b1B, b2B, b3B, b4B, cctB/knlB, cr1B/kmB**2, cr2B/kmB**2]
-        esB = [ce0B/ndB, cemonoB/ndB/kmB**2, cequadB/ndB/kmB**2]
+        bsB = [b1B, b2B, b3B, b4B, cctB / knlB, cr1B / kmB**2, cr2B / kmB**2]
+        esB = [ce0B / ndB, cemonoB / ndB / kmB**2, cequadB / ndB / kmB**2]
         ce0x, cemonox, cequadx, kmx = [
             all_params_dict[prefixx + name] for name in cross_params_names]
-        nfactorx = 0.5 * (1./ndA + 1./ndB)
+        nfactorx = 0.5 * (1. / ndA + 1. / ndB)
         esx = [
-            nfactorx * ce0x, nfactorx * cemonox/kmx**2,
-            nfactorx * cequadx/kmx**2]
+            nfactorx * ce0x, nfactorx * cemonox / kmx**2,
+            nfactorx * cequadx / kmx**2
+        ]
 
-        theory_vectorA = self.theories[Aindex].theory_vector(
-            bsA, es=esA, rdrag_true=rdrag_true)
-        theory_vectorB = self.theories[Bindex].theory_vector(
-            bsB, es=esB, rdrag_true=rdrag_true)
+        theory_vectorA = self.theories[Aindex].theory_vector(bsA, es=esA)
+        theory_vectorB = self.theories[Bindex].theory_vector(bsB, es=esB)
         theory_vectorx = self.theories[xindex].theory_vector(
-            bsA, bsB=bsB, es=esx, rdrag_true=rdrag_true)
+            bsA, bsB=bsB, es=esx)
         vectors = cast(List[NDArray], [None, None, None])
         vectors[Aindex] = theory_vectorA
         vectors[Bindex] = theory_vectorB
