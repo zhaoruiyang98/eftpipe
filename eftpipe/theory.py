@@ -252,7 +252,6 @@ class EFTTheory:
         bsA: Iterable[float], *,
         bsB: Optional[Iterable[float]] = None,
         es: Iterable[float] = (0., 0., 0.),
-        rdrag_true: Optional[float] = None
     ) -> NDArray:
         if not self.state.can_compute:
             raise ValueError("missing bolzmann provider")
@@ -277,7 +276,7 @@ class EFTTheory:
             self.resum.Ps(bird)
             state = self.state
             if self.projection is not None:
-                self.projection.AP(bird, rdrag_true=rdrag_true)
+                self.projection.AP(bird, rdrag_true=provider.get_rdrag())
                 if state.window:
                     self.projection.Window(bird)
                 if state.fiber:
