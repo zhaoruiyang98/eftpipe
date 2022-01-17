@@ -133,6 +133,7 @@ cobaya/cache/
 cobaya/chains/
 tests/reg/**/test_*.npz
 tests/reg/**/test_*.yml
+tests/compare/**/test_*.npz
 
 # vscode
 .vscode/

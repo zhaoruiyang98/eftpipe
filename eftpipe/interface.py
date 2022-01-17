@@ -19,6 +19,7 @@ class CambProvider:
         logA: float = 3.04,
         ns: float = 0.97,
         mnu: float = 0.06,
+        tau: float = 0.0543,
         z: float = 0.0
     ) -> None:
         self.z = z
@@ -28,7 +29,7 @@ class CambProvider:
             mypars = CAMBparams(WantTransfer=True, WantCls=False)
             mypars.set_cosmology(
                 ombh2=ombh2, omch2=omch2,
-                H0=H0, tau=0.079, mnu=mnu
+                H0=H0, tau=tau, mnu=mnu,
             )
             mypars.InitPower.set_params(
                 ns=ns, As=1e-10 * np.exp(logA))  # type: ignore
