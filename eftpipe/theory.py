@@ -1,4 +1,7 @@
+# global
 import numpy as np
+import sys
+from cobaya.theory import Provider
 from dataclasses import dataclass
 from numpy import ndarray as NDArray
 from scipy.interpolate import interp1d
@@ -10,12 +13,20 @@ from typing import (
     Optional,
     Any,
     Callable,
+    Dict,
+    cast,
 )
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
+# local
 from eftpipe.pybird import pybird
-# Local
+from eftpipe.interface import CobayaCambProvider
 from eftpipe.typing import (
     ProjectionConfig,
     BoltzmannProvider,
+    Location,
 )
 
 
@@ -61,19 +72,19 @@ class BirdPlus(pybird.Bird):
         b1B, b2B, b3B, b4B, b5B, b6B, b7B = bsB
         f = self.f
 
-        b11AB = np.array([b1A*b1B, (b1A + b1B) * f, f**2])
+        b11AB = np.array([b1A * b1B, (b1A + b1B) * f, f**2])
         bctAB = np.array([
             b1A * b5B + b1B * b5A, b1B * b6A + b1A * b6B,
             b1B * b7A + b1A * b7B, (b5A + b5B) * f, (b6A + b6B) * f,
             (b7A + b7B) * f
         ])
         bloopAB = np.array([
-            1., 1./2. * (b1A + b1B), 1./2. * (b2A + b2B),
-            1./2. * (b3A + b3B), 1./2. * (b4A + b4B),
-            b1A * b1B, 1./2. * (b1A * b2B + b1B * b2A),
-            1./2. * (b1A * b3B + b1B * b3A),
-            1./2. * (b1A * b4B + b1B * b4A),
-            b2A * b2B, 1./2. * (b2A * b4B + b2B * b4A), b4A * b4B
+            1., 1. / 2. * (b1A + b1B), 1. / 2. * (b2A + b2B),
+            1. / 2. * (b3A + b3B), 1. / 2. * (b4A + b4B),
+            b1A * b1B, 1. / 2. * (b1A * b2B + b1B * b2A),
+            1. / 2. * (b1A * b3B + b1B * b3A),
+            1. / 2. * (b1A * b4B + b1B * b4A),
+            b2A * b2B, 1. / 2. * (b2A * b4B + b2B * b4A), b4A * b4B
         ])
         Ps0 = np.einsum('b,lbx->lx', b11AB, self.P11l)
         Ps1 = (np.einsum('b,lbx->lx', bloopAB, self.Ploopl)
@@ -112,7 +123,7 @@ class EFTTheory:
     def __init__(
         self,
         z: float,
-        cache_dir_path: Path,
+        cache_dir_path: Location,
         optiresum: bool = False,
         Nl: int = 2,
         cross: bool = False,
@@ -146,7 +157,7 @@ class EFTTheory:
             print_info('resummation: full')
         self.nonlinear = pybird.NonLinear(
             load=True, save=True, co=self.co,
-            path=str(cache_dir_path.resolve())
+            path=str(Path(cache_dir_path).resolve())
         )
         self.resum = pybird.Resum(co=self.co)
 
@@ -172,8 +183,8 @@ class EFTTheory:
         z_AP: float,
         rdrag_fid: Optional[float] = None,
         kdata: Optional[NDArray] = None,
-        windows_fourier_path: Optional[Path] = None,
-        windows_configspace_path: Optional[Path] = None,
+        windows_fourier_path: Optional[Location] = None,
+        windows_configspace_path: Optional[Location] = None,
         ktrust: Optional[float] = None,
         fs: Optional[float] = None,
         Dfc: Optional[float] = None,
@@ -203,8 +214,10 @@ class EFTTheory:
                 state.binning = True
             projection = pybird.Projection(
                 kdata, Om_AP, z_AP, co=self.co,
-                window_fourier_name=windows_fourier_path.name,
-                path_to_window=str(windows_fourier_path.resolve().parent),
+                window_fourier_name=Path(windows_fourier_path).name,
+                path_to_window=str(
+                    Path(windows_fourier_path).resolve().parent
+                ),
                 window_configspace_file=windows_configspace_path,
                 binning=state.binning, rdrag_fid=rdrag_fid
             )
@@ -304,3 +317,277 @@ class EFTTheory:
                 newout[i, :] = out[i, :] - chain_coeff(2 * i) * out[i + 1, :]
             out = newout[:-1, :]
         return out.reshape(-1)
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~vector theory~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+class SingleTracerEFT:
+    theory: EFTTheory
+    prefix: str
+
+    def __init__(self, theory: EFTTheory, prefix: str = "") -> None:
+        self.theory = theory
+        self.prefix = prefix
+        self._set_required_params()
+
+    def set_provider(self, provider: Provider) -> None:
+        self.theory.set_bolzman_provider(
+            CobayaCambProvider(provider, self.theory.z)
+        )
+
+    def required_params(self) -> Dict[str, Any]:
+        return self._required_params
+
+    def _set_required_params(self) -> None:
+        z = self.theory.z
+        extra_zs = [] if z == 0. else [0.]
+        requires = {
+            'Pk_grid': {
+                'nonlinear': False,
+                'z': [z],
+                'k_max': 100
+            },
+            'Hubble': {'z': extra_zs + [z]},
+            'angular_diameter_distance': {'z': [z]},
+            'fsigma8': {'z': [z]},
+            'sigma8_z': {'z': [z]},
+            'rdrag': None
+        }
+        eft_params = [
+            self.prefix + name for name in
+            ('b1', 'b2', 'b3', 'b4',
+             'cct', 'cr1', 'cr2',
+             'ce0', 'cemono', 'cequad',
+             'knl', 'km', 'nd')
+        ]
+        eft_requires = dict(
+            zip(eft_params, [None for _ in range(len(eft_params))])
+        )
+        requires.update(eft_requires)
+        self._required_params = requires
+
+    def theory_vector(self, all_params_dict: Dict[str, Any]) -> NDArray:
+        prefix = self.prefix
+        (
+            b1, b2, b3, b4,
+            cct, cr1, cr2,
+            ce0, cemono, cequad,
+            knl, km, nd,
+        ) = [all_params_dict[prefix + name] for name in (
+            'b1', 'b2', 'b3', 'b4',
+            'cct', 'cr1', 'cr2',
+            'ce0', 'cemono', 'cequad',
+            'knl', 'km', 'nd',
+        )]
+        bs = [
+            b1, b2, b3, b4, cct / knl**2, cr1 / km**2, cr2 / km**2,
+        ]
+        es = [
+            ce0 / nd, cemono / nd / km**2, cequad / nd / km**2,
+        ]
+        return self.theory.theory_vector(bs, es=es)
+
+
+class TwoTracerEFT:
+    theories: List[EFTTheory]
+    prefixes: List[str]
+
+    def __init__(self, theories: List[EFTTheory], prefixes: List[str]) -> None:
+        self.theories = theories
+        if len(set(prefixes)) != 2:
+            raise ValueError('TwoTracerEFT needs two different prefixes')
+        self.prefixes = prefixes
+        self._set_required_params()
+
+    def set_provider(self, provider: Provider) -> None:
+        for theory in self.theories:
+            theory.set_bolzman_provider(
+                CobayaCambProvider(provider, theory.z)
+            )
+
+    def required_params(self) -> Dict[str, Any]:
+        return self._required_params
+
+    def _set_required_params(self) -> None:
+        zs = [theory.z for theory in self.theories]
+        zs = list(set(zs))
+        extra_zs = [] if 0. in zs else [0.]
+        requires = {
+            'Pk_grid': {
+                'nonlinear': False,
+                'z': zs,
+                'k_max': 100
+            },
+            'Hubble': {'z': extra_zs + zs},
+            'angular_diameter_distance': {'z': zs},
+            'fsigma8': {'z': zs},
+            'sigma8_z': {'z': zs},
+            'rdrag': None
+        }
+        eft_params_names = [
+            'b1', 'b2', 'b3', 'b4',
+            'cct', 'cr1', 'cr2',
+            'ce0', 'cemono', 'cequad',
+            'knl', 'km', 'nd'
+        ]
+        eft_params = []
+        for prefix in self.prefixes:
+            eft_params += [prefix + name for name in eft_params_names]
+        eft_requires = dict(
+            zip(eft_params, [None for _ in range(len(eft_params))])
+        )
+        requires.update(eft_requires)
+        self._required_params = requires
+
+    def theory_vector(self, all_params_dict: Dict[str, Any]) -> NDArray:
+        vectors = []
+        for (prefix, theory) in zip(self.prefixes, self.theories):
+            (
+                b1, b2, b3, b4,
+                cct, cr1, cr2,
+                ce0, cemono, cequad,
+                knl, km, nd,
+            ) = [all_params_dict[prefix + name] for name in (
+                'b1', 'b2', 'b3', 'b4',
+                'cct', 'cr1', 'cr2',
+                'ce0', 'cemono', 'cequad',
+                'knl', 'km', 'nd',
+            )]
+            bs = [
+                b1, b2, b3, b4, cct / knl**2, cr1 / km**2, cr2 / km**2,
+            ]
+            es = [
+                ce0 / nd, cemono / nd / km**2, cequad / nd / km**2,
+            ]
+            vectors.append(theory.theory_vector(bs, es=es))
+        return np.hstack(vectors)
+
+
+class TwoTracerCrossEFT:
+    _index_mapping: Dict[str, int]
+    theories: List[EFTTheory]
+    prefixes: List[str]
+
+    def __init__(self, theories: List[EFTTheory], prefixes: List[str]) -> None:
+        if len(theories) != 3:
+            raise ValueError('TwoTracerCrossEFT needs three EFTTheory objects')
+        ncross = 0
+        for theory in theories:
+            if theory.state.cross:
+                ncross += 1
+        if ncross != 1:
+            raise ValueError(
+                'TwoTracerCrossEFT needs exactly one cross EFTTheory object')
+        self.theories = theories
+        if len(set(prefixes)) != 3:
+            raise ValueError(
+                'TwoTracerCrossEFT needs three different prefixes')
+        self.prefixes = prefixes
+        self._set_required_params()
+        self._set_index_mapping()
+
+    def set_provider(self, provider: Provider) -> None:
+        for theory in self.theories:
+            theory.set_bolzman_provider(
+                CobayaCambProvider(provider, theory.z)
+            )
+
+    def required_params(self) -> Dict[str, Any]:
+        return self._required_params
+
+    def _set_index_mapping(self) -> None:
+        index_mapping = cast(
+            Dict[Literal['A', 'B', 'x'], int],
+            {'A': None, 'B': None, 'x': None})
+        for i, theory in enumerate(self.theories):
+            if not theory.state.cross:
+                if index_mapping['A'] is None:
+                    index_mapping['A'] = i
+                else:
+                    index_mapping['B'] = i
+            else:
+                index_mapping['x'] = i
+        self._index_mapping = index_mapping
+
+    def _set_required_params(self) -> None:
+        zs = [theory.z for theory in self.theories]
+        zs = list(set(zs))
+        extra_zs = [] if 0. in zs else [0.]
+        requires = {
+            'Pk_grid': {
+                'nonlinear': False,
+                'z': zs,
+                'k_max': 100
+            },
+            'Hubble': {'z': extra_zs + zs},
+            'angular_diameter_distance': {'z': zs},
+            'fsigma8': {'z': zs},
+            'sigma8_z': {'z': zs},
+            'rdrag': None
+        }
+        eft_params_names = [
+            'b1', 'b2', 'b3', 'b4',
+            'cct', 'cr1', 'cr2',
+            'ce0', 'cemono', 'cequad',
+            'knl', 'km', 'nd'
+        ]
+        cross_params_names = ['ce0', 'cemono', 'cequad', 'km']
+        eft_params = []
+        for prefix, theory in zip(self.prefixes, self.theories):
+            params_list = eft_params_names
+            if theory.state.cross:
+                params_list = cross_params_names
+            eft_params += [prefix + name for name in params_list]
+        eft_requires = dict(
+            zip(eft_params, [None for _ in range(len(eft_params))])
+        )
+        requires.update(eft_requires)
+        self._required_params = requires
+
+    def theory_vector(self, all_params_dict: Dict[str, Any]) -> NDArray:
+        # TODO: stupid implementation, should be improved
+        eft_params_names = [
+            'b1', 'b2', 'b3', 'b4',
+            'cct', 'cr1', 'cr2',
+            'ce0', 'cemono', 'cequad',
+            'knl', 'km', 'nd'
+        ]
+        cross_params_names = ['ce0', 'cemono', 'cequad', 'km']
+        Aindex, Bindex, xindex = [
+            self._index_mapping[key] for key in ('A', 'B', 'x')
+        ]
+        prefixA = self.prefixes[Aindex]
+        prefixB = self.prefixes[Bindex]
+        prefixx = self.prefixes[xindex]
+        (
+            b1A, b2A, b3A, b4A,
+            cctA, cr1A, cr2A,
+            ce0A, cemonoA, cequadA,
+            knlA, kmA, ndA
+        ) = [all_params_dict[prefixA + name] for name in eft_params_names]
+        bsA = [b1A, b2A, b3A, b4A, cctA / knlA, cr1A / kmA**2, cr2A / kmA**2]
+        esA = [ce0A / ndA, cemonoA / ndA / kmA**2, cequadA / ndA / kmA**2]
+        (
+            b1B, b2B, b3B, b4B,
+            cctB, cr1B, cr2B,
+            ce0B, cemonoB, cequadB,
+            knlB, kmB, ndB
+        ) = [all_params_dict[prefixB + name] for name in eft_params_names]
+        bsB = [b1B, b2B, b3B, b4B, cctB / knlB, cr1B / kmB**2, cr2B / kmB**2]
+        esB = [ce0B / ndB, cemonoB / ndB / kmB**2, cequadB / ndB / kmB**2]
+        ce0x, cemonox, cequadx, kmx = [
+            all_params_dict[prefixx + name] for name in cross_params_names]
+        nfactorx = 0.5 * (1. / ndA + 1. / ndB)
+        esx = [
+            nfactorx * ce0x, nfactorx * cemonox / kmx**2,
+            nfactorx * cequadx / kmx**2
+        ]
+
+        theory_vectorA = self.theories[Aindex].theory_vector(bsA, es=esA)
+        theory_vectorB = self.theories[Bindex].theory_vector(bsB, es=esB)
+        theory_vectorx = self.theories[xindex].theory_vector(
+            bsA, bsB=bsB, es=esx)
+        vectors = cast(List[NDArray], [None, None, None])
+        vectors[Aindex] = theory_vectorA
+        vectors[Bindex] = theory_vectorB
+        vectors[xindex] = theory_vectorx
+        return np.hstack(vectors)
