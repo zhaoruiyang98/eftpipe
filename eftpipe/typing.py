@@ -1,10 +1,10 @@
 import sys
 from numpy import ndarray as NDArray
 from pathlib import Path
+from datetime import datetime
 from typing import (
     Union,
     List,
-    Optional,
     Dict,
     Any,
     Callable,
@@ -16,6 +16,13 @@ else:
 
 Location = Union[str, Path]
 LogFunc = Callable[[str], None]
+
+YamlElement = Union[str, bool, int, float, None, datetime]
+SimpleYaml = Union[
+    YamlElement,
+    List['SimpleYaml'],
+    Dict[str, 'SimpleYaml']
+]
 
 
 class GaussianData(Protocol):
@@ -30,38 +37,10 @@ class VectorTheory(Protocol):
     def set_provider(self, provider) -> None: ...
 
 
-class CroppedPklDataDict(TypedDict):
-    kmin: float
-    kmax: float
-    ls: Union[int, List[int]]
-    pkl_path: str
+class ExtraArgsParser(Protocol):
+    def create_gaussian_data(self) -> GaussianData: ...
 
-
-class PartialCroppedPklDataDict(TypedDict, total=False):
-    kmin: float
-    kmax: float
-    ls: Union[int, List[int]]
-    pkl_path: str
-
-
-class FullShapeDataDict(TypedDict):
-    pklinfo: Union[CroppedPklDataDict, List[CroppedPklDataDict]]
-    cov_path: str
-    common: Optional[PartialCroppedPklDataDict]
-    Nreal: Optional[int]
-
-
-class ProjectionConfig(TypedDict, total=False):
-    Om_AP: float
-    z_AP: float
-    kdata: NDArray
-    windows_fourier_path: Path
-    windows_configspace_path: Path
-    ktrust: float
-    fs: float
-    Dfc: float
-    integral_constraint_path: Path
-    shotnoise: float
+    def create_vector_theory(self) -> VectorTheory: ...
 
 
 class BoltzmannProvider(Protocol):
@@ -74,12 +53,14 @@ class BoltzmannProvider(Protocol):
     def get_rdrag(self) -> float: ...
     def cosmo_updated(self) -> bool: ...
 
-
-class EFTTheoryConfig(TypedDict, total=False):
-    z: bool
-    cache_dir: Path
-    optiresum: bool
-    cross: bool
-    projection_config: ProjectionConfig
-    bolzmann_provider: BoltzmannProvider
-    print_info: Callable[[str], None]
+class ProjectionConfig(TypedDict, total=False):
+    Om_AP: float
+    z_AP: float
+    kdata: NDArray
+    windows_fourier_path: Path
+    windows_configspace_path: Path
+    ktrust: float
+    fs: float
+    Dfc: float
+    integral_constraint_path: Path
+    shotnoise: float

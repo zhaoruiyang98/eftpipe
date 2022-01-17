@@ -1,13 +1,10 @@
 # global
 import numpy as np
-from copy import deepcopy
 from numpy import ndarray as NDArray
 from typing import (
     Union,
     List,
-    Dict,
     Optional,
-    Any,
 )
 # local
 from eftpipe.typing import (
@@ -102,14 +99,12 @@ class PklData:
         self.data_vector_mask: NDArray = data_vector_mask
 
         self.logfunc: LogFunc = logfunc
-        logfunc(
-            "==========================>\n"
-            f"loaded data from {pkl_path}\n"
-            f"ls={self.ls}\n"
-            f"kdata: min={self.kdata[0]:.3e}, max={self.kdata[-1]:.3e}\n"
-            f"ndata={self.ndata}\n"
-            "<=========================="
-        )
+        logfunc("==========================>")
+        logfunc(f"loaded data from {pkl_path}")
+        logfunc(f"ls={self.ls}")
+        logfunc(f"kdata: min={self.kdata[0]:.3e}, max={self.kdata[-1]:.3e}")
+        logfunc(f"ndata={self.ndata}")
+        logfunc("<==========================")
 
     def _check_pkl(self, pkl: NDArray) -> None:
         if pkl.ndim != 2:
@@ -210,13 +205,12 @@ class FullShapeData:
         assert self.invcov.shape[0] == self.ndata
 
         self.logfunc: LogFunc = logfunc
+        logfunc("==========================>")
+        logfunc(f"total ndata={self.ndata}")
         logfunc(
-            "==========================>\n"
-            f"total ndata={self.ndata}\n"
-            f"Hartlap correction: {'on' if (Nreal is not None) else 'off'}\n"
-            f"rescale factor: {rescale:.3e}\n"
-            "<=========================="
-        )
+            f"Hartlap correction: {'on' if (Nreal is not None) else 'off'}")
+        logfunc(f"rescale factor: {rescale:.3e}")
+        logfunc("<==========================")
 
     def _check_cov(self, cov: NDArray) -> None:
         ndim = cov.ndim
@@ -228,59 +222,3 @@ class FullShapeData:
         nall = sum([_.data_vector_mask.shape[0] for _ in self.pkldatas])
         if shape[0] != nall:
             raise ValueError('pkl and cov not match')
-
-
-class FullShapeDataParser:
-    """a factory to create FullShapeData object
-
-    Parameters
-    ----------
-    dct: dict[str, Any]
-        a dictionary which contains all the information to create FullShapeData
-    logfunc: Callable[[str], None]
-        function used for logging, default print
-
-    Methods
-    -------
-    helper_dict(cls):
-        a template to create dict
-    create_gaussian_data(self):
-        create a FullShapeData object
-    """
-
-    def __init__(
-        self,
-        dct: Dict[str, Any],
-        logfunc: LogFunc = print,
-    ) -> None:
-        dct = deepcopy(dct)
-        pklinfo = dct.pop('pklinfo')
-        if not isinstance(pklinfo, list):
-            pklinfo = [pklinfo]
-
-        common = dct.pop('common', None)
-        if common is not None:
-            new_pklinfo = [deepcopy(common) for _ in pklinfo]
-            for raw, new in zip(new_pklinfo, pklinfo):
-                raw.update(new)
-            pklinfo = new_pklinfo
-
-        dct['pkldatas'] = [PklData(**x, logfunc=logfunc) for x in pklinfo]
-        self.dct = dct
-        self.logfunc = logfunc
-
-    @classmethod
-    def helper_dict(cls):
-        return {
-            "cov_path": None,
-            "Nreal": None,
-            "rescale": None,
-            "common": {"kmin": None, "kmax": None, "ls": None},
-            "pklinfo": [
-                {"pkl_path": None},
-                {"pkl_path": None},
-            ]
-        }
-
-    def create_gaussian_data(self) -> FullShapeData:
-        return FullShapeData(logfunc=self.logfunc, **self.dct)
