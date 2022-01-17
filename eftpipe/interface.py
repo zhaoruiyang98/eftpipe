@@ -4,12 +4,41 @@ from numpy import ndarray as NDArray
 from scipy.interpolate import interp1d
 from cobaya.theory import Provider
 from camb import CAMBparams
-from typing import (
-    Optional,
-)
+from typing import Optional
 
 
 class CambProvider:
+    """BoltzmannProvider which uses CAMB as backend
+
+    Parameters
+    ----------
+    pars: CAMBparams or None
+        if given, use it to compute results, default None
+    ombh2: float
+        Omega_baryon h^2, default 0.02220129
+    omch2: float
+        Omega_cdm h^2, default 0.12011
+    H0: float
+        Hubble parameter in km/s/Mpc units, default 67.6
+    logA: float
+        log comoving curvature power at k=pivot_scalar, default 3.04
+    ns: float
+        scalar spectral index, default 0.97
+    mnu: float
+        sum of neutrino masses (in eV), default 0.06
+    tau: float
+        optical depth, default 0.0543
+    z: float
+        redshift, default 0
+
+    Notes
+    -----
+    It has been tested that CambProvider and CobayaCambProvider are generally consistent
+    1. rdrag, Hubble, DA: relative difference <= 1e-6
+    2. fsigma8, sigma8: relative difference <= 1e-4
+    3. for kh=np.logspace(-4, 0, 200), pkh: relative difference <= 2e-4
+    """
+
     def __init__(
         self,
         pars: Optional[CAMBparams] = None,
@@ -68,6 +97,16 @@ class CambProvider:
 
 
 class CobayaCambProvider:
+    """BoltzmannProvider which uses Cobaya's Camb Provider as backend
+
+    Parameters
+    ----------
+    provider: Provider
+        cobaya's camb provider
+    z: float
+        redshift
+    """
+
     def __init__(self, provider: Provider, z: float) -> None:
         self.provider = provider
         self.z = z
