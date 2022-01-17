@@ -199,10 +199,11 @@ class EFTTheory:
             self.print_info('using default kdata')
             kdata = np.linspace(0.005, 0.3, 50)
 
+        if rdrag_fid is not None:
+            self.print_info(f'fiducial rdrag = {rdrag_fid}')
+
         if windows_fourier_path is None:
             self.print_info('window: off')
-            if rdrag_fid is not None:
-                self.print_info(f'fiducial rdrag = {rdrag_fid}')
             projection = pybird.Projection(
                 kdata, Om_AP, z_AP, co=self.co, rdrag_fid=rdrag_fid
             )
@@ -319,6 +320,7 @@ class EFTTheory:
         return out.reshape(-1)
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~vector theory~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
 
 class SingleTracerEFT:
     theory: EFTTheory
