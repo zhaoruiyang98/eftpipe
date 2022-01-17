@@ -62,7 +62,7 @@ class EFTLike(Likelihood):
         return self.theory_obj.required_params()
 
     def calculate(self, state, want_derived=True, **params_values_dict):
-        theory = self.theory_obj.theory_vector(params_values_dict)
+        theory = self.theory_vector(**params_values_dict)
         res = theory - self.data_obj.data_vector
         chi2 = res @ self.data_obj.invcov @ res
 
@@ -72,6 +72,9 @@ class EFTLike(Likelihood):
                 chi2 / (self.data_obj.ndata - self.nsampled)
             }
         state['logp'] = -0.5 * chi2
+
+    def theory_vector(self, **params_values_dict):
+        return self.theory_obj.theory_vector(params_values_dict)
 
     def get_can_provide_params(self) -> List[str]:
         return [self.label + 'reduced_chi2']
