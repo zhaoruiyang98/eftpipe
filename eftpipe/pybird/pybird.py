@@ -1,6 +1,7 @@
 import os
 import numpy as np
 from numpy import pi, sin, log, exp, sqrt
+from numpy import ndarray as NDArray
 from numpy.fft import rfft
 from scipy import special
 # from pyfftw.builders import rfft
@@ -1548,6 +1549,10 @@ class Resum(object):
         Coef = self.fft.Coef(self.co.sr, XpYpC, extrap='padding', window=window)
         CoefkPow = np.einsum('n,nk->nk', Coef, self.kPow)
         return np.real(np.einsum('nk,ln->lk', CoefkPow, self.M[:self.co.Na]))
+    
+    def IRnWithCoef(self, Coef):
+        CoefkPow = np.einsum('n,nk->nk', Coef, self.kPow)
+        return np.real(np.einsum('nk,ln->lk', CoefkPow, self.M[:self.co.Na]))
 
     def IRCorrection(self, XpYpC, k2p, lpr=None, window=None):
         """ Compute the IR-corrections of order n given [XY]^n and k^{2n} """
@@ -1589,6 +1594,12 @@ class Resum(object):
         XpY = np.array([Y * X**p for p in range(self.co.NIR)])
         XpYp = np.concatenate((Xp, XpY))
         return XpYp
+    
+    def precomputedCoef(
+        self, XpYp: NDArray, Carray: NDArray, window=None
+    ) -> NDArray:
+        input = np.einsum('jk,...k->...jk', XpYp, Carray)
+        return self.fft.Coef(self.co.sr, input, extrap='padding', window=window)
 
     def Ps(self, bird: Bird, window=None):
         """ This is the main method of the class. Compute the IR-corrections. """
@@ -1630,7 +1641,9 @@ class Resum(object):
             bird.setfullPs()
 
         elif bird.which == 'all':
-            for l, cl in enumerate(self.extractBAO(bird.C11)):
+            extracted_C11 = self.extractBAO(bird.C11)
+            CoefArray = self.precomputedCoef(XpYp, extracted_C11, window=window)
+            for l, cl in enumerate(extracted_C11):
                 # u = 0
                 # for j, (xy, k2pj, lpr) in enumerate(zip(XpYp, self.k2p, self.alllpr)):
                 #     IRcorrUnsorted = self.IRCorrection(xy * cl, k2pj, lpr=lpr, window=window)
@@ -1639,10 +1652,13 @@ class Resum(object):
                 #     u += len(lpr)
                 for j, xy in enumerate(XpYp):
                     # np.real((-j)**(2*l))
-                    IRcorrUnsorted = self.k2p[j] * self.IRn(xy * cl, window=window)
+                    # IRcorrUnsorted = self.k2p[j] * self.IRn(xy * cl, window=window)
+                    IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(CoefArray[l, j, :])
                     for v in range(self.co.Na):
                         self.IR11[l, j*self.co.Na + v, self.co.Nklow:] = IRcorrUnsorted[v]
-            for l, cl in enumerate(self.extractBAO(bird.Cct)):
+            extracted_Cct = self.extractBAO(bird.Cct)
+            CoefArray = self.precomputedCoef(XpYp, extracted_Cct, window=window)
+            for l, cl in enumerate(extracted_Cct):
                 # u = 0
                 # for j, (xy, k2pj, lpr) in enumerate(zip(XpYp, self.k2p, self.alllpr)):
                 #     IRcorrUnsorted = self.IRCorrection(xy * cl, k2pj, lpr=lpr, window=window)
@@ -1651,10 +1667,13 @@ class Resum(object):
                 #     u += len(lpr)
                 for j, xy in enumerate(XpYp):
                     # np.real((-j)**(2*l))
-                    IRcorrUnsorted = self.k2p[j] * self.IRn(xy * cl, window=window)
+                    # IRcorrUnsorted = self.k2p[j] * self.IRn(xy * cl, window=window)
+                    IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(CoefArray[l, j, :])
                     for v in range(self.co.Na):
                         self.IRct[l, j*self.co.Na + v, self.co.Nklow:] = IRcorrUnsorted[v]
-            for l, cl in enumerate(self.extractBAO(bird.Cloopl)):
+            extracted_Cloopl = self.extractBAO(bird.Cloopl)
+            CoefArray = self.precomputedCoef(XpYp, extracted_Cloopl, window=window)
+            for l, cl in enumerate(extracted_Cloopl):
                 # for i, cli in enumerate(cl):
                 #     u = 0
                 #     for j, (xy, k2pj, lpr) in enumerate(zip(XpYp, self.k2p, self.alllpr)):
@@ -1665,7 +1684,8 @@ class Resum(object):
                 for i, cli in enumerate(cl):
                     for j, xy in enumerate(XpYp):
                         # np.real((-j)**(2*l))
-                        IRcorrUnsorted = self.k2p[j] * self.IRn(xy * cli, window=window)
+                        # IRcorrUnsorted = self.k2p[j] * self.IRn(xy * cli, window=window)
+                        IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(CoefArray[l, i, j, :])
                         for v in range(self.co.Na):
                             self.IRloop[l, i, j*self.co.Na + v, self.co.Nklow:] = IRcorrUnsorted[v]
             self.IR11resum = np.einsum('lpn,pnk,pi->lik', self.Q[0], self.IR11, self.co.l11)
