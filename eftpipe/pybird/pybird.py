@@ -935,50 +935,83 @@ class FFTLog(object):
         self._CoefFactor = self.xmin**(-self.Pow) / float(self.Nmax)
 
     def Coef(self, xin, f, extrap='extrap', window=1, log_interp: bool = False):
+        """compute coefficients for FFTLog
+
+        Parameters
+        ----------
+        xin : ndarray, 1d
+            input x-axis data, values must be real, finite and in strictly increasing order
+        f : ndarray
+            input y-axis data, the last axis should match xin
+        extrap : str, optional
+            extrapolation mode, by default 'extrap'
+        window : int, optional
+            window parameter, by default 1
+        log_interp : bool, optional
+            do interpolation in log-x scale, by default False
+
+        Returns
+        -------
+        ndarray
+
+        Raises
+        ------
+        ValueError
+            if extrap is not 'extrap' or 'padding'
+
+        Notes
+        -----
+        when doing exponential extrapolation, ns may not be properly computed or the extrapolated f is not damping
+        """
         if not log_interp:
-            interpfunc = CubicSpline(xin, f, extrapolate=False)
+            interpfunc = CubicSpline(xin, f, axis=-1, extrapolate=False)
         else:
-            _ = CubicSpline(xin, f, extrapolate=False)
+            _ = CubicSpline(xin, f, axis=-1, extrapolate=False)
             interpfunc = lambda x: _(np.log(x))
 
-        fx = np.zeros(self.Nmax, dtype=np.float64)
-        Coef = np.empty(self.Nmax + 1, dtype=complex)
+        _shape = list(f.shape)[:-1]
+        fx = np.zeros(tuple(_shape + [self.Nmax]), dtype=np.float64)
+        Coef = np.empty(tuple(_shape + [self.Nmax + 1]), dtype=complex)
 
         if extrap == 'extrap':
             ileft = np.searchsorted(self.x, xin[0])
             iright = np.searchsorted(self.x, xin[-1], side='right')
             efactor = exp(-self.bias * np.arange(self.Nmax) * self.dx)
-            fx[ileft:iright] = interpfunc(self.x[ileft:iright]) * efactor[ileft:iright]
+            fx[..., ileft:iright] = \
+                interpfunc(self.x[ileft:iright]) * efactor[ileft:iright]
             if xin[0] > self.x[0]:
                 #print ('low extrapolation')
                 nslow = (log(f[1]) - log(f[0])) / (log(xin[1]) - log(xin[0]))
                 Aslow = f[0] / xin[0]**nslow
-                fx[0:ileft] = Aslow * self.x[0:ileft]**nslow * efactor[0:ileft]
+                fx[..., 0:ileft] = \
+                    Aslow * self.x[0:ileft]**nslow * efactor[0:ileft]
             if xin[-1] < self.x[-1]:
                 #print ('high extrapolation')
-                nshigh = (log(f[-1]) - log(f[-2])) / (log(xin[-1]) - log(xin[-2]))
+                nshigh = (log(f[-1]) - log(f[-2])) / \
+                    (log(xin[-1]) - log(xin[-2]))
                 Ashigh = f[-1] / xin[-1]**nshigh
-                fx[iright:] = Ashigh * self.x[iright:]**nshigh * efactor[iright:]
-        elif extrap =='padding':
+                fx[..., iright:] = \
+                    Ashigh * self.x[iright:]**nshigh * efactor[iright:]
+        elif extrap == 'padding':
             ileft = np.searchsorted(self.x, xin[0])
             iright = np.searchsorted(self.x, xin[-1], side='right')
             efactor = exp(-self.bias * np.arange(ileft, iright) * self.dx)
-            fx[ileft:iright] = interpfunc(self.x[ileft:iright]) * efactor
+            fx[..., ileft:iright] = interpfunc(self.x[ileft:iright]) * efactor
         else:
             raise ValueError(f'unexpected extrap = {extrap}')
 
-        tmp = rfft(fx)  # numpy
+        tmp = rfft(fx, axis=-1)  # numpy
         # tmp = rfft(fx, planner_effort='FFTW_ESTIMATE')() ### pyfftw
 
-        Coef[:self.Nmax//2] = np.conj(tmp[1:][::-1])
-        Coef[self.Nmax//2:] = tmp[:]
+        Coef[..., :self.Nmax // 2] = np.conj(tmp[..., 1:][..., ::-1])
+        Coef[..., self.Nmax // 2:] = tmp[..., :]
         Coef *= self._CoefFactor
 
         if window is not None:
-            Coef = Coef * CoefWindow(self.Nmax, window=window)
+            Coef *= CoefWindow(self.Nmax, window=window)
         else:
-            Coef[0] /= 2.
-            Coef[self.Nmax] /= 2.
+            Coef[..., 0] /= 2.
+            Coef[..., self.Nmax] /= 2.
 
         return Coef
 
