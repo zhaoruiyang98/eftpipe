@@ -4,7 +4,7 @@ from numpy import pi, sin, log, exp, sqrt
 from numpy.fft import rfft
 from scipy import special
 # from pyfftw.builders import rfft
-from scipy.interpolate import interp1d, interp2d
+from scipy.interpolate import interp1d, interp2d, CubicSpline
 from scipy.special import gamma, legendre, j1, spherical_jn, loggamma
 from scipy.integrate import quad
 from pathlib import Path
@@ -911,12 +911,15 @@ class FFTLog(object):
 
     def __init__(self, **kwargs):
         self.Nmax = kwargs['Nmax']
+        if self.Nmax % 2 != 0:
+            raise ValueError(f'expected even Nmax, instead of Nmax={self.Nmax}')
         self.xmin = kwargs['xmin']
         self.xmax = kwargs['xmax']
         self.bias = kwargs['bias']
         self.dx = log(self.xmax / self.xmin) / (self.Nmax - 1.)
         self.setx()
         self.setPow()
+        self.setCoefFactor()
 
     def setx(self):
         self.x = np.empty(self.Nmax)
@@ -927,59 +930,49 @@ class FFTLog(object):
         self.Pow = np.empty(self.Nmax + 1, dtype=complex)
         for i in range(self.Nmax + 1):
             self.Pow[i] = self.bias + 1j * 2. * pi / (self.Nmax * self.dx) * (i - self.Nmax / 2.)
+    
+    def setCoefFactor(self):
+        self._CoefFactor = self.xmin**(-self.Pow) / float(self.Nmax)
 
     def Coef(self, xin, f, extrap='extrap', window=1, log_interp: bool = False):
         if not log_interp:
-            interpfunc = interp1d(xin, f, kind='cubic')
+            interpfunc = CubicSpline(xin, f, extrapolate=False)
         else:
-            _ = interp1d(np.log(xin), f, kind='cubic')
+            _ = CubicSpline(xin, f, extrapolate=False)
             interpfunc = lambda x: _(np.log(x))
 
         fx = np.zeros(self.Nmax, dtype=np.float64)
-        tmp = np.empty(int(self.Nmax / 2 + 1), dtype=complex)
         Coef = np.empty(self.Nmax + 1, dtype=complex)
 
         if extrap == 'extrap':
+            ileft = np.searchsorted(self.x, xin[0])
+            iright = np.searchsorted(self.x, xin[-1], side='right')
+            efactor = exp(-self.bias * np.arange(self.Nmax) * self.dx)
+            fx[ileft:iright] = interpfunc(self.x[ileft:iright]) * efactor[ileft:iright]
             if xin[0] > self.x[0]:
                 #print ('low extrapolation')
                 nslow = (log(f[1]) - log(f[0])) / (log(xin[1]) - log(xin[0]))
                 Aslow = f[0] / xin[0]**nslow
+                fx[0:ileft] = Aslow * self.x[0:ileft]**nslow * efactor[0:ileft]
             if xin[-1] < self.x[-1]:
                 #print ('high extrapolation')
                 nshigh = (log(f[-1]) - log(f[-2])) / (log(xin[-1]) - log(xin[-2]))
                 Ashigh = f[-1] / xin[-1]**nshigh
-
-            for i in range(self.Nmax):
-                if xin[0] > self.x[i]:
-                    fx[i] = Aslow * self.x[i]**nslow * exp(-self.bias * i * self.dx) # type: ignore
-                elif xin[-1] < self.x[i]:
-                    fx[i] = Ashigh * self.x[i]**nshigh * exp(-self.bias * i * self.dx) # type: ignore 
-                else:
-                    fx[i] = interpfunc(self.x[i]) * exp(-self.bias * i * self.dx)
-
+                fx[iright:] = Ashigh * self.x[iright:]**nshigh * efactor[iright:]
         elif extrap =='padding':
-            # for i in range(self.Nmax):
-            #     if xin[0] > self.x[i]:
-            #         fx[i] = 0.
-            #     elif xin[-1] < self.x[i]:
-            #         fx[i] = 0.
-            #     else:
-            #         fx[i] = interpfunc(self.x[i]) * exp(-self.bias * i * self.dx)
-            mask = slice(
-                np.searchsorted(self.x, xin[0]),
-                np.searchsorted(self.x, xin[-1], side='right')
-            )
-            efactor = exp(-self.bias * np.arange(mask.start, mask.stop) * self.dx)
-            fx[mask] = interpfunc(self.x[mask]) * efactor
+            ileft = np.searchsorted(self.x, xin[0])
+            iright = np.searchsorted(self.x, xin[-1], side='right')
+            efactor = exp(-self.bias * np.arange(ileft, iright) * self.dx)
+            fx[ileft:iright] = interpfunc(self.x[ileft:iright]) * efactor
+        else:
+            raise ValueError(f'unexpected extrap = {extrap}')
 
         tmp = rfft(fx)  # numpy
         # tmp = rfft(fx, planner_effort='FFTW_ESTIMATE')() ### pyfftw
 
-        for i in range(self.Nmax + 1):
-            if (i < self.Nmax / 2):
-                Coef[i] = np.conj(tmp[int(self.Nmax / 2 - i)]) * self.xmin**(-self.Pow[i]) / float(self.Nmax)
-            else:
-                Coef[i] = tmp[int(i - self.Nmax / 2)] * self.xmin**(-self.Pow[i]) / float(self.Nmax)
+        Coef[:self.Nmax//2] = np.conj(tmp[1:][::-1])
+        Coef[self.Nmax//2:] = tmp[:]
+        Coef *= self._CoefFactor
 
         if window is not None:
             Coef = Coef * CoefWindow(self.Nmax, window=window)
