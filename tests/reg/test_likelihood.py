@@ -1,25 +1,13 @@
 import cobaya
-import os
 import pytest
 from pathlib import Path
+from eftpipe.tools import PathContext
 from pytest_regressions.ndarrays_regression import NDArraysRegressionFixture
-
-
-class PathContext:
-    def __init__(self, path) -> None:
-        self.old = Path('.').resolve()
-        self.new = self.old / path
-
-    def __enter__(self):
-        os.chdir(self.new)
-
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        os.chdir(self.old)
 
 
 def test_LRG_NGC_reg(ndarrays_regression: NDArraysRegressionFixture):
     yaml_name = Path('.').resolve() / \
-        'tests/reg/yamls/mock_LRG_NGC_km0p15_fixref_proposal.yaml'
+        'tests/yamls/mock_LRG_NGC_km0p15_fixref_proposal.yaml'
     with PathContext('cobaya'):
         model = cobaya.get_model(yaml_name)
         params_dict = {
@@ -67,7 +55,7 @@ def test_LRG_NGC_reg(ndarrays_regression: NDArraysRegressionFixture):
 
 def test_ELG_NGC_reg(ndarrays_regression: NDArraysRegressionFixture):
     yaml_name = Path('.').resolve() / \
-        'tests/reg/yamls/mock_ELG_NGC_km0p15_Q_fixref_proposal.yaml'
+        'tests/yamls/mock_ELG_NGC_km0p15_Q_fixref_proposal.yaml'
     with PathContext('cobaya'):
         model = cobaya.get_model(yaml_name)
         params_dict = {
@@ -115,7 +103,7 @@ def test_ELG_NGC_reg(ndarrays_regression: NDArraysRegressionFixture):
 
 def test_LRG_ELG_x_NGC_reg(ndarrays_regression: NDArraysRegressionFixture):
     yaml_name = Path('.').resolve() / \
-        'tests/reg/yamls/mock_LRG_ELG_x_NGC_km0p15_fix_proposal.yaml'
+        'tests/yamls/mock_LRG_ELG_x_NGC_km0p15_fix_proposal.yaml'
     with PathContext('cobaya'):
         model = cobaya.get_model(yaml_name)
         params_dict = {

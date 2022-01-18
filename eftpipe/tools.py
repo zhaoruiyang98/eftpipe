@@ -1,3 +1,4 @@
+import os
 from pathlib import Path
 from typing import Any, List, TYPE_CHECKING
 from eftpipe.typing import SimpleYaml
@@ -32,3 +33,15 @@ def update_path_in_dict(d: SimpleYaml, base: Path) -> None:
     if isinstance(d, list):
         for item in d:
             update_path_in_dict(item, base)
+
+
+class PathContext:
+    def __init__(self, path) -> None:
+        self.old = Path('.').resolve()
+        self.new = self.old / path
+
+    def __enter__(self):
+        os.chdir(self.new)
+
+    def __exit__(self, exc_type, exc_value, exc_traceback):
+        os.chdir(self.old)
