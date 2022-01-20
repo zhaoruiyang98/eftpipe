@@ -271,7 +271,7 @@ class EFTTheory:
             raise ValueError("missing bolzmann provider")
         provider = self.bolzmann_provider
         assert provider is not None
-        if (self.bird is not None) and (not provider.cosmo_updated()):
+        if (not provider.cosmo_updated()) and (self.bird is not None):
             self.bird.setreducePslb(bsA, bsB)
         else:
             kh = np.logspace(-4, 0, 200)

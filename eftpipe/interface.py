@@ -1,5 +1,6 @@
 import camb
 import numpy as np
+from copy import deepcopy
 from numpy import ndarray as NDArray
 from scipy.interpolate import interp1d
 from cobaya.theory import Provider
@@ -93,7 +94,7 @@ class CambProvider:
         return self.results.get_derived_params()['rdrag']
 
     def cosmo_updated(self):
-        return True
+        return False
 
 
 class CobayaCambProvider:
@@ -110,6 +111,7 @@ class CobayaCambProvider:
     def __init__(self, provider: Provider, z: float) -> None:
         self.provider = provider
         self.z = z
+        self.cosmo_params_dct = {}
 
     def interp_pkh(self, kh: NDArray) -> NDArray:
         kinterp, zs, pkinterp = self.provider.get_Pk_grid(nonlinear=False)
@@ -141,4 +143,15 @@ class CobayaCambProvider:
         return float(self.provider.get_param('rdrag'))  # type: ignore
 
     def cosmo_updated(self):
-        return True
+        flag = True
+        # TODO: support other names
+        transfer = self.provider.model.theory['camb.transfers']
+        camb = self.provider.model.theory['camb']
+        if len(transfer._states) != 0 and len(camb._states) != 0:
+            cosmo_params_dct = deepcopy(transfer._states[0]['params'])
+            cosmo_params_dct.update(camb._states[0]['params'])
+            if cosmo_params_dct == self.cosmo_params_dct:
+                flag = False
+            else:
+                self.cosmo_params_dct = cosmo_params_dct
+        return flag
