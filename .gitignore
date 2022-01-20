@@ -129,11 +129,15 @@ dmypy.json
 .pyre/
 
 # cache or large products dir
-cobaya/cache/
-cobaya/chains/
-tests/reg/**/test_*.npz
-tests/reg/**/test_*.yml
-tests/compare/**/test_*.npz
+/cobaya/cache/
+/cobaya/chains/
+/tests/reg/**/test_*.npz
+/tests/reg/**/test_*.yml
+/tests/compare/**/test_*.npz
+
+# benchmark files
+*.bench
+*.lprof
 
 # vscode
-.vscode/
+/.vscode/
