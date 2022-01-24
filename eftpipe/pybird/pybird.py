@@ -620,6 +620,8 @@ class Bird(object):
             self.P22l = np.empty(shape=(self.co.Nl, self.co.N22, self.co.Nk))
             self.P13l = np.empty(shape=(self.co.Nl, self.co.N13, self.co.Nk))
             self.Pb3 = np.empty(shape=(self.co.Nl, self.co.Nk))
+            # stochastic terms
+            self.Pstl = np.empty(shape=(self.co.Nl, 3, self.co.Nk))
 
         elif self.which == 'marg':
             self.full = False
@@ -723,6 +725,7 @@ class Bird(object):
         self.C13 = np.einsum('lnx,ln->lnx', self.C13, self.co.l13)
 
         self.reducePsCfl()
+        self.setPstl()
 
     def reducePsCfl(self):
         """ For option: which='all'. Regroups terms that share the same EFT parameter(s) """
@@ -761,6 +764,20 @@ class Bird(object):
         self.Cloopl[:, 9] = self.C22[:, 3]  # *b2*b2
         self.Cloopl[:, 10] = self.C22[:, 4]  # *b2*b4
         self.Cloopl[:, 11] = self.C22[:, 5]  # *b4*b4
+
+    def setPstl(self, ks: NDArray = None):
+        if ks is None:
+            Nk = self.co.Nk
+            ks2 = self.co.k**2
+        else:
+            Nk = ks.shape[0]
+            ks2 = ks**2
+        Nl = self.co.Nl
+        self.Pstl = np.zeros(shape=(Nl, 3, Nk), dtype=np.float64)
+        self.Pstl[0, 0, :] = np.ones(shape=(Nk,), dtype=np.float64)
+        self.Pstl[0, 1, :] = ks2
+        if Nl >= 2:
+            self.Pstl[1, 2, :] = ks2
 
     def setreducePslb(self, bs):
         """ For option: which='all'. Given an array of EFT parameters, multiply them accordingly to the power spectrum multipole regrouped terms and adds the resulting terms together per loop order.
@@ -1801,6 +1818,7 @@ class Projection(object):
             bird.Pb3 = factor * 1. / (qperp**2 * qpar) * self.integrAP(bird.Pb3, kp, arrayLegendremup, many=False)
             bird.Pctl = factor * 1. / (qperp**2 * qpar) * self.integrAP(bird.Pctl, kp, arrayLegendremup, many=True)
         elif bird.which == 'all':
+            # no effect on bird.Pstl, since the AP effect can be absorbed into coefficients
             bird.P11l = factor * 1. / (qperp**2 * qpar) * self.integrAP(bird.P11l, kp, arrayLegendremup, many=True)
             bird.Pctl = factor * 1. / (qperp**2 * qpar) * self.integrAP(bird.Pctl, kp, arrayLegendremup, many=True)
             bird.Ploopl = factor * 1. / (qperp**2 * qpar) * self.integrAP(bird.Ploopl, kp, arrayLegendremup, many=True)
@@ -1949,6 +1967,8 @@ class Projection(object):
             bird.P11l = self.integrWindow(bird.P11l, many=True)
             bird.Pctl = self.integrWindow(bird.Pctl, many=True)
             bird.Ploopl = self.integrWindow(bird.Ploopl, many=True)
+            bird.setPstl(self.p)
+            bird.Pstl = np.einsum('alkp,lsp->ask', self.Waldk, bird.Pstl)
 
         elif bird.which == 'full':
             bird.fullPs = self.integrWindow(bird.fullPs, many=False)
@@ -2055,6 +2075,7 @@ class Projection(object):
             bird.P11l = self.integrBinning(bird.P11l)
             bird.Pctl = self.integrBinning(bird.Pctl)
             bird.Ploopl = self.integrBinning(bird.Ploopl)
+            bird.Pstl = interp1d(self.co.k, bird.Pstl, axis=-1, kind='cubic', bounds_error=False)(self.kout)
 
     def kdata(self, bird: Bird):
         """
@@ -2064,5 +2085,6 @@ class Projection(object):
             bird.P11l = interp1d(self.co.k, bird.P11l, axis=-1, kind='cubic', bounds_error=False)(self.kout)
             bird.Pctl = interp1d(self.co.k, bird.Pctl, axis=-1, kind='cubic', bounds_error=False)(self.kout)
             bird.Ploopl = interp1d(self.co.k, bird.Ploopl, axis=-1, kind='cubic', bounds_error=False)(self.kout)
+            bird.Pstl = interp1d(self.co.k, bird.Pstl, axis=-1, kind='cubic', bounds_error=False)(self.kout)
         if bird.which == 'full':
             bird.fullPs = interp1d(self.co.k, bird.fullPs, axis=-1, kind='cubic', bounds_error=False)(self.kout)

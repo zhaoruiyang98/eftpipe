@@ -54,7 +54,8 @@ class BirdPlus(pybird.Bird):
     def setreducePslb(
         self,
         bsA: Iterable[float],
-        bsB: Optional[Iterable[float]] = None
+        bsB: Optional[Iterable[float]] = None,
+        es: Iterable[float] = (0., 0., 0.)
     ) -> None:
         """apply counter terms and bind fullPs to self
 
@@ -65,12 +66,15 @@ class BirdPlus(pybird.Bird):
         bsB : Optional[Iterable[float]], optional
             the same as bsA, but for tracer A, by default None
             leave it default will compute auto power spectrum
+        es : Iterable[float], optional
+            c_{e,0}/n_d, c_{mono}/n_d/k_m^2, c_{quad}/n_d/k_m^2, by default zeros
         """
         b1A, b2A, b3A, b4A, b5A, b6A, b7A = bsA
         if bsB is None:
             bsB = bsA
         b1B, b2B, b3B, b4B, b5B, b6B, b7B = bsB
         f = self.f
+        e1, e2, e3 = es
 
         b11AB = np.array([b1A * b1B, (b1A + b1B) * f, f**2])
         bctAB = np.array([
@@ -86,10 +90,12 @@ class BirdPlus(pybird.Bird):
             1. / 2. * (b1A * b4B + b1B * b4A),
             b2A * b2B, 1. / 2. * (b2A * b4B + b2B * b4A), b4A * b4B
         ])
+        bstAB = np.array([e1, e2, e3])
         Ps0 = np.einsum('b,lbx->lx', b11AB, self.P11l)
         Ps1 = (np.einsum('b,lbx->lx', bloopAB, self.Ploopl)
                + np.einsum('b,lbx->lx', bctAB, self.Pctl))
-        self.fullPs = Ps0 + Ps1
+        Ps2 = np.einsum('b,lbx->lx', bstAB, self.Pstl)
+        self.fullPs = Ps0 + Ps1 + Ps2
 
 
 @dataclass
@@ -235,32 +241,6 @@ class EFTTheory:
             state.ic = True
             raise NotImplementedError
 
-    def stochastic_terms(self, ks: NDArray, es: Iterable[float]) -> NDArray:
-        """compute stochastic terms
-
-        Parameters
-        ----------
-        es : Iterable[float]
-            c_{e,0}/n_d, c_{mono}/n_d/k_m^2, c_{quad}/n_d/k_m^2
-        """
-        e1, e2, e3 = es
-        mono = e1 + e2 * ks**2
-        quad = e3 * ks**2
-        if self.co.Nl == 1:
-            return mono
-        elif self.co.Nl == 2:
-            return np.vstack((mono, quad))
-        else:
-            return np.vstack((mono, quad, np.zeros(mono.shape)))
-
-    def stochastic_terms_with_windows(self, es: Iterable[float]) -> NDArray:
-        assert self.projection is not None
-        pkl = self.stochastic_terms(self.projection.p, es)
-        out = np.einsum('alkp,lp->ak', self.projection.Waldk, pkl)
-        out = interp1d(
-            self.co.k, out, axis=-1, kind='cubic')(self.projection.kout)
-        return out
-
     def theory_vector(
         self,
         bsA: Iterable[float], *,
@@ -272,7 +252,7 @@ class EFTTheory:
         provider = self.bolzmann_provider
         assert provider is not None
         if (not provider.cosmo_updated()) and (self.bird is not None):
-            self.bird.setreducePslb(bsA, bsB)
+            self.bird.setreducePslb(bsA, bsB, es=es)
         else:
             kh = np.logspace(-4, 0, 200)
             pkh = provider.interp_pkh(kh)
@@ -300,17 +280,10 @@ class EFTTheory:
                     self.projection.kbinning(bird)
                 else:
                     self.projection.kdata(bird)
-            bird.setreducePslb(bsA, bsB)
+            bird.setreducePslb(bsA, bsB, es=es)
             self.bird = bird
 
         out: NDArray = self.bird.fullPs.copy()
-        if self.projection is not None:
-            if self.state.window:
-                out += self.stochastic_terms_with_windows(es)
-            else:
-                out += self.stochastic_terms(self.projection.kout, es)
-        else:
-            out += self.stochastic_terms(pybird.kbird, es)
 
         if self.state.chained:
             newout = out.copy()
