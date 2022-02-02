@@ -2,7 +2,7 @@ import pytest
 import cobaya
 import numpy as np
 from eftpipe.interface import CobayaCambProvider, CambProvider
-from eftpipe.typing import BoltzmannProvider
+from typing import Union
 from pytest_regressions.ndarrays_regression import NDArraysRegressionFixture
 
 
@@ -98,7 +98,7 @@ def two_providers():
 @pytest.mark.parametrize("provider, z", two_providers(), ids=['cobaya', 'camb'])
 def test_CobayaCambProvider(
     ndarrays_regression: NDArraysRegressionFixture,
-    provider: BoltzmannProvider,
+    provider: Union[CobayaCambProvider, CambProvider],
     z: float,
 ):
     kh = np.logspace(-4, 0, 200)

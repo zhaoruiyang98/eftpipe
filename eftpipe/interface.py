@@ -75,6 +75,16 @@ class CambProvider:
     def interp_pkh(self, kh: NDArray) -> NDArray:
         return self._interp_pkh(kh)
 
+    def get_H(self, z: float) -> float:
+        return self.get_Hubble(z) / (self.get_h0() * 100)
+
+    def get_DA(self, z: float) -> float:
+        return self.get_angular_diameter_distance(z) \
+            * (self.get_h0() * 100) / 299792.458
+
+    def get_f(self, z: float) -> float:
+        return self.get_fsigma8(z) / self.get_sigma8_z(z)
+
     def get_h0(self) -> float:
         return float(self.results.hubble_parameter(0) / 100.)
 
@@ -93,7 +103,7 @@ class CambProvider:
     def get_rdrag(self) -> float:
         return self.results.get_derived_params()['rdrag']
 
-    def cosmo_updated(self):
+    def cosmo_updated(self) -> bool:
         return False
 
 
@@ -124,25 +134,35 @@ class CobayaCambProvider:
         interp_pkh = interp1d(khinterp, pkh, kind='cubic')
         return interp_pkh(kh)
 
-    def get_h0(self):
+    def get_H(self, z: float) -> float:
+        return self.get_Hubble(z) / (self.get_h0() * 100)
+
+    def get_DA(self, z: float) -> float:
+        return self.get_angular_diameter_distance(z) \
+            * (self.get_h0() * 100) / 299792.458
+
+    def get_f(self, z: float) -> float:
+        return self.get_fsigma8(z) / self.get_sigma8_z(z)
+
+    def get_h0(self) -> float:
         return float(self.provider.get_Hubble(0.)) / 100.
 
-    def get_Hubble(self, z):
+    def get_Hubble(self, z) -> float:
         return float(self.provider.get_Hubble(z))
 
-    def get_angular_diameter_distance(self, z):
+    def get_angular_diameter_distance(self, z) -> float:
         return float(self.provider.get_angular_diameter_distance(z))
 
-    def get_fsigma8(self, z):
+    def get_fsigma8(self, z) -> float:
         return float(self.provider.get_fsigma8(z))
 
-    def get_sigma8_z(self, z):
+    def get_sigma8_z(self, z) -> float:
         return float(self.provider.get_sigma8_z(z))
 
-    def get_rdrag(self):
+    def get_rdrag(self) -> float:
         return float(self.provider.get_param('rdrag'))  # type: ignore
 
-    def cosmo_updated(self):
+    def cosmo_updated(self) -> bool:
         flag = True
         # TODO: support other names
         transfer = self.provider.model.theory['camb.transfers']

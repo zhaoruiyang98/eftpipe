@@ -257,12 +257,11 @@ class EFTTheory:
             kh = np.logspace(-4, 0, 200)
             pkh = provider.interp_pkh(kh)
 
-            h = provider.get_h0()
-            H = provider.get_Hubble(self.z) / (h * 100)
-            DA = provider.get_angular_diameter_distance(
-                self.z) * (h * 100) / 299792.458
-            f = provider.get_fsigma8(self.z) / provider.get_sigma8_z(self.z)
-            H, DA, f = float(H), float(DA), float(f)
+            H, DA, f = (
+                provider.get_H(self.z),
+                provider.get_DA(self.z),
+                provider.get_f(self.z)
+            )
             bird = BirdPlus(
                 kh, pkh, f, DA, H, self.z, which='all', co=self.co)
             self.nonlinear.PsCf(bird)
