@@ -2056,16 +2056,16 @@ class Projection(object):
         binmax = kcentral + delta_k / 2
         self.binvol = np.array([quad(lambda k: k**2, kbinmin, kbinmax)[0]
                                 for (kbinmin, kbinmax) in zip(binmin, binmax)])
-
-        self.points = [np.linspace(kbinmin, kbinmax, 100) for (kbinmin, kbinmax) in zip(binmin, binmax)]
+        points = [np.linspace(kbinmin, kbinmax, 100) for (kbinmin, kbinmax) in zip(binmin, binmax)]
+        self.points = np.array(points)
 
     def integrBinning(self, P):
         """
         Integrate over each bin of the data k's
         """
         Pkint = interp1d(self.co.k, P, axis=-1, kind='cubic', bounds_error=False, fill_value='extrapolate')
-        res = np.array([np.trapz(Pkint(pts) * pts**2, x=pts) for pts in self.points])
-        return np.moveaxis(res, 0, -1) / self.binvol
+        res = np.trapz(Pkint(self.points) * self.points**2, x=self.points, axis=-1)
+        return res / self.binvol
 
     def kbinning(self, bird: Bird):
         """
@@ -2075,7 +2075,8 @@ class Projection(object):
             bird.P11l = self.integrBinning(bird.P11l)
             bird.Pctl = self.integrBinning(bird.Pctl)
             bird.Ploopl = self.integrBinning(bird.Ploopl)
-            bird.Pstl = interp1d(self.co.k, bird.Pstl, axis=-1, kind='cubic', bounds_error=False)(self.kout)
+            bird.Pstl = self.integrBinning(bird.Pstl)
+            # bird.Pstl = interp1d(self.co.k, bird.Pstl, axis=-1, kind='cubic', bounds_error=False)(self.kout)
 
     def kdata(self, bird: Bird):
         """
