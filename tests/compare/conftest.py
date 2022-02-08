@@ -19,6 +19,7 @@ class DisableForceRegen:
 
 @pytest.fixture
 def compare_ndarrays(ndarrays_regression: NDArraysRegressionFixture):
+    source_data_dir: Path
     def kernel(
         ref_dct, data_dct,
         basename=None, fullpath=None, tolerances=None, default_tolerance=None
@@ -72,6 +73,8 @@ def compare_ndarrays(ndarrays_regression: NDArraysRegressionFixture):
                 ndarrays_regression.original_datadir / \
                 (new_basename + extension)
         np.savez_compressed(str(filename), **ref_dct)
+        nonlocal source_data_dir
+        source_data_dir = source_filename.parent
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
         with DisableForceRegen(request):
@@ -82,3 +85,6 @@ def compare_ndarrays(ndarrays_regression: NDArraysRegressionFixture):
             )
 
     yield kernel
+
+    if not any(source_data_dir.iterdir()): # type: ignore
+        source_data_dir.rmdir() # type: ignore
