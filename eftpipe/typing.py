@@ -55,8 +55,10 @@ class ProjectionConfig(TypedDict, total=False):
     Om_AP: float
     z_AP: float
     kdata: NDArray
+    rdrag_fid: float
     windows_fourier_path: Path
     windows_configspace_path: Path
+    binning: bool
     ktrust: float
     fs: float
     Dfc: float

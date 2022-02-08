@@ -1,9 +1,6 @@
-import pytest
 import cobaya
 import numpy as np
 from eftpipe.interface import CobayaCambProvider, CambProvider
-from typing import Union
-from pytest_regressions.ndarrays_regression import NDArraysRegressionFixture
 
 
 def two_providers():
@@ -95,28 +92,27 @@ def two_providers():
     yield (b, z)
 
 
-@pytest.mark.parametrize("provider, z", two_providers(), ids=['cobaya', 'camb'])
-def test_CobayaCambProvider(
-    ndarrays_regression: NDArraysRegressionFixture,
-    provider: Union[CobayaCambProvider, CambProvider],
-    z: float,
-):
-    kh = np.logspace(-4, 0, 200)
-    dct = {
-        'rdrag': provider.get_rdrag(),
-        'h0': provider.get_h0(),
-        'DA': provider.get_angular_diameter_distance(z),
-        'Hubble': provider.get_Hubble(z),
-        'fsigma8': provider.get_fsigma8(z),
-        'sigma8': provider.get_sigma8_z(z),
-        'pkh': provider.interp_pkh(kh)
-    }
-    ndarrays_regression.check(
-        dct, default_tolerance={'atol': 0., 'rtol': 1e-6},
+def test_CobayaCambProvider(compare_ndarrays):
+    dcts = []
+    for provider, z in two_providers():
+        kh = np.logspace(-4, 0, 200)
+        dct = {
+            'rdrag': provider.get_rdrag(),
+            'h0': provider.get_h0(),
+            'DA': provider.get_angular_diameter_distance(z),
+            'Hubble': provider.get_Hubble(z),
+            'fsigma8': provider.get_fsigma8(z),
+            'sigma8': provider.get_sigma8_z(z),
+            'pkh': provider.interp_pkh(kh)
+        }
+        dcts.append(dct)
+    ref, data = dcts
+    compare_ndarrays(
+        ref, data,
+        default_tolerance={'atol': 0., 'rtol': 1e-6},
         tolerances={
             'pkh': {'atol': 0., 'rtol': 2e-4},
             'fsigma8': {'atol': 0, 'rtol': 1e-4},
             'sigma8': {'atol': 0, 'rtol': 1e-4}
         },
-        basename='test_CobayaCambProvider'
     )
