@@ -1,8 +1,5 @@
 import numpy as np
-import pytest
-from typing import Dict
 from eftpipe.pybird.pybird import FFTLog
-from pytest_regressions.ndarrays_regression import NDArraysRegressionFixture
 
 
 def FFTLog_results():
@@ -18,13 +15,9 @@ def FFTLog_results():
     yield {'coef': fft.Coef(klim, pklim_vector, extrap='padding', window=0.3)}
 
 
-@pytest.mark.parametrize(
-    'dct', FFTLog_results(), ids=['loop', 'vectorization']
-)
-def test_FFTLog_vectorization(
-    ndarrays_regression: NDArraysRegressionFixture, dct: Dict
-):
-    ndarrays_regression.check(
-        dct, default_tolerance={'atol': 0., 'rtol': 1e-6},
-        basename='test_FFTLog_vectorization'
+def test_FFTLog_vectorization(compare_ndarrays):
+    ref, data = FFTLog_results()
+    compare_ndarrays(
+        ref, data,
+        default_tolerance={'atol': 0., 'rtol': 1e-6},
     )
