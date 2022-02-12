@@ -134,6 +134,7 @@ dmypy.json
 /tests/reg/**/test_*.npz
 /tests/reg/**/test_*.yml
 /tests/compare/**/test_*.npz
+/tests/compare/cache/
 
 # benchmark files
 *.bench
