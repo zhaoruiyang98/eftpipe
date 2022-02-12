@@ -139,13 +139,13 @@ class RandomParams:
         for name in groups:
             fixed = fixed.union(self._groups[name])
         new_sampled_names = [x for x in self.sampled_names if x not in fixed]
+        if not new_sampled_names:
+            raise ValueError('All parameters are fixed!')
         need_delete = [x for x in self.sampled_names if x in fixed]
         inds = [self.sampled_names.index(x) for x in need_delete]
         self.covmat = np.delete(self.covmat, inds, axis=0)
         self.covmat = np.delete(self.covmat, inds, axis=1)
         self.sampled_names = new_sampled_names
-        self._params_dict = {
-            k: self._params_dict[k] for k in new_sampled_names}
         self.mean = np.array(
             [self._params_dict[k] for k in self.sampled_names])
 
