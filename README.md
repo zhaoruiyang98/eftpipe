@@ -28,17 +28,16 @@ python -m unittest getdist.tests.getdist_test
 python -m pip install cobaya --upgrade
 # install cosmological codes and data
 cobaya-install cosmo -p /path/to/packages
-# install camb locally
+# install camb equipped with cobaya
 cd /path/to/packages/code/CAMB
-pip install -e .
+pip install .
 ```
 
 MPI installation guide can be found at cobaya's [website](https://cobaya.readthedocs.io/en/latest/installation.html)
 
-If you want to install test framework and profiler for developments, please run the following commands:
+If you want to install test framework for developments, please run the following commands:
 
 ```shell
-conda install line_profiler
 conda install "pytest>=6.0"
 conda install -c conda-forge pytest-cov "pytest-regressions>=2.3.0" pytest-datadir
 ```
