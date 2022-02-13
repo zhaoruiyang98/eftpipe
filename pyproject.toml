@@ -2,5 +2,8 @@
 minversion = "6.0"
 testpaths = ["tests"]
 addopts = "-ra --color=yes"
+markers = [
+    "diffbird: mark test to enable comparison to pybird_dev"
+]
 # for future coverage test
 # addopts = "-ra --cov --cov-report=xml --cov-config=.coveragerc --color=yes"

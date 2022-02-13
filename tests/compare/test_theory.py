@@ -55,7 +55,7 @@ EFTPIPE_SETTINGS = {
         'windows_fourier_path': EFTPIPE_CACHE / 'LRG_NGC_GB_interp.npy',
         'windows_configspace_path': \
         COBAYA_PATH / 'data' / 'window' / 'LRG_NGC_GB_interp.dat',
-        'binning': True
+        'binning': True,
     }
 }
 
@@ -64,7 +64,7 @@ EFTPIPE_SETTINGS = {
 # to Correlator.set
 PYBIRDDEV_SETTINGS = {
     'output': 'bPk',
-    'multipole': 3,
+    'multipole': EFTPIPE_SETTINGS['Nl'],
     'xdata': EFTPIPE_SETTINGS['projection_config']['kdata'],
     'z': EFTPIPE_SETTINGS['z'],
     'km': HYPERPARAMS['km'],
@@ -72,7 +72,7 @@ PYBIRDDEV_SETTINGS = {
     'with_stoch': True,
     'optiresum': EFTPIPE_SETTINGS['optiresum'],
     'with_resum': True,
-    'with_bias': True,
+    'with_bias': False,
     'kmax': 0.3,
     'with_AP': True,
     'z_AP': EFTPIPE_SETTINGS['projection_config']['z_AP'],
@@ -156,9 +156,8 @@ class PybirdDevTh:
             'k11': k11,
             'P11': p11,
             'f': f, 'DA': DA, 'H': H,
-            'bias': dct
         })
-        return self.corr.get().reshape(-1)  # type: ignore
+        return self.corr.get(bias=dct).reshape(-1)  # type: ignore
 
 
 class EFTPair:
@@ -235,9 +234,13 @@ def has_pybird_dev() -> bool:
     else:
         return True
 
-N = 10
-it = (_ for _ in EFTPair(N))
+
+N = 5
+it = (_ for _ in EFTPair(
+    N, fixgroups=('stochastic',), override={'ce0': 0, 'cemono': 0, 'cequad': 0}
+))
 @pytest.mark.skipif(not has_pybird_dev(), reason='should install pybird_dev')
+@pytest.mark.diffbird
 @pytest.mark.parametrize("i", range(N))
 def test_EFTtheory_vs_pybirddev(compare_ndarrays, i):
     eftpipe_th, pybird_th = next(it)
