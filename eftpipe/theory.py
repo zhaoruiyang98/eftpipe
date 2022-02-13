@@ -208,17 +208,19 @@ class EFTTheory:
         if rdrag_fid is not None:
             self.print_info(f'fiducial rdrag = {rdrag_fid}')
 
+        if binning:
+            self.print_info('binning: on')
+            state.binning = True
+
         if windows_fourier_path is None:
             self.print_info('window: off')
             projection = pybird.Projection(
-                kdata, Om_AP, z_AP, co=self.co, rdrag_fid=rdrag_fid
+                kdata, Om_AP, z_AP, co=self.co,
+                binning=state.binning, rdrag_fid=rdrag_fid
             )
         else:
             self.print_info('window: on')
             state.window = True
-            if binning:
-                self.print_info('binning: on')
-                state.binning = True
             projection = pybird.Projection(
                 kdata, Om_AP, z_AP, co=self.co,
                 window_fourier_name=Path(windows_fourier_path).name,
