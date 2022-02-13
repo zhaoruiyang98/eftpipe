@@ -17,9 +17,10 @@ class DisableForceRegen:
         self.request.config.option.force_regen = self.raw
 
 
-@pytest.fixture
+@pytest.fixture(scope='function')
 def compare_ndarrays(ndarrays_regression: NDArraysRegressionFixture):
     source_data_dir: Path
+
     def kernel(
         ref_dct, data_dct,
         basename=None, fullpath=None, tolerances=None, default_tolerance=None
@@ -86,6 +87,6 @@ def compare_ndarrays(ndarrays_regression: NDArraysRegressionFixture):
 
     yield kernel
 
-    if source_data_dir.exists(): # type: ignore
-        if not any(source_data_dir.iterdir()): # type: ignore
-            source_data_dir.rmdir() # type: ignore
+    if source_data_dir.exists():  # type: ignore
+        if not any(source_data_dir.iterdir()):  # type: ignore
+            source_data_dir.rmdir()  # type: ignore
