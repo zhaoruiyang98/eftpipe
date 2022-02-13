@@ -61,5 +61,22 @@ cd eftpipe
 pip install -e .
 # or `pip install -e .[test]` for test
 ```
+# Compare to upstream PyBird
+Since EFTPipe is developed based on PyBird, it is quite important to keep the modified version agree to upstream PyBird repository.
+
+For demonstration, we write a simple random comparison suite in [this](https://github.com/zhaoruiyang98/eftpipe/blob/main/tests/compare/test_theory.py) file. To run it yourself, you should install all packages mentioned above and install the [forked version of PyBird](https://github.com/zhaoruiyang98/pybird/tree/dev) (dev branch), where we made some minor changes:
+1. make pybird_dev as a package
+2. fix overflow and file load error when computing window matrix
+3. double the default number of $\mu$ bins when applying AP effect
+
+Then, at the root directory, run `pytest tests/compare/test_theory.py --diffbird`, you will see 5 comparison results (4 are random). Typically the relative difference looks like the following picture:
+
+![compare](https://github.com/zhaoruiyang98/eftpipe/blob/main/figures/compare.png)
+
+Generally they are in good agreement and the appeared residual has two causes:
+1. different integral nodes of $k$
+2. the weird peak comes from the comparison of floating numbers when applying the mask to window matrix
+
+If you set totally the same integral nodes, the relative difference will be completely negligible.
 # Acknowledgements
 Thanks to [Pierre Zhang](mailto:pierrexyz@protonmail.com) and [Guido D'Amico](mailto:damico.guido@gmail.com) for developing [PyBird](https://github.com/pierrexyz/pybird). EFTPipe is motivated by and heavily depends on PyBird. For the purpose of extension, we include it as subpackage. Please have a look at [README](https://github.com/zhaoruiyang98/eftpipe/blob/main/eftpipe/pybird/README.md) for detailed information and citation.
