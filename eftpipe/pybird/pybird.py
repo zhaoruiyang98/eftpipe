@@ -1932,6 +1932,7 @@ class Projection(object):
         self.Wal = self.Wal[:,:self.co.Nl]
  
         # Apply masking centered around the value of k
+        Wal_masked = self.Wal
         if withmask:
             kpgrid, kgrid = np.meshgrid(self.p, self.co.k, indexing='ij')
             mask = (kpgrid < kgrid + windowk) & (kpgrid > kgrid - windowk)
@@ -1940,7 +1941,7 @@ class Projection(object):
         # the spacing (needed to do the convolution as a sum)
         deltap = self.p[1:] - self.p[:-1]
         deltap = np.concatenate([[0], deltap])
-        self.Waldk = np.einsum('alkp,p->alkp', Wal_masked, deltap) # type: ignore
+        self.Waldk = np.einsum('alkp,p->alkp', Wal_masked, deltap)
 
     def integrWindow(self, P, many=False):
         """
