@@ -765,6 +765,8 @@ class Bird(object):
         self.Cloopl[:, 10] = self.C22[:, 4]  # *b2*b4
         self.Cloopl[:, 11] = self.C22[:, 5]  # *b4*b4
 
+        self.subtractShotNoise()
+
     def setPstl(self, ks: NDArray = None):
         if ks is None:
             Nk = self.co.Nk
@@ -1714,8 +1716,6 @@ class Resum(object):
             bird.P11l += self.IR11resum
             bird.Pctl += self.IRctresum
             bird.Ploopl += self.IRloopresum
-            # TODO: move to bird
-            bird.subtractShotNoise()
 
         # TODO: update 'full'
         elif bird.which == 'full':
