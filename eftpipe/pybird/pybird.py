@@ -1264,18 +1264,12 @@ class NonLinear(object):
     def setM22(self):
         """ Compute the 22-loop power spectrum matrices. Called at the instantiation of the class if the matrices are not loaded. """
         self.M22 = np.empty(shape=(self.co.N22, self.fft.Pow.shape[0], self.fft.Pow.shape[0]), dtype='complex')
+        ns = -0.5 * self.fft.Pow
         # common piece of M22
-        Ma = np.empty(shape=(self.fft.Pow.shape[0], self.fft.Pow.shape[0]), dtype='complex')
-        for u, n1 in enumerate(-0.5 * self.fft.Pow):
-            for v, n2 in enumerate(-0.5 * self.fft.Pow):
-                Ma[u, v] = M22a(n1, n2)
+        Ma = M22a(ns[:, None], ns[None, :])
         for i in range(self.co.N22):
             # singular piece of M22
-            Mb = np.empty(shape=(self.fft.Pow.shape[0], self.fft.Pow.shape[0]), dtype='complex')
-            for u, n1 in enumerate(-0.5 * self.fft.Pow):
-                for v, n2 in enumerate(-0.5 * self.fft.Pow):
-                    Mb[u, v] = M22b[i](n1, n2)
-            self.M22[i] = Ma * Mb
+            self.M22[i] = Ma * M22b[i](ns[:, None], ns[None, :])
 
     def setM13(self):
         """ Compute the 13-loop power spectrum matrices. Called at the instantiation of the class if the matrices are not loaded. """
@@ -1286,18 +1280,18 @@ class NonLinear(object):
 
     def setMcf11(self):
         """ Compute the 11-loop correlation function matrices. Called at the instantiation of the class if the matrices are not loaded. """
-        self.Mcf11 = np.empty(shape=(self.co.Nl, self.fft.Pow.shape[0]), dtype='complex')
-        for l in range(self.co.Nl):
-            for u, n1 in enumerate(-0.5 * self.fft.Pow):
-                self.Mcf11[l, u] = MPC(2 * l, n1) # * 1j**(2*l)
+        # self.Mcf11 = np.empty(shape=(self.co.Nl, self.fft.Pow.shape[0]), dtype='complex')
+        ns = -0.5 * self.fft.Pow
+        self.Mcf11 = MPC(2 * np.arange(self.co.Nl)[:, None], ns[None, :]) # * 1j**(2*l)
 
     def setMl(self):
         """ Compute the power spectrum to correlation function spherical Bessel transform matrices. Called at the instantiation of the class if the matrices are not loaded. """
-        self.Ml = np.empty(shape=(self.co.Nl, self.fft.Pow.shape[0], self.fft.Pow.shape[0]), dtype='complex')
-        for l in range(self.co.Nl):
-            for u, n1 in enumerate(-0.5 * self.fft.Pow):
-                for v, n2 in enumerate(-0.5 * self.fft.Pow):
-                    self.Ml[l, u, v] = MPC(2 * l, n1 + n2 - 1.5) # * 1j**(2*l)
+        # self.Ml = np.empty(shape=(self.co.Nl, self.fft.Pow.shape[0], self.fft.Pow.shape[0]), dtype='complex')
+        ns = -0.5 * self.fft.Pow
+        self.Ml = MPC(
+            2 * np.arange(self.co.Nl)[:, None, None],
+            ns[None, :, None] + ns[None, None, :] - 1.5
+        ) # * 1j**(2*l)
 
     def setMcf22(self):
         """ Compute the 22-loop correlation function matrices. Called at the instantiation of the class if the matrices are not loaded. """
@@ -1309,10 +1303,9 @@ class NonLinear(object):
 
     def setMcfct(self):
         """ Compute the counterterm correlation function matrices. Called at the instantiation of the class if the matrices are not loaded. """
-        self.Mcfct = np.empty(shape=(self.co.Nl, self.fft.Pow.shape[0]), dtype='complex')
-        for l in range(self.co.Nl):
-            for u, n1 in enumerate(-0.5 * self.fft.Pow - 1.):
-                self.Mcfct[l, u] = MPC(2 * l, n1) # * 1j**(2*l)
+        # self.Mcfct = np.empty(shape=(self.co.Nl, self.fft.Pow.shape[0]), dtype='complex')
+        ns = -0.5 * self.fft.Pow
+        self.Mcfct = MPC(2 * np.arange(self.co.Nl)[:, None], ns - 1.) # * 1j**(2*l)
 
     def setkPow(self):
         """ Compute the k's to the powers of the FFTLog to evaluate the loop power spectrum. Called at the instantiation of the class. """
@@ -1900,7 +1893,7 @@ class Projection(object):
                 sw = swindow_config_space[:,0] # type: ignore
                 Qp = np.moveaxis(swindow_config_space[:,1:].reshape(-1,3), 0, -1 )[:Nl] # type: ignore
 
-                Qal = np.einsum('alp,ps->als', Calp, Qp)
+                Qal = np.einsum('alp,ps->als', Calp, Qp)[:self.co.Nl, :Nl, :]
 
                 self.fftsettings = dict(Nmax=4096, xmin=sw[0] * xmin_factor, xmax=sw[-1]*xmax_factor, bias=-1.6) # 1e-2 - 1e6 [Mpc/h]
                 self.fft = FFTLog(**self.fftsettings)
@@ -1909,10 +1902,22 @@ class Projection(object):
                 for l in range(Nl): self.M[l] = 4*pi * MPC(2*l, -0.5*self.fft.Pow)
 
                 self.Coef = np.empty(shape=(self.co.Nl, Nl, self.co.Nk, self.fft.Pow.shape[0]), dtype='complex')
-                for a in range(self.co.Nl):
-                    for l in range(Nl):
-                        for i,k in enumerate(self.co.k):
-                            self.Coef[a,l,i] = (-1j)**(2*a) * 1j**(2*l) * self.fft.Coef(sw, Qal[a,l]*spherical_jn(2*a, k*sw), extrap = 'padding')
+                co_Nls = np.arange(self.co.Nl)
+                Nls = np.arange(Nl)
+                # vectorize the expression with broadcasting, index: alkn
+                self.Coef[...] = (
+                    (-1j)**(2 * co_Nls)[:, None, None, None]
+                    * 1j**(2 * Nls)[None, :, None, None]
+                    * self.fft.Coef(
+                        sw,
+                        Qal[:, :, None, :] * spherical_jn(
+                            2 * co_Nls[:, None, None, None],
+                            sw[None, None, None, :] *
+                            self.co.k[None, None, :, None]
+                        ),
+                        extrap='padding'
+                    )
+                )
 
                 self.Wal = self.p**2 * np.real( np.einsum('alkn,np,ln->alkp', self.Coef, self.pPow, self.M) )
 
