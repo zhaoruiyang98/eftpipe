@@ -2,6 +2,7 @@ import numpy as np
 import re
 import pytest
 from pathlib import Path
+from typing import Optional
 from pytest_regressions.ndarrays_regression import NDArraysRegressionFixture
 
 
@@ -19,7 +20,7 @@ class DisableForceRegen:
 
 @pytest.fixture(scope='function')
 def compare_ndarrays(ndarrays_regression: NDArraysRegressionFixture):
-    source_data_dir: Path
+    source_data_dir: Optional[Path] = None
 
     def kernel(
         ref_dct, data_dct,
@@ -87,6 +88,7 @@ def compare_ndarrays(ndarrays_regression: NDArraysRegressionFixture):
 
     yield kernel
 
-    if source_data_dir.exists():  # type: ignore
-        if not any(source_data_dir.iterdir()):  # type: ignore
-            source_data_dir.rmdir()  # type: ignore
+    if source_data_dir is not None:
+        if source_data_dir.exists():
+            if not any(source_data_dir.iterdir()):
+                source_data_dir.rmdir()
