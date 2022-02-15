@@ -148,7 +148,7 @@ M22b = {
 
 def M22a(n1, n2):
     """ Common part of the 22-loop matrices """
-    return (gamma(1.5 - n1) * gamma(1.5 - n2) * gamma(-1.5 + n1 + n2)) / (8. * pi**1.5 * gamma(n1) * gamma(3 - n1 - n2) * gamma(n2))
+    return exp(loggamma(1.5 - n1) + loggamma(1.5 - n2) + loggamma(-1.5 + n1 + n2)) / (8. * pi**1.5 * exp(loggamma(n1) + loggamma(3 - n1 - n2) + loggamma(n2)))
 
 
 def MPC(l, pn):
