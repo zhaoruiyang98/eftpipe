@@ -44,6 +44,8 @@ HYPERPARAMS = {
 
 EFTPIPE_SETTINGS = {
     'z': 0.7,
+    'kmA': HYPERPARAMS['km'],
+    'ndA': HYPERPARAMS['nd'],
     'cache_dir_path': EFTPIPE_CACHE,
     'optiresum': False,
     'Nl': 3,
@@ -94,29 +96,27 @@ class CambProviderNoCache(CambProvider):
 
 
 class EFTPipeTh:
-    def __init__(self, settings, hyper):
+    def __init__(self, settings):
         self.theory = \
             EFTTheory(print_info=lambda x: None, **settings)  # type: ignore
-        self.hyper = hyper
 
     def set_bolzman_provider(self, provider):
         self.theory.set_bolzman_provider(provider)
 
     def theory_vector(self, params_dict):
-        knl, km, nd = self.hyper['knl'], self.hyper['km'], self.hyper['nd']
         bs = [
             params_dict['b1'],
             (params_dict['c2'] + params_dict['c4']) / np.sqrt(2),
             params_dict['b3'],
             (params_dict['c2'] - params_dict['c4']) / np.sqrt(2),
-            params_dict['cct'] / knl**2,
-            params_dict['cr1'] / km**2,
-            params_dict['cr2'] / km**2
+            params_dict['cct'],
+            params_dict['cr1'],
+            params_dict['cr2']
         ]
         es = [
-            params_dict['ce0'] / nd,
-            params_dict['cemono'] / nd / km**2,
-            params_dict['cequad'] / nd / km**2,
+            params_dict['ce0'],
+            params_dict['cemono'],
+            params_dict['cequad'],
         ]
         return self.theory.theory_vector(bs, es=es)
 
@@ -169,12 +169,10 @@ class EFTPair:
         seed=None,
         eftpipe_settings=EFTPIPE_SETTINGS,
         pybird_settings=PYBIRDDEV_SETTINGS,
-        hyper=HYPERPARAMS,
         override=None,
     ) -> None:
         self.eftpipe_settings = eftpipe_settings
         self.pybird_settings = pybird_settings
-        self.hyper = hyper
         self.seed = seed
         self.n = n
         self.fixnames = fixnames
@@ -189,7 +187,7 @@ class EFTPair:
 
     def __iter__(self) -> Generator[Tuple[NDArray, NDArray], None, None]:
         # setup
-        self.eftpipe_th = EFTPipeTh(self.eftpipe_settings, self.hyper)
+        self.eftpipe_th = EFTPipeTh(self.eftpipe_settings)
         self.pybird_th = PybirdDevTh(self.pybird_settings)
 
         parent = Path(__file__).resolve().parent

@@ -30,9 +30,6 @@ def test_LRG_NGC_reg(ndarrays_regression: NDArraysRegressionFixture):
             'LRG_NGC_ce0': 2.348928561e-01,
             'LRG_NGC_cemono': 0.0,
             'LRG_NGC_cequad': -8.642105220e-01,
-            'LRG_NGC_knl': 0.7,
-            'LRG_NGC_km': 0.7,
-            'LRG_NGC_nd': 7.91e-05
         }
         sampled_dict = model.parameterization.sampled_params()
         sampled_dict = {key: params_dict[key] for key in sampled_dict}
@@ -78,9 +75,6 @@ def test_ELG_NGC_reg(ndarrays_regression: NDArraysRegressionFixture):
             'ELG_NGC_ce0': 1.634998078e-02,
             'ELG_NGC_cemono': 0.0,
             'ELG_NGC_cequad': -4.125790673e-02,
-            'ELG_NGC_knl': 0.45,
-            'ELG_NGC_km': 0.45,
-            'ELG_NGC_nd': 1.851851852e-04
         }
         sampled_dict = model.parameterization.sampled_params()
         sampled_dict = {key: params_dict[key] for key in sampled_dict}
@@ -126,9 +120,6 @@ def test_LRG_ELG_x_NGC_reg(ndarrays_regression: NDArraysRegressionFixture):
             'LRG_NGC_ce0': 2.7224520E-02,
             'LRG_NGC_cemono': 0.0,
             'LRG_NGC_cequad': -2.1169575E-01,
-            'LRG_NGC_knl': 0.7,
-            'LRG_NGC_km': 0.7,
-            'LRG_NGC_nd': 7.91e-05,
             'ELG_NGC_b1': 1.4872198E+00,
             'ELG_NGC_c2': 1.0307483E+00,
             'ELG_NGC_b2': 7.2884914E-01,
@@ -141,13 +132,9 @@ def test_LRG_ELG_x_NGC_reg(ndarrays_regression: NDArraysRegressionFixture):
             'ELG_NGC_ce0': 3.3194907E-02,
             'ELG_NGC_cemono': 0.0,
             'ELG_NGC_cequad': -1.0867432E-01,
-            'ELG_NGC_knl': 0.45,
-            'ELG_NGC_km': 0.45,
-            'ELG_NGC_nd': 0.00018518518518518518,
             'x_NGC_ce0': -8.5830850E-02,
             'x_NGC_cemono': 0.0,
             'x_NGC_cequad': -1.0641260E-01,
-            'x_NGC_km': 0.7,
         }
         sampled_dict = model.parameterization.sampled_params()
         sampled_dict = {key: params_dict[key] for key in sampled_dict}

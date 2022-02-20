@@ -14,6 +14,8 @@ extra_args:
   # theory:
   #   prefix: NGC_
   #   z: 0.698
+  #   kmA: 0.7
+  #   ndA: 0.0000791
   #   cache_dir_path: cache
   #   projection_config:
   #     Om_AP: 0.31
@@ -36,10 +38,14 @@ extra_args:
   #   prefix: [LRG_NGC_, ELG_NGC_]
   #   theory_info:
   #     - z: 0.70
+  #       kmA: 0.7
+  #       ndA: 0.0000791
   #       projection_config:
   #         z_AP: 0.70
   #         windows_fourier_path: cache/LRG_NGC_GB_interp.npy
   #     - z: 0.845
+  #       kmA: 0.45
+  #       ndA: 0.00018518518518518518
   #       projection_config:
   #         z_AP: 0.845
   #         windows_fourier_path: cache/ELG_NGC_interp.npy

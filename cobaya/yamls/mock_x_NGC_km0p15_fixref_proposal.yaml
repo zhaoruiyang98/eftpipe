@@ -24,6 +24,8 @@ likelihood:
         prefix: x_NGC_
         Nl: 2
         z: 0.77
+        kmA: 0.45
+        ndA: 0.00018518518518518518
         cache_dir_path: cache
         projection_config:
           Om_AP: 0.307115
@@ -152,15 +154,6 @@ params:
     ref: 0.0
     proposal: 0.005
     latex: c_{\epsilon,\mathrm{quad}}^{\mathrm{x}}
-  x_NGC_nd:
-    value: 0.00018518518518518518
-    latex: n_d^{\mathrm{x}}
-  x_NGC_km:
-    value: 0.7
-    latex: k_m^{\mathrm{x}}
-  x_NGC_knl:
-    value: 0.7
-    latex: k_\mathrm{nl}^{\mathrm{x}}
   reduced_chi2:
     latex: \chi^2_{\mathrm{d.o.f.}}
 sampler:

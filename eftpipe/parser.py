@@ -141,6 +141,8 @@ class SingleTracerParser:
                 "prefix": "",
                 "Nl": 2,
                 "z": 0.5,
+                "kmA": 0.7,
+                "ndA": 7.91e-05,
                 "cache_dir_path": "",
                 "chained": False,
                 "projection_config": {
@@ -240,6 +242,8 @@ class TwoTracerParser:
                 "theory_info": [
                     {
                         "z": 0.7,
+                        "kmA": 0.7,
+                        "ndA": 7.91e-05,
                         "projection_config": {
                             "z_AP": 0.7,
                             "window_fourier_path": "",
@@ -248,6 +252,8 @@ class TwoTracerParser:
                     },
                     {
                         "z": 0.77,
+                        "kmA": 0.45,
+                        "ndA": 0.00018518518518518518,
                         "projection_config": {
                             "z_AP": 0.77,
                             "window_fourier_path": "",
@@ -313,6 +319,7 @@ class TwoTracerCrossParser:
                 raw_projection.update(new_projection)
                 raw['projection_config'] = raw_projection
             theory_infos = new_theory_infos
+        # TODO: cross's km, nd can be set from other two theories
         self._theory_infos = theory_infos
         self.logfunc = logfunc
 
@@ -356,6 +363,8 @@ class TwoTracerCrossParser:
                 "theory_info": [
                     {
                         "z": 0.7,
+                        "kmA": 0.7,
+                        "ndA": 7.91e-05,
                         "projection_config": {
                             "z_AP": 0.7,
                             "window_fourier_path": "",
@@ -364,6 +373,8 @@ class TwoTracerCrossParser:
                     },
                     {
                         "z": 0.845,
+                        "kmA": 0.45,
+                        "ndA": 0.00018518518518518518,
                         "projection_config": {
                             "z_AP": 0.845,
                             "window_fourier_path": "",
@@ -372,6 +383,10 @@ class TwoTracerCrossParser:
                     },
                     {
                         "z": 0.77,
+                        "kmA": 0.7,
+                        "ndA": 7.91e-05,
+                        "kmB": 0.45,
+                        "ndB": 0.00018518518518518518,
                         "cross": True,
                         "projection_config": {
                             "z_AP": 0.77,

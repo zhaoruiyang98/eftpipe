@@ -25,6 +25,8 @@ likelihood:
         Nl: 2
         chained: true
         z: 0.845
+        kmA: 0.45
+        ndA: 0.00018518518518518518
         cache_dir_path: cache
         projection_config:
           Om_AP: 0.307115
@@ -153,15 +155,6 @@ params:
     ref: 0.0
     proposal: 0.005
     latex: c_{\epsilon,\mathrm{quad}}^{\mathrm{ELG}}
-  ELG_NGC_nd:
-    value: 0.00018518518518518518
-    latex: n_d^{\mathrm{ELG}}
-  ELG_NGC_km:
-    value: 0.45
-    latex: k_m^{\mathrm{ELG}}
-  ELG_NGC_knl:
-    value: 0.45
-    latex: k_\mathrm{nl}^{\mathrm{ELG}}
   reduced_chi2:
     latex: \chi^2_{\mathrm{d.o.f.}}
 sampler:
