@@ -56,6 +56,8 @@ def test_SingleTracerParser():
             'prefix': 'LRG_NGC_',
             'Nl': 2,
             'z': 0.7,
+            'kmA': 0.7,
+            'ndA': 7.91e-05,
             'cache_dir_path': 'cobaya/cache',
             'projection_config': {
                 'Om_AP': 0.307115,
@@ -89,11 +91,15 @@ def test_TwoTracerParser():
         prefix: [LRG_NGC_, ELG_NGC_]
         theory_info:
             - z: 0.7
+              kmA: 0.7
+              ndA: 0.0000791
               projection_config:
                   z_AP: 0.7
                   windows_fourier_path: cobaya/cache/LRG_NGC_GB_interp.npy
                   windows_configspace_path: cobaya/data/window/LRG_NGC_GB_interp.dat
             - z: 0.845
+              kmA: 0.45
+              ndA: 0.00018518518518518518
               chained: True
               projection_config:
                   z_AP: 0.845
@@ -132,17 +138,25 @@ def test_TwoTracerCrossParser():
         prefix: [LRG_NGC_, ELG_NGC_, x_NGC_]
         theory_info:
             - z: 0.7
+              kmA: 0.7
+              ndA: 0.0000791
               projection_config:
                   z_AP: 0.7
                   windows_fourier_path: cobaya/cache/LRG_NGC_GB_interp.npy
                   windows_configspace_path: cobaya/data/window/LRG_NGC_GB_interp.dat
             - z: 0.845
+              kmA: 0.45
+              ndA: 0.00018518518518518518
               chained: True
               projection_config:
                   z_AP: 0.845
                   windows_fourier_path: cobaya/cache/ELG_NGC_interp.npy
                   windows_configspace_path: cobaya/data/window/ELG_NGC_interp.dat
             - z: 0.77
+              kmA: 0.7
+              ndA: 0.0000791
+              kmB: 0.45
+              ndB: 0.00018518518518518518
               cross: True
               projection_config:
                 z_AP: 0.77

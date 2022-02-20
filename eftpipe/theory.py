@@ -62,35 +62,50 @@ class BirdPlus(pybird.Bird):
         Parameters
         ----------
         bsA : Iterable[float]
-            b_1, b_2, b_3, b_4, c_{ct}/k_{nl}^2, c_{r,1}/k_{m}^2, c{r,2}/k_{m}^2
+            b_1, b_2, b_3, b_4, c_{ct}, c_{r,1}, c{r,2}
         bsB : Optional[Iterable[float]], optional
             the same as bsA, but for tracer A, by default None
             leave it default will compute auto power spectrum
         es : Iterable[float], optional
-            c_{e,0}/n_d, c_{mono}/n_d/k_m^2, c_{quad}/n_d/k_m^2, by default zeros
+            c_{e,0}, c_{mono}, c_{quad}, by default zeros
         """
-        b1A, b2A, b3A, b4A, b5A, b6A, b7A = bsA
+        kmA, ndA, kmB, ndB = self.co.kmA, self.co.ndA, self.co.kmB, self.co.ndB
+        b1A, b2A, b3A, b4A, cctA, cr1A, cr2A = bsA
         if bsB is None:
             bsB = bsA
-        b1B, b2B, b3B, b4B, b5B, b6B, b7B = bsB
+        b1B, b2B, b3B, b4B, cctB, cr1B, cr2B = bsB
         f = self.f
-        e1, e2, e3 = es
+        ce0, cemono, cequad = es
 
+        # cct -> cct / km**2, cr1 -> cr1 / km**2, cr2 -> cr2 / km**2
+        # ce0 -> ce0 / nd, cemono -> cemono / nd / km**2, cequad -> cequad / nd / km**2
         b11AB = np.array([b1A * b1B, (b1A + b1B) * f, f**2])
         bctAB = np.array([
-            b1A * b5B + b1B * b5A, b1B * b6A + b1A * b6B,
-            b1B * b7A + b1A * b7B, (b5A + b5B) * f, (b6A + b6B) * f,
-            (b7A + b7B) * f
+            b1A * cctB / kmB**2 + b1B * cctA / kmA**2,
+            b1B * cr1A / kmA**2 + b1A * cr1B / kmB**2,
+            b1B * cr2A / kmA**2 + b1A * cr2B / kmB**2,
+            (cctA / kmA**2 + cctB / kmB**2) * f,
+            (cr1A / kmA**2 + cr1B / kmB**2) * f,
+            (cr2A / kmA**2 + cr2B / kmB**2) * f,
         ])
         bloopAB = np.array([
-            1., 1. / 2. * (b1A + b1B), 1. / 2. * (b2A + b2B),
-            1. / 2. * (b3A + b3B), 1. / 2. * (b4A + b4B),
-            b1A * b1B, 1. / 2. * (b1A * b2B + b1B * b2A),
+            1.,
+            1. / 2. * (b1A + b1B),
+            1. / 2. * (b2A + b2B),
+            1. / 2. * (b3A + b3B),
+            1. / 2. * (b4A + b4B),
+            b1A * b1B,
+            1. / 2. * (b1A * b2B + b1B * b2A),
             1. / 2. * (b1A * b3B + b1B * b3A),
             1. / 2. * (b1A * b4B + b1B * b4A),
-            b2A * b2B, 1. / 2. * (b2A * b4B + b2B * b4A), b4A * b4B
+            b2A * b2B,
+            1. / 2. * (b2A * b4B + b2B * b4A),
+            b4A * b4B
         ])
-        bstAB = np.array([e1, e2, e3])
+        # TODO: include kmB
+        nfactor = 0.5 * (1.0 / ndA + 1.0 / ndB)
+        bstAB = np.array(
+            [ce0 * nfactor, cemono * nfactor / kmA**2, cequad * nfactor / kmA**2])
         Ps0 = np.einsum('b,lbx->lx', b11AB, self.P11l)
         Ps1 = (np.einsum('b,lbx->lx', bloopAB, self.Ploopl)
                + np.einsum('b,lbx->lx', bctAB, self.Pctl))
@@ -130,6 +145,10 @@ class EFTTheory:
         self,
         z: float,
         cache_dir_path: Location,
+        kmA: float,
+        ndA: float,
+        kmB: Optional[float] = None,
+        ndB: Optional[float] = None,
         optiresum: bool = False,
         Nl: int = 2,
         cross: bool = False,
@@ -156,7 +175,8 @@ class EFTTheory:
         ls = [2 * i for i in range(Nl)]
         self.ls = ls
         print_info(f'computing power spectrum ls = {ls}')
-        self.co = pybird.Common(Nl=Nl, optiresum=optiresum)
+        self.co = pybird.Common(
+            Nl=Nl, optiresum=optiresum, kmA=kmA, ndA=ndA, kmB=kmB, ndB=ndB)
         if optiresum:
             print_info('resummation: optimized')
         else:
@@ -332,8 +352,7 @@ class SingleTracerEFT:
             self.prefix + name for name in
             ('b1', 'b2', 'b3', 'b4',
              'cct', 'cr1', 'cr2',
-             'ce0', 'cemono', 'cequad',
-             'knl', 'km', 'nd')
+             'ce0', 'cemono', 'cequad')
         ]
         eft_requires = dict(
             zip(eft_params, [None for _ in range(len(eft_params))])
@@ -347,19 +366,13 @@ class SingleTracerEFT:
             b1, b2, b3, b4,
             cct, cr1, cr2,
             ce0, cemono, cequad,
-            knl, km, nd,
         ) = [all_params_dict[prefix + name] for name in (
             'b1', 'b2', 'b3', 'b4',
             'cct', 'cr1', 'cr2',
             'ce0', 'cemono', 'cequad',
-            'knl', 'km', 'nd',
         )]
-        bs = [
-            b1, b2, b3, b4, cct / knl**2, cr1 / km**2, cr2 / km**2,
-        ]
-        es = [
-            ce0 / nd, cemono / nd / km**2, cequad / nd / km**2,
-        ]
+        bs = [b1, b2, b3, b4, cct, cr1, cr2]
+        es = [ce0, cemono, cequad]
         return self.theory.theory_vector(bs, es=es)
 
 
@@ -403,7 +416,6 @@ class TwoTracerEFT:
             'b1', 'b2', 'b3', 'b4',
             'cct', 'cr1', 'cr2',
             'ce0', 'cemono', 'cequad',
-            'knl', 'km', 'nd'
         ]
         eft_params = []
         for prefix in self.prefixes:
@@ -421,19 +433,13 @@ class TwoTracerEFT:
                 b1, b2, b3, b4,
                 cct, cr1, cr2,
                 ce0, cemono, cequad,
-                knl, km, nd,
             ) = [all_params_dict[prefix + name] for name in (
                 'b1', 'b2', 'b3', 'b4',
                 'cct', 'cr1', 'cr2',
                 'ce0', 'cemono', 'cequad',
-                'knl', 'km', 'nd',
             )]
-            bs = [
-                b1, b2, b3, b4, cct / knl**2, cr1 / km**2, cr2 / km**2,
-            ]
-            es = [
-                ce0 / nd, cemono / nd / km**2, cequad / nd / km**2,
-            ]
+            bs = [b1, b2, b3, b4, cct, cr1, cr2]
+            es = [ce0, cemono, cequad]
             vectors.append(theory.theory_vector(bs, es=es))
         return np.hstack(vectors)
 
@@ -504,9 +510,8 @@ class TwoTracerCrossEFT:
             'b1', 'b2', 'b3', 'b4',
             'cct', 'cr1', 'cr2',
             'ce0', 'cemono', 'cequad',
-            'knl', 'km', 'nd'
         ]
-        cross_params_names = ['ce0', 'cemono', 'cequad', 'km']
+        cross_params_names = ['ce0', 'cemono', 'cequad']
         eft_params = []
         for prefix, theory in zip(self.prefixes, self.theories):
             params_list = eft_params_names
@@ -525,9 +530,8 @@ class TwoTracerCrossEFT:
             'b1', 'b2', 'b3', 'b4',
             'cct', 'cr1', 'cr2',
             'ce0', 'cemono', 'cequad',
-            'knl', 'km', 'nd'
         ]
-        cross_params_names = ['ce0', 'cemono', 'cequad', 'km']
+        cross_params_names = ['ce0', 'cemono', 'cequad']
         Aindex, Bindex, xindex = [
             self._index_mapping[key] for key in ('A', 'B', 'x')
         ]
@@ -538,25 +542,19 @@ class TwoTracerCrossEFT:
             b1A, b2A, b3A, b4A,
             cctA, cr1A, cr2A,
             ce0A, cemonoA, cequadA,
-            knlA, kmA, ndA
         ) = [all_params_dict[prefixA + name] for name in eft_params_names]
-        bsA = [b1A, b2A, b3A, b4A, cctA / knlA**2, cr1A / kmA**2, cr2A / kmA**2]
-        esA = [ce0A / ndA, cemonoA / ndA / kmA**2, cequadA / ndA / kmA**2]
+        bsA = [b1A, b2A, b3A, b4A, cctA, cr1A, cr2A]
+        esA = [ce0A, cemonoA, cequadA]
         (
             b1B, b2B, b3B, b4B,
             cctB, cr1B, cr2B,
             ce0B, cemonoB, cequadB,
-            knlB, kmB, ndB
         ) = [all_params_dict[prefixB + name] for name in eft_params_names]
-        bsB = [b1B, b2B, b3B, b4B, cctB / knlB**2, cr1B / kmB**2, cr2B / kmB**2]
-        esB = [ce0B / ndB, cemonoB / ndB / kmB**2, cequadB / ndB / kmB**2]
-        ce0x, cemonox, cequadx, kmx = [
+        bsB = [b1B, b2B, b3B, b4B, cctB, cr1B, cr2B]
+        esB = [ce0B, cemonoB, cequadB]
+        ce0x, cemonox, cequadx = [
             all_params_dict[prefixx + name] for name in cross_params_names]
-        nfactorx = 0.5 * (1. / ndA + 1. / ndB)
-        esx = [
-            nfactorx * ce0x, nfactorx * cemonox / kmx**2,
-            nfactorx * cequadx / kmx**2
-        ]
+        esx = [ce0x, cemonox, cequadx]
 
         theory_vectorA = self.theories[Aindex].theory_vector(bsA, es=esA)
         theory_vectorB = self.theories[Bindex].theory_vector(bsB, es=esB)

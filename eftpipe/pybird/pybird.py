@@ -478,9 +478,15 @@ class Common(object):
         The maximum multipole to calculate (default 2)
     """
 
-    def __init__(self, Nl=2, kmin=0.001, kmax=0.3, optiresum=False):
+    def __init__(self, Nl=2, kmin=0.001, kmax=0.3, optiresum=False, kmA=1.0, ndA=3e-4, kmB=None, ndB=None):
         self.optiresum = optiresum
-
+        # set kmB and ndB when computing cross power spectrum
+        self.kmA = kmA
+        self.ndA = ndA
+        kmB = kmA if kmB is None else kmB
+        ndB = ndA if ndB is None else ndB
+        self.kmB = kmB
+        self.ndB = ndB
         self.Nl = Nl
         self.N11 = 3
         self.Nct = 6
