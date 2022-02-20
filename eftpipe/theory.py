@@ -540,7 +540,7 @@ class TwoTracerCrossEFT:
             ce0A, cemonoA, cequadA,
             knlA, kmA, ndA
         ) = [all_params_dict[prefixA + name] for name in eft_params_names]
-        bsA = [b1A, b2A, b3A, b4A, cctA / knlA, cr1A / kmA**2, cr2A / kmA**2]
+        bsA = [b1A, b2A, b3A, b4A, cctA / knlA**2, cr1A / kmA**2, cr2A / kmA**2]
         esA = [ce0A / ndA, cemonoA / ndA / kmA**2, cequadA / ndA / kmA**2]
         (
             b1B, b2B, b3B, b4B,
@@ -548,7 +548,7 @@ class TwoTracerCrossEFT:
             ce0B, cemonoB, cequadB,
             knlB, kmB, ndB
         ) = [all_params_dict[prefixB + name] for name in eft_params_names]
-        bsB = [b1B, b2B, b3B, b4B, cctB / knlB, cr1B / kmB**2, cr2B / kmB**2]
+        bsB = [b1B, b2B, b3B, b4B, cctB / knlB**2, cr1B / kmB**2, cr2B / kmB**2]
         esB = [ce0B / ndB, cemonoB / ndB / kmB**2, cequadB / ndB / kmB**2]
         ce0x, cemonox, cequadx, kmx = [
             all_params_dict[prefixx + name] for name in cross_params_names]
