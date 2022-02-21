@@ -102,10 +102,10 @@ class BirdPlus(pybird.Bird):
             1. / 2. * (b2A * b4B + b2B * b4A),
             b4A * b4B
         ])
-        # TODO: include kmB
-        nfactor = 0.5 * (1.0 / ndA + 1.0 / ndB)
+        xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
+        xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
         bstAB = np.array(
-            [ce0 * nfactor, cemono * nfactor / kmA**2, cequad * nfactor / kmA**2])
+            [ce0 * xfactor1, cemono * xfactor2, cequad * xfactor2])
         Ps0 = np.einsum('b,lbx->lx', b11AB, self.P11l)
         Ps1 = (np.einsum('b,lbx->lx', bloopAB, self.Ploopl)
                + np.einsum('b,lbx->lx', bctAB, self.Pctl))
