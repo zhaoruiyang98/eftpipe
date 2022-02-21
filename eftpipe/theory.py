@@ -56,6 +56,7 @@ class BirdPlus(pybird.Bird):
         bsB: Optional[Iterable[float]] = None,
         es: Iterable[float] = (0., 0., 0.),
         marg: bool = False,
+        chained: bool = False,
     ) -> None:
         """apply counter terms and bind fullPs to self
 
@@ -113,9 +114,9 @@ class BirdPlus(pybird.Bird):
         self.fullPs = Ps0 + Ps1 + Ps2
 
         if marg:
-            self.setPG(b1A, b1B)
+            self.setPG(b1A, b1B, chained=chained)
 
-    def setPG(self, b1A, b1B):
+    def setPG(self, b1A, b1B, chained=False):
         f = self.f
         kmA, ndA, kmB, ndB = self.co.kmA, self.co.ndA, self.co.kmB, self.co.ndB
         # b3A, cctA, cr1A, cr2A, b3B, cctB, cr1B, cr2B, ce0, cemono, cequad
@@ -164,6 +165,13 @@ class BirdPlus(pybird.Bird):
         # cequad
         PG[10, :, :] = self.Pstl[:, 2, :] * xfactor2
         self.PG = PG
+        if chained:
+            PG = self.PG
+            newPG = np.empty_like(PG)
+            for i in range(self.co.Nl - 1):
+                newPG[:, i, :] = \
+                    PG[:, i, :] - chain_coeff(2 * i) * PG[:, i + 1, :]
+            self.PG = newPG[:, :-1, :]
 
 
 @dataclass
@@ -328,8 +336,9 @@ class EFTTheory:
         provider = self.bolzmann_provider
         assert provider is not None
         if (not provider.cosmo_updated()) and (self.bird is not None):
-            self.bird.setreducePslb(bsA, bsB, es=es)
+            self.bird.setreducePslb(bsA, bsB, es=es, chained=self.state.chained)
         else:
+            # TODO: test larger kh range
             kh = np.logspace(-4, 0, 200)
             pkh = provider.interp_pkh(kh)
 
@@ -355,7 +364,8 @@ class EFTTheory:
                     self.projection.kbinning(bird)
                 else:
                     self.projection.kdata(bird)
-            bird.setreducePslb(bsA, bsB, es=es, marg=state.marg)
+            bird.setreducePslb(
+                bsA, bsB, es=es, marg=state.marg, chained=self.state.chained)
             self.bird = bird
 
         out: NDArray = self.bird.fullPs.copy()
@@ -365,13 +375,6 @@ class EFTTheory:
             for i in range(self.co.Nl - 1):
                 newout[i, :] = out[i, :] - chain_coeff(2 * i) * out[i + 1, :]
             out = newout[:-1, :]
-            if self.state.marg:
-                PG = self.bird.PG
-                newPG = np.empty_like(PG)
-                for i in range(self.co.Nl - 1):
-                    newPG[:, i, :] = \
-                        PG[:, i, :] - chain_coeff(2 * i) * PG[:, i + 1, :]
-                self.bird.PG = newPG[:, :-1, :]
         return out.reshape(-1)
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~vector theory~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
