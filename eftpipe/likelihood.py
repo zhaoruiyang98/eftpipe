@@ -47,6 +47,13 @@ class EFTLike(Likelihood):
         theory_obj = parser.create_vector_theory()
         self.data_obj = data_obj
         self.theory_obj = theory_obj
+        marginfo = self.extra_args.get('marg', None)
+        self.can_marg = False
+        if marginfo is not None and theory_obj.can_marg:
+            self.can_marg = True
+            self.marg_obj = parser.create_marglike(
+                self.data_obj, self.theory_obj
+            )
         if self.nsampled is None:
             raise ValueError(
                 f"please specify the number of sampled parameters")
@@ -62,9 +69,12 @@ class EFTLike(Likelihood):
         return self.theory_obj.required_params()
 
     def calculate(self, state, want_derived=True, **params_values_dict):
-        theory = self.theory_vector(**params_values_dict)
-        res = theory - self.data_obj.data_vector
-        chi2 = res @ self.data_obj.invcov @ res
+        if self.can_marg:
+            chi2 = -2 * self.marg_obj.calculate(params_values_dict)
+        else:
+            theory = self.theory_vector(**params_values_dict)
+            res = theory - self.data_obj.data_vector
+            chi2 = res @ self.data_obj.invcov @ res
 
         if want_derived:
             state['derived'] = {
