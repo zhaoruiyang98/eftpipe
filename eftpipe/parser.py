@@ -12,6 +12,7 @@ from eftpipe.theory import (
     TwoTracerEFT,
     TwoTracerCrossEFT,
 )
+from eftpipe.marginal import MargGaussian
 from eftpipe.typing import LogFunc
 
 
@@ -109,6 +110,7 @@ class SingleTracerParser:
         self._prefix = prefix
         self._theory_info = theory_info
         self.logfunc = logfunc
+        self.marg_info = deepcopy(dct.get('marg', {}))
 
     def create_gaussian_data(self, quiet=False) -> FullShapeData:
         out = self._data_parser.create_gaussian_data(quiet=quiet)
@@ -122,6 +124,9 @@ class SingleTracerParser:
         self._theory_info['projection_config']['kdata'] = kdata
         theory = EFTTheory(**self._theory_info)
         return SingleTracerEFT(theory, self._prefix)
+
+    def create_marglike(self, data_obj, vector_theory):
+        return MargGaussian(data_obj, vector_theory, self.marg_info, self.logfunc)
 
     @classmethod
     def helper_dict(cls):
@@ -203,6 +208,7 @@ class TwoTracerParser:
             theory_infos = new_theory_infos
         self._theory_infos = theory_infos
         self.logfunc = logfunc
+        self.marg_info = deepcopy(dct.get('marg', {}))
 
     def create_gaussian_data(self, quiet=False) -> FullShapeData:
         out = self._data_parser.create_gaussian_data(quiet=quiet)
@@ -219,6 +225,9 @@ class TwoTracerParser:
             for theory_info in self._theory_infos
         ]
         return TwoTracerEFT(theories, self._prefixes)
+
+    def create_marglike(self, data_obj, vector_theory):
+        return MargGaussian(data_obj, vector_theory, self.marg_info, self.logfunc)
 
     @classmethod
     def helper_dict(cls):
@@ -322,6 +331,7 @@ class TwoTracerCrossParser:
         # TODO: cross's km, nd can be set from other two theories
         self._theory_infos = theory_infos
         self.logfunc = logfunc
+        self.marg_info = deepcopy(dct.get('marg', {}))
 
     def create_gaussian_data(self, quiet=False) -> FullShapeData:
         out = self._data_parser.create_gaussian_data(quiet=quiet)
@@ -339,6 +349,9 @@ class TwoTracerCrossParser:
             for theory_info in self._theory_infos
         ]
         return TwoTracerCrossEFT(theories, self._prefixes)
+
+    def create_marglike(self, data_obj, vector_theory):
+        return MargGaussian(data_obj, vector_theory, self.marg_info, self.logfunc)
 
     @classmethod
     def helper_dict(cls):

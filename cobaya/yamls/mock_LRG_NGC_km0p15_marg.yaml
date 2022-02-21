@@ -1,0 +1,149 @@
+theory:
+  camb:
+    extra_args:
+      nnu: 3.046
+likelihood:
+  NGC:
+    class: eftpipe.EFTLike
+    stop_at_error: true
+    label: ''
+    nsampled: 10
+    extra_args:
+      mode: single
+      marg:
+        LRG_NGC_b3:
+          scale: 2
+        LRG_NGC_cct:
+          scale: 4
+        LRG_NGC_cr1:
+          scale: 4
+        LRG_NGC_cr2:
+          scale: 4
+        LRG_NGC_ce0:
+          scale: 4
+        LRG_NGC_cequad:
+          scale: 2
+      data:
+        pklinfo:
+          ls:
+          - 0
+          - 2
+          kmin: 0.02
+          kmax: 0.15
+          pkl_path: data/mock/LRG_NGC.txt
+        cov_path: data/cov/cov_NGC_L024.txt
+        rescale: 4.0
+        Nreal: 1000
+      theory:
+        prefix: LRG_NGC_
+        Nl: 2
+        z: 0.7
+        kmA: 0.7
+        ndA: 7.91e-05
+        cache_dir_path: cache
+        projection_config:
+          Om_AP: 0.307115
+          z_AP: 0.7
+          rdrag_fid: 147.66
+          windows_fourier_path: cache/LRG_NGC_GB_interp.npy
+          windows_configspace_path: data/window/LRG_NGC_GB_interp.dat
+          binning: true
+params:
+  ombh2:
+    value: 0.02214
+    latex: \Omega_\mathrm{b} h^2
+  omch2:
+    prior:
+      min: 0.03
+      max: 0.7
+    proposal: 0.003
+    ref: 0.1189
+    latex: \Omega_\mathrm{c} h^2
+  H0:
+    prior:
+      min: 40.0
+      max: 100.0
+    proposal: 0.03
+    ref: 67.77
+    latex: H_0
+  logA:
+    prior:
+      min: 0.1
+      max: 10
+    proposal: 0.01
+    ref: 3.0
+    latex: \log(10^{10} A_\mathrm{s})
+    drop: true
+  As:
+    value: 'lambda logA: 1e-10*np.exp(logA)'
+    latex: A_\mathrm{s}
+  ns:
+    value: 0.9611
+    latex: n_\mathrm{s}
+  mnu:
+    value: 0.0
+    latex: \sum m_\nu
+  tau:
+    value: 0.0543
+    latex: \tau_\mathrm{reio}
+  sigma8:
+    latex: \sigma_8
+  omegam:
+    latex: \Omega_\mathrm{m}
+  rdrag:
+    latex: r_\mathrm{drag}
+  LRG_NGC_b1:
+    prior:
+      min: 0.0
+      max: 4.0
+    ref: 2.0
+    proposal: 0.01
+    latex: b_1^{\mathrm{LRG}}
+  LRG_NGC_c2:
+    prior:
+      min: -4.0
+      max: 4.0
+    ref: 1.4838078
+    proposal: 0.01
+    latex: c_2^{\mathrm{LRG}}
+    drop: true
+  LRG_NGC_b3:
+    value: 0.0
+    latex: b_3^{\mathrm{LRG}}
+  LRG_NGC_c4:
+    value: 0.0
+    latex: c_4^{\mathrm{LRG}}
+    drop: true
+  LRG_NGC_b2:
+    value: 'lambda LRG_NGC_c2, LRG_NGC_c4: (LRG_NGC_c2 + LRG_NGC_c4) / np.sqrt(2.)'
+    latex: b_2^{\mathrm{LRG}}
+  LRG_NGC_b4:
+    value: 'lambda LRG_NGC_c2, LRG_NGC_c4: (LRG_NGC_c2 - LRG_NGC_c4) / np.sqrt(2.)'
+    latex: b_4^{\mathrm{LRG}}
+  LRG_NGC_cct:
+    value: 0.0
+    latex: c_\mathrm{ct}^{\mathrm{LRG}}
+  LRG_NGC_cr1:
+    value: 0.0
+    latex: c_\mathrm{r,1}^{\mathrm{LRG}}
+  LRG_NGC_cr2:
+    value: 0.0
+    latex: c_\mathrm{r,2}^{\mathrm{LRG}}
+  LRG_NGC_ce0:
+    value: 0.0
+    latex: c_{\epsilon,0}^{\mathrm{LRG}}
+  LRG_NGC_cemono:
+    value: 0.0
+    latex: c_{\epsilon,\mathrm{mono}}^{\mathrm{LRG}}
+  LRG_NGC_cequad:
+    value: 0.0
+    latex: c_{\epsilon,\mathrm{quad}}^{\mathrm{LRG}}
+  reduced_chi2:
+    latex: \chi^2_{\mathrm{d.o.f.}}
+sampler:
+  # minimize:
+  #   best_of: 4
+  mcmc:
+    Rminus1_stop: 0.01
+    max_tries: 100000 
+output: chains/4xmock_LRG_NGC_km0p15_marg
