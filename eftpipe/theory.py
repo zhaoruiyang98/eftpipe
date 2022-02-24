@@ -359,7 +359,7 @@ class EFTTheory:
                     self.projection.Window(bird)
                 if state.fiber:
                     self.projection.fibcolWindow(
-                        bird, ktrust=self.ktrust, fs=self.fs, Dfc=self.Dfc)
+                        bird, ktrust=self.ktrust, fs=self.fs, Dfc=self.Dfc) # type: ignore
                 if state.binning:
                     self.projection.kbinning(bird)
                 else:
