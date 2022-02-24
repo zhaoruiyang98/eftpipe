@@ -773,7 +773,7 @@ class Bird(object):
 
         self.subtractShotNoise()
 
-    def setPstl(self, ks: NDArray = None):
+    def setPstl(self, ks: Optional[NDArray] = None):
         if ks is None:
             Nk = self.co.Nk
             ks2 = self.co.k**2
@@ -881,7 +881,7 @@ class Bird(object):
         self.fullPs += b3 * self.Pb3 + np.einsum('b,lbx->lx', bct, self.Pctl)
 
 
-def CoefWindow(N, window=1):
+def CoefWindow(N, window: Optional[float] = 1):
     """ FFTLog auxiliary function: window sending the FFT coefficients to 0 at the edges. From fast-pt """
     n = np.arange(-N // 2, N // 2 + 1)
     if window == 1:
@@ -960,7 +960,7 @@ class FFTLog(object):
     def setCoefFactor(self):
         self._CoefFactor = self.xmin**(-self.Pow) / float(self.Nmax)
 
-    def Coef(self, xin, f, extrap='extrap', window=1, log_interp: bool = False):
+    def Coef(self, xin, f, extrap='extrap', window: Optional[float] = 1, log_interp: bool = False):
         """compute coefficients for FFTLog
 
         Parameters
