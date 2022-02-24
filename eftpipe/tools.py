@@ -50,8 +50,8 @@ def update_path_in_dict(d: SimpleYaml, base: Path) -> None:
 
 class PathContext:
     def __init__(self, path) -> None:
-        self.old = Path('.').resolve()
-        self.new = self.old / path
+        self.old = Path.cwd()
+        self.new = Path(path)
 
     def __enter__(self):
         os.chdir(self.new)
