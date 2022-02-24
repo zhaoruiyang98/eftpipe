@@ -1,9 +1,16 @@
 # global
+import sys
 from copy import deepcopy
 from typing import (
     Dict,
     Any,
+    overload,
+    Type,
 )
+if sys.version_info >= (3, 8):
+    from typing import Literal
+else:
+    from typing_extensions import Literal
 # local
 from eftpipe.lssdata import FullShapeData, PklData
 from eftpipe.theory import (
@@ -420,3 +427,22 @@ class TwoTracerCrossParser:
                 }
             }
         }
+
+
+@overload
+def select_parser(mode: Literal['single']) -> Type[SingleTracerParser]: ...
+@overload
+def select_parser(mode: Literal['two']) -> Type[TwoTracerParser]: ...
+@overload
+def select_parser(mode: Literal['all']) -> Type[TwoTracerCrossParser]: ...
+
+
+def select_parser(mode: str):
+    if mode == 'single':
+        return SingleTracerParser
+    elif mode == 'two':
+        return TwoTracerParser
+    elif mode == 'all':
+        return TwoTracerCrossParser
+    else:
+        raise ValueError(f"unexpected mode {mode}")

@@ -7,8 +7,6 @@ from typing import (
     List,
     Dict,
     Any,
-    overload,
-    Type,
 )
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -16,11 +14,7 @@ else:
     from typing_extensions import Literal
 # local
 from eftpipe.tools import update_path_in_dict
-from eftpipe.parser import (
-    SingleTracerParser,
-    TwoTracerParser,
-    TwoTracerCrossParser,
-)
+from eftpipe.parser import select_parser
 from eftpipe.typing import (
     GaussianData,
     VectorTheory,
@@ -40,7 +34,8 @@ class EFTLike(Likelihood):
         base_path = self.extra_args.get('base', None)
         if base_path is not None:
             update_path_in_dict(self.extra_args, Path(str(base_path)))
-        parser = select_parser(self.extra_args['mode'])(
+        mode: Literal['single', 'two', 'all'] = self.extra_args['mode']
+        parser = select_parser(mode)(
             self.extra_args, logfunc=self.mpi_info
         )
         data_obj = parser.create_gaussian_data()
@@ -90,20 +85,4 @@ class EFTLike(Likelihood):
         return [self.label + 'reduced_chi2']
 
 
-@overload
-def select_parser(mode: Literal['single']) -> Type[SingleTracerParser]: ...
-@overload
-def select_parser(mode: Literal['two']) -> Type[TwoTracerParser]: ...
-@overload
-def select_parser(mode: Literal['all']) -> Type[TwoTracerCrossParser]: ...
 
-
-def select_parser(mode: str):
-    if mode == 'single':
-        return SingleTracerParser
-    elif mode == 'two':
-        return TwoTracerParser
-    elif mode == 'all':
-        return TwoTracerCrossParser
-    else:
-        raise ValueError(f"unexpected mode {mode}")
