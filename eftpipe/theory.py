@@ -21,11 +21,12 @@ else:
     from typing_extensions import Literal
 # local
 from eftpipe.pybird import pybird
-from eftpipe.interface import CobayaCambProvider
+from eftpipe.interface import CobayaCambProvider, CambProvider
 from eftpipe.typing import (
     ProjectionConfig,
     BoltzmannProvider,
     Location,
+    LogFunc,
 )
 
 
@@ -217,7 +218,7 @@ class EFTTheory:
         chained: bool = False,
         projection_config: Optional[ProjectionConfig] = None,
         bolzmann_provider: Optional[BoltzmannProvider] = None,
-        print_info=print
+        print_info: LogFunc = print,
     ) -> None:
         self.print_info = print_info
         state = EFTTheoryState()
@@ -336,7 +337,8 @@ class EFTTheory:
         provider = self.bolzmann_provider
         assert provider is not None
         if (not provider.cosmo_updated()) and (self.bird is not None):
-            self.bird.setreducePslb(bsA, bsB, es=es, chained=self.state.chained)
+            self.bird.setreducePslb(
+                bsA, bsB, es=es, chained=self.state.chained)
         else:
             # TODO: test larger kh range
             kh = np.logspace(-4, 0, 200)
@@ -359,7 +361,7 @@ class EFTTheory:
                     self.projection.Window(bird)
                 if state.fiber:
                     self.projection.fibcolWindow(
-                        bird, ktrust=self.ktrust, fs=self.fs, Dfc=self.Dfc) # type: ignore
+                        bird, ktrust=self.ktrust, fs=self.fs, Dfc=self.Dfc)  # type: ignore
                 if state.binning:
                     self.projection.kbinning(bird)
                 else:
@@ -394,6 +396,10 @@ class SingleTracerEFT:
         self.theory.set_bolzman_provider(
             CobayaCambProvider(provider, self.theory.z)
         )
+
+    def set_camb_provider(self, **kwargs) -> None:
+        self.theory.set_bolzman_provider(
+            CambProvider(z=self.theory.z, **kwargs))
 
     def required_params(self) -> Dict[str, Any]:
         return self._required_params
@@ -485,6 +491,11 @@ class TwoTracerEFT:
             theory.set_bolzman_provider(
                 CobayaCambProvider(provider, theory.z)
             )
+
+    def set_camb_provider(self, **kwargs) -> None:
+        for theory in self.theories:
+            theory.set_bolzman_provider(
+                CambProvider(z=theory.z, **kwargs))
 
     def required_params(self) -> Dict[str, Any]:
         return self._required_params
@@ -578,7 +589,7 @@ class TwoTracerEFT:
         self.margcoefB = margcoefB
 
     def PG(self, all_params_dict: Dict[str, Any]) -> NDArray:
-        nvec = [np.prod(theory.bird.PG.shape[1:]) # type: ignore
+        nvec = [np.prod(theory.bird.PG.shape[1:])  # type: ignore
                 for theory in self.theories]
         pad_widths = [
             ((0, 0), (0, nvec[1])),
@@ -589,7 +600,7 @@ class TwoTracerEFT:
         if not self.margindsB:
             pad_widths = [pad_widths[0]]
         out = [
-            np.vstack([theory.bird.PG[i, ...].reshape(-1) # type: ignore
+            np.vstack([theory.bird.PG[i, ...].reshape(-1)  # type: ignore
                       for i in inds])
             for theory, inds in zip(
                 self.theories, (self.margindsA, self.margindsB))
@@ -634,6 +645,11 @@ class TwoTracerCrossEFT:
             theory.set_bolzman_provider(
                 CobayaCambProvider(provider, theory.z)
             )
+
+    def set_camb_provider(self, **kwargs) -> None:
+        for theory in self.theories:
+            theory.set_bolzman_provider(
+                CambProvider(z=theory.z, **kwargs))
 
     def required_params(self) -> Dict[str, Any]:
         return self._required_params
@@ -810,7 +826,7 @@ class TwoTracerCrossEFT:
             ((0, 0), (nvec[0] + nvec[1], 0))
         ]
         tmp = [
-            np.vstack([theory.bird.PG[i, ...].reshape(-1) # type: ignore
+            np.vstack([theory.bird.PG[i, ...].reshape(-1)  # type: ignore
                       for i in inds])
             for theory, inds in zip(self.theories, self.marginds_list)
         ]

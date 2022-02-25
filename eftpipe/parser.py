@@ -107,7 +107,7 @@ class SingleTracerParser:
     def __init__(
         self,
         dct: Dict[str, Any],
-        logfunc=print
+        logfunc: LogFunc = print
     ) -> None:
         self._data_parser = FullShapeDataParser(dct['data'], logfunc=logfunc)
         theory_info = deepcopy(dct['theory'])
@@ -192,7 +192,7 @@ class TwoTracerParser:
     def __init__(
         self,
         dct: Dict[str, Any],
-        logfunc=print
+        logfunc: LogFunc = print
     ) -> None:
         self._data_parser = FullShapeDataParser(dct['data'], logfunc=logfunc)
         theory_info = deepcopy(dct['theory'])
@@ -314,7 +314,7 @@ class TwoTracerCrossParser:
     def __init__(
         self,
         dct: Dict[str, Any],
-        logfunc=print
+        logfunc: LogFunc = print
     ) -> None:
         self._data_parser = FullShapeDataParser(dct['data'], logfunc=logfunc)
         theory_info = deepcopy(dct['theory'])

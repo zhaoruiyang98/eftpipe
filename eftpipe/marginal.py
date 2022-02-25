@@ -5,7 +5,7 @@ from typing import (
     Tuple,
     Any,
 )
-from eftpipe.typing import GaussianData, VectorTheory
+from eftpipe.typing import GaussianData, VectorTheory, LogFunc
 
 
 class MargGaussian:
@@ -14,7 +14,7 @@ class MargGaussian:
         data_obj: GaussianData,
         theory_obj: VectorTheory,
         prior: Dict[str, Any],
-        logfunc = print
+        logfunc: LogFunc = print
     ) -> None:
         self.data_obj = data_obj
         self.theory_obj = theory_obj
