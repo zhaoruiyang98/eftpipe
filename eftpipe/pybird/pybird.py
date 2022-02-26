@@ -1795,12 +1795,11 @@ class Projection(object):
         Apply the AP effect to the bird power spectrum
         Credit: Jerome Gleyzes
         """
-        if (rdrag_true is not None) and (self.rdrag_fid is not None):
-            factor = (self.rdrag_fid/rdrag_true)**3
-        else:
-            factor = 1.0
         if q is None:
             qperp, qpar = self.get_AP_param(bird)
+            if (rdrag_true is not None) and (self.rdrag_fid is not None):
+                factor = self.rdrag_fid / rdrag_true
+                qperp, qpar = qperp * factor, qpar * factor
         else:
             qperp, qpar = q
         F = qpar / qperp
@@ -1809,17 +1808,17 @@ class Projection(object):
         arrayLegendremup = np.array([legendre(2*i)(mup) for i in range(self.co.Nl)])
 
         if bird.which == 'marg':
-            bird.fullPs = factor * 1. / (qperp**2 * qpar) * self.integrAP(bird.fullPs, kp, arrayLegendremup, many=False)
-            bird.Pb3 = factor * 1. / (qperp**2 * qpar) * self.integrAP(bird.Pb3, kp, arrayLegendremup, many=False)
-            bird.Pctl = factor * 1. / (qperp**2 * qpar) * self.integrAP(bird.Pctl, kp, arrayLegendremup, many=True)
+            bird.fullPs = 1. / (qperp**2 * qpar) * self.integrAP(bird.fullPs, kp, arrayLegendremup, many=False)
+            bird.Pb3 = 1. / (qperp**2 * qpar) * self.integrAP(bird.Pb3, kp, arrayLegendremup, many=False)
+            bird.Pctl = 1. / (qperp**2 * qpar) * self.integrAP(bird.Pctl, kp, arrayLegendremup, many=True)
         elif bird.which == 'all':
             # no effect on bird.Pstl, since the AP effect can be absorbed into coefficients
-            bird.P11l = factor * 1. / (qperp**2 * qpar) * self.integrAP(bird.P11l, kp, arrayLegendremup, many=True)
-            bird.Pctl = factor * 1. / (qperp**2 * qpar) * self.integrAP(bird.Pctl, kp, arrayLegendremup, many=True)
-            bird.Ploopl = factor * 1. / (qperp**2 * qpar) * self.integrAP(bird.Ploopl, kp, arrayLegendremup, many=True)
+            bird.P11l = 1. / (qperp**2 * qpar) * self.integrAP(bird.P11l, kp, arrayLegendremup, many=True)
+            bird.Pctl = 1. / (qperp**2 * qpar) * self.integrAP(bird.Pctl, kp, arrayLegendremup, many=True)
+            bird.Ploopl = 1. / (qperp**2 * qpar) * self.integrAP(bird.Ploopl, kp, arrayLegendremup, many=True)
 
         elif bird.which == 'full':
-            bird.fullPs = factor * 1. / (qperp**2 * qpar) * self.integrAP(bird.fullPs, kp, arrayLegendremup, many=False)
+            bird.fullPs = 1. / (qperp**2 * qpar) * self.integrAP(bird.fullPs, kp, arrayLegendremup, many=False)
 
     def setWindow(self, load=True, save=True, Nl=3, withmask=True, windowk=0.05, xmin_factor=1.0, xmax_factor=100.):
 
