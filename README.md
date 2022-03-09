@@ -20,7 +20,7 @@ conda create -n eftpipe python=3.7
 conda activate eftpipe
 # install getdist first
 conda install -c conda-forge matplotlib PySide2
-conda install "numpy>=1.20" "scipy>=1.6" pandas
+conda install "numpy>=1.20" "scipy>=1.6" pandas portalocker
 pip install getdist
 # test if getdist is working
 python -m unittest getdist.tests.getdist_test
