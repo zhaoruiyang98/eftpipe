@@ -70,10 +70,11 @@ def compare_ndarrays(ndarrays_regression: NDArraysRegressionFixture):
         if fullpath:
             filename = source_filename = Path(fullpath)
         else:
-            filename = ndarrays_regression.datadir / (new_basename + extension)
+            filename = ndarrays_regression.datadir / \
+                (new_basename + extension)  # type: ignore
             source_filename = \
                 ndarrays_regression.original_datadir / \
-                (new_basename + extension)
+                (new_basename + extension)  # type: ignore
         np.savez_compressed(str(filename), **ref_dct)
         nonlocal source_data_dir
         source_data_dir = source_filename.parent
