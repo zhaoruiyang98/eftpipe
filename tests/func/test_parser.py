@@ -1,5 +1,6 @@
 import numpy as np
 import yaml
+from eftpipe.lssdata import FullShapeDataDict
 from eftpipe.parser import (
     FullShapeDataParser,
     SingleTracerParser,
@@ -9,7 +10,7 @@ from eftpipe.parser import (
 
 
 def test_FullShapeDataParser():
-    dct = {
+    dct: FullShapeDataDict = {
         'pklinfo': [
             {'pkl_path': 'cobaya/data/mock/LRG_NGC.txt'},
             {'pkl_path': 'cobaya/data/mock/ELG_NGC_Q.txt',
@@ -33,7 +34,7 @@ def test_FullShapeDataParser():
     assert (pkldatas[1].kdata[0] >= 0.02) and (pkldatas[1].kdata[-1] <= 0.20)
     assert (pkldatas[2].kdata[0] >= 0.05) and (pkldatas[2].kdata[-1] <= 0.15)
     assert np.allclose(
-        np.linalg.inv(data_obj.cov) * (1.0 / 27.0) *
+        np.linalg.inv(data_obj.cov) *
         (1000 - 82 - 2) / (1000 - 1),
         data_obj.invcov,
         atol=0.,
