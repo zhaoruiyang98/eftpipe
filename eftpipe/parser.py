@@ -12,7 +12,7 @@ if sys.version_info >= (3, 8):
 else:
     from typing_extensions import Literal
 # local
-from eftpipe.lssdata import FullShapeData, PklData
+from eftpipe.lssdata import FullShapeData, FullShapeDataDict
 from eftpipe.theory import (
     EFTTheory,
     SingleTracerEFT,
@@ -23,6 +23,7 @@ from eftpipe.marginal import MargGaussian
 from eftpipe.typing import LogFunc
 
 
+# TODO: deprecated
 class FullShapeDataParser:
     """a factory to create FullShapeData object
 
@@ -30,38 +31,15 @@ class FullShapeDataParser:
     ----------
     dct: dict[str, Any]
         a dictionary which contains all the information to create FullShapeData
-    logfunc: Callable[[str], None]
-        function used for logging, default print
 
     Methods
     -------
-    helper_dict(cls):
-        a dict template
-    create_gaussian_data(self):
+    create_gaussian_data(quiet=False):
         create a FullShapeData object
     """
 
-    def __init__(
-        self,
-        dct: Dict[str, Any],
-        logfunc: LogFunc = print,
-    ) -> None:
-        dct = deepcopy(dct)
-        pklinfo = dct.pop('pklinfo')
-        if not isinstance(pklinfo, list):
-            pklinfo = [pklinfo]
-
-        common = dct.pop('common', None)
-        if common is not None:
-            new_pklinfo = [deepcopy(common) for _ in pklinfo]
-            for raw, new in zip(new_pklinfo, pklinfo):
-                raw.update(new)
-            pklinfo = new_pklinfo
-
-        self._pklinfo = pklinfo
-        dct.pop('pkldatas', None)
+    def __init__(self, dct: FullShapeDataDict) -> None:
         self.dct = dct
-        self.logfunc = logfunc
 
     @classmethod
     def helper_dict(cls):
@@ -77,11 +55,7 @@ class FullShapeDataParser:
         }
 
     def create_gaussian_data(self, quiet=False) -> FullShapeData:
-        logfunc = self.logfunc
-        if quiet:
-            logfunc = lambda t: None
-        pkldatas = [PklData(**x, logfunc=logfunc) for x in self._pklinfo]
-        return FullShapeData(pkldatas=pkldatas, logfunc=logfunc, **self.dct)
+        return FullShapeData.from_dict(self.dct, log=not quiet)
 
 
 class SingleTracerParser:
@@ -109,7 +83,7 @@ class SingleTracerParser:
         dct: Dict[str, Any],
         logfunc: LogFunc = print
     ) -> None:
-        self._data_parser = FullShapeDataParser(dct['data'], logfunc=logfunc)
+        self._data_parser = FullShapeDataParser(dct['data'])
         theory_info = deepcopy(dct['theory'])
         theory_info['projection_config']['kdata'] = None
         theory_info['print_info'] = logfunc
@@ -194,7 +168,7 @@ class TwoTracerParser:
         dct: Dict[str, Any],
         logfunc: LogFunc = print
     ) -> None:
-        self._data_parser = FullShapeDataParser(dct['data'], logfunc=logfunc)
+        self._data_parser = FullShapeDataParser(dct['data'])
         theory_info = deepcopy(dct['theory'])
         prefixes = theory_info.pop('prefix')
         if (not isinstance(prefixes, list)) or (len(prefixes) != 2):
@@ -316,7 +290,7 @@ class TwoTracerCrossParser:
         dct: Dict[str, Any],
         logfunc: LogFunc = print
     ) -> None:
-        self._data_parser = FullShapeDataParser(dct['data'], logfunc=logfunc)
+        self._data_parser = FullShapeDataParser(dct['data'])
         theory_info = deepcopy(dct['theory'])
         prefixes = theory_info.pop('prefix')
         if (not isinstance(prefixes, list)) or (len(prefixes) != 3):

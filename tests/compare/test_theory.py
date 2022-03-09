@@ -30,11 +30,11 @@ if not PYBIRDDEV_CACHE.exists():
 
 
 def get_kdata(kmin=0.02, kmax=0.25):
-    data = PklData(
-        kmin=kmin, kmax=kmax, ls=[0, 2, 4],
-        pkl_path=(COBAYA_PATH / 'data' / 'mock' / 'LRG_NGC.txt'),
-        logfunc=lambda x: None,
+    data = PklData.loadtxt(
+        path=(COBAYA_PATH / 'data' / 'mock' / 'LRG_NGC.txt'),
+        log=False,
     )
+    data.set_mask(ls=[0, 2, 4], kmin=kmin, kmax=kmax)
     return data.kdata
 
 

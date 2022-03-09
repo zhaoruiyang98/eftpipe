@@ -1,0 +1,1 @@
+from cobaya.log import logger_setup
