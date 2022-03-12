@@ -1728,6 +1728,12 @@ class Resum(object):
             bird.setfullPs()
 
 
+def window_kgrid(kmax: float = 0.3) -> NDArray:
+    return np.concatenate([
+        np.geomspace(1e-5, 0.015, 100, endpoint=False),
+        np.arange(0.015, kmax, 1e-3)
+    ])
+
 class Projection(object):
     """
     A class to apply projection effects:
@@ -1838,7 +1844,7 @@ class Projection(object):
         bessel function and then will be interpolated
         """
         
-        self.p = np.concatenate([ np.geomspace(1e-5, 0.015, 100, endpoint=False) , np.arange(0.015, 0.3, 1e-3) ])
+        self.p = window_kgrid()
         
         window_fourier_file = os.path.join(self.path_to_window, f'{self.window_fourier_name}') # type: ignore
         
