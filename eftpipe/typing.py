@@ -8,6 +8,7 @@ from typing import (
     Dict,
     Any,
     Callable,
+    Optional,
 )
 if sys.version_info >= (3, 8):
     from typing import Protocol, TypedDict
@@ -72,6 +73,21 @@ class ProjectionConfig(TypedDict, total=False):
     rdrag_fid: float
     windows_fourier_path: Path
     windows_configspace_path: Path
+    load: bool
+    save: bool
+    check_meta: bool
+    Na: Optional[int]
+    Nl: Optional[int]
+    Nq: int
+    pmax: float
+    accboost: int
+    withmask: bool
+    windowk: float
+    Nmax: int
+    xmin_factor: float
+    xmax_factor: float
+    bias: float
+    window_st: bool
     binning: bool
     ktrust: float
     fs: float

@@ -214,7 +214,7 @@ class PklData(HasLogger):
             kmin=self.kdata.min() - 0.1,
             kmax=self.kdata.max() + 0.1
         )
-        self.set_logger(lowercase=False, name="eftpipe.lssdata.PklData")
+        self.set_logger(name="lssdata.PklData")
 
     def _set_data_and_err(self, **kwargs: NDArray) -> None:
         data: Dict[ObsName, NDArray] = {}
@@ -438,7 +438,7 @@ class FullShapeData(Sequence[PklData], HasLogger):
         if Nreal is not None:
             self.hartlap = (Nreal - self.ndata - 2) / (Nreal - 1)
             self.invcov *= self.hartlap
-        self.set_logger(lowercase=False, name="eftpipe.lssdata.FullShapeData")
+        self.set_logger(name="lssdata.FullShapeData")
 
     def assign_cov(self, pkldatas: List[PklData], cov: NDArray) -> None:
         diag = np.sqrt(np.diag(cov))
