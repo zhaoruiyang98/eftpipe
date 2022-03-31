@@ -1895,6 +1895,7 @@ class Window(HasLogger):
         self.Waldk: NDArray = self._compute_Waldk() # mask settings not in meta
         if self._save:
             self._save_Wal()
+        self._cached_path = {}
 
     def _load_Wal(self):
         """load fourier matrix, return None if failed
@@ -2065,17 +2066,33 @@ class Window(HasLogger):
             with meta_file.open('w') as f:
                 json.dump(self.meta, f, indent=2)
 
-    def integrWindow(self, P, many=False):
+    def integrWindow(self, P, many=False, interp=True):
         """
         Convolve the window functions to a power spectrum P
         """
-        Pk = interp1d(self.co.k, P, axis=-1, kind='cubic', bounds_error=False, fill_value='extrapolate')(self.p)
-        # (multipole l, multipole ' p, k, k' m) , (multipole ', power pectra s, k' m)
-        #print (self.Qlldk.shape, Pk.shape)
-        if many:
-            return np.einsum('alkp,lsp->ask', self.Waldk, Pk)
+        if interp:
+            Pk = interp1d(
+                self.co.k, P, axis=-1,
+                kind='cubic', bounds_error=False, fill_value='extrapolate'
+            )(self.p)
         else:
-            return np.einsum('alkp,lp->ak', self.Waldk, Pk)
+            Pk = P
+        # (multipole l, multipole ' p, k, k' m) , (multipole ', power pectra s, k' m)
+        shape = Pk.shape
+        path = self._cached_path.get(shape, None)
+        if path is None:
+            if many:
+                path = np.einsum_path(
+                    'alkp,lsp->ask', self.Waldk, Pk, optimize='optimal')[0]
+            else:
+                path = np.einsum_path(
+                    'alkp,lp->ak', self.Waldk, Pk, optimize='optimal')[0]
+            self._cached_path[shape] = path
+
+        if many:
+            return np.einsum('alkp,lsp->ask', self.Waldk, Pk, optimize=path)
+        else:
+            return np.einsum('alkp,lp->ak', self.Waldk, Pk, optimize=path)
 
     def Window(self, bird: Bird):
         """
@@ -2087,9 +2104,19 @@ class Window(HasLogger):
             bird.Ploopl = self.integrWindow(bird.Ploopl, many=True)
             if self.window_st:
                 bird.setPstl(self.p)
-                bird.Pstl = np.einsum('alkp,lsp->ask', self.Waldk, bird.Pstl)
+                bird.Pstl = self.integrWindow(bird.Pstl, many=True, interp=False)
+        elif bird.which == 'marg':
+            bird.fullPs = self.integrWindow(bird.fullPs, many=False)
+            bird.Pb3 = self.integrWindow(bird.Pb3, many=False)
+            bird.Pctl = self.integrWindow(bird.Pctl, many=True)
+        elif bird.which == 'full':
+            bird.fullPs = self.integrWindow(bird.fullPs, many=False)
         else:
-            raise ValueError(f"unexpect bird.which {bird.which}")
+            raise ValueError(f"unexpected bird.which={bird.which}")
+
+    def clear_cache(self):
+        self._cached_path = {}
+
 
 class Projection(object):
     """
