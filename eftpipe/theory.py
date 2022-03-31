@@ -21,6 +21,7 @@ else:
     from typing_extensions import Literal
 # local
 from eftpipe.pybird import pybird
+from eftpipe.pybird.pybird import Window
 from eftpipe.interface import CobayaCambProvider, CambProvider
 from eftpipe.typing import (
     ProjectionConfig,
@@ -272,8 +273,25 @@ class EFTTheory:
         z_AP: float,
         rdrag_fid: Optional[float] = None,
         kdata: Optional[NDArray] = None,
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         windows_fourier_path: Optional[Location] = None,
         windows_configspace_path: Optional[Location] = None,
+        load: bool = True,
+        save: bool = True,
+        check_meta: bool = True,
+        Na: Optional[int] = None,
+        Nl: Optional[int] = None,
+        Nq: int = 3,
+        pmax: float = 0.3,
+        accboost: int = 1,
+        withmask: bool = True,
+        windowk: float = 0.05,
+        Nmax: int = 4096,
+        xmin_factor: float = 1.0,
+        xmax_factor: float = 100.,
+        bias: float = -1.6,
+        window_st: bool = True,
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
         ktrust: Optional[float] = None,
         fs: Optional[float] = None,
         Dfc: Optional[float] = None,
@@ -306,12 +324,16 @@ class EFTTheory:
             state.window = True
             projection = pybird.Projection(
                 kdata, Om_AP, z_AP, co=self.co,
-                window_fourier_name=Path(windows_fourier_path).name,
-                path_to_window=str(
-                    Path(windows_fourier_path).resolve().parent
-                ),
-                window_configspace_file=windows_configspace_path,
                 binning=state.binning, rdrag_fid=rdrag_fid
+            )
+            self.window = Window(
+                window_fourier_file=windows_fourier_path,
+                window_configspace_file=windows_configspace_path,
+                co=self.co, load=load, save=save, check_meta=check_meta,
+                Na=Na, Nl=Nl, Nq=Nq, pmax=pmax, accboost=accboost,
+                withmask=withmask, windowk=windowk,
+                Nmax=Nmax, xmin_factor=xmin_factor, xmax_factor=xmax_factor,
+                bias=bias, window_st=window_st,
             )
         self.projection = projection
 
@@ -358,7 +380,7 @@ class EFTTheory:
             if self.projection is not None:
                 self.projection.AP(bird, rdrag_true=provider.get_rdrag())
                 if state.window:
-                    self.projection.Window(bird)
+                    self.window.Window(bird)
                 if state.fiber:
                     self.projection.fibcolWindow(
                         bird, ktrust=self.ktrust, fs=self.fs, Dfc=self.Dfc)  # type: ignore
