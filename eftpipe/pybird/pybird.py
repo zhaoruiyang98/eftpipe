@@ -11,7 +11,14 @@ from scipy.interpolate import interp1d, interp2d, CubicSpline
 from scipy.special import gamma, legendre, j1, spherical_jn, loggamma
 from scipy.integrate import quad
 from pathlib import Path
-from typing import Dict, Tuple, Any, Optional, Union
+from typing import (
+    Any,
+    cast,
+    Dict,
+    Optional,
+    Tuple,
+    Union
+)
 # local
 from .resumfactor import Qawithhex
 
@@ -1747,6 +1754,8 @@ class MetaInfoError(Exception):
     pass
 
 
+Location = Union[str, Path]
+
 class Window(HasLogger):
     r"""Window effect
 
@@ -1822,11 +1831,24 @@ class Window(HasLogger):
 
     def __init__(
         self,
-        window_fourier_file=None, window_configspace_file=None, co=common,
-        load=True, save=True, check_meta=True,
-        Na=None, Nl=None, Nq=3, pmax=0.3, accboost=1, withmask=True, windowk=0.05,
-        Nmax=4096, xmin_factor=1.0, xmax_factor=100., bias=-1.6,
-        window_st=True,
+        window_fourier_file: Optional[Location] = None,
+        window_configspace_file: Optional[Location] = None,
+        co: Common = common,
+        load: bool =True,
+        save: bool = True,
+        check_meta: bool = True,
+        Na: Optional[int] = None,
+        Nl: Optional[int] = None,
+        Nq: Optional[int] = 3,
+        pmax: float = 0.3,
+        accboost: int = 1,
+        withmask: bool = True,
+        windowk: float = 0.05,
+        Nmax: int =4096,
+        xmin_factor: float = 1.0,
+        xmax_factor: float = 100.,
+        bias: float = -1.6,
+        window_st: bool = True,
     ) -> None:
         self.set_logger(name='pybird.window')
         self.co: Common = co
@@ -1935,7 +1957,7 @@ class Window(HasLogger):
 
     def _compute_Wal(self):
         self.mpi_info("Computing new mask")
-        Na, Nl, Nq = self.meta["Na"], self.meta["Nl"], self.meta["Nq"]
+        Na, Nl, Nq = [cast(int, self.meta[x]) for x in ("Na", "Nl", "Nq")]
         if self.window_configspace_file is None:
             raise ValueError(
                 "please specify a configuration space mask file")
