@@ -366,9 +366,8 @@ class EFTTheory(HasLogger):
                 bsA, bsB, es=es, marg=self.marg, chained=self.chained)
             self.bird = bird
         else:
-            # TODO: missing marg=self.marg
             self.bird.setreducePslb(
-                bsA, bsB, es=es, chained=self.chained)
+                bsA, bsB, es=es, marg=self.marg, chained=self.chained)
 
         out: NDArray = self.bird.fullPs.copy()
 
