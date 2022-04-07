@@ -30,7 +30,6 @@ likelihood:
         projection_config:
           Om_AP: 0.307115
           z_AP: 0.7
-          rdrag_fid: 147.66
           windows_fourier_path: cache/LRG_NGC_GB_interp.npy
           windows_configspace_path: data/window/LRG_NGC_GB_interp.dat
           binning: true
