@@ -1,6 +1,7 @@
-import cobaya
 import numpy as np
-from eftpipe.interface import CobayaCambProvider, CambProvider
+import cobaya
+from eftpipe.interface import CambProvider
+from eftpipe.interface import CobayaCambProvider
 
 
 def two_providers():

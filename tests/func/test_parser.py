@@ -1,12 +1,12 @@
 import numpy as np
-import yaml
+from cobaya.yaml import yaml_load
+from cobaya.yaml import yaml_load_file
 from eftpipe.lssdata import FullShapeDataDict
-from eftpipe.parser import (
-    FullShapeDataParser,
-    SingleTracerParser,
-    TwoTracerParser,
-    TwoTracerCrossParser,
-)
+from eftpipe.parser import FullShapeDataParser
+from eftpipe.parser import SingleTracerParser
+from eftpipe.parser import TwoTracerCrossParser
+from eftpipe.parser import TwoTracerParser
+from eftpipe.tools import PathContext
 
 
 def test_FullShapeDataParser():
@@ -42,137 +42,72 @@ def test_FullShapeDataParser():
 
 
 def test_SingleTracerParser():
-    dct = {
-        'data': {
-            'pklinfo': {
-                'ls': [0, 2],
-                'kmin': 0.02,
-                'kmax': 0.15,
-                'pkl_path': 'cobaya/data/mock/LRG_NGC.txt'
-            },
-            'cov_path': 'cobaya/data/cov/cov_NGC_L024.txt',
-            'Nreal': 1000,
-        },
-        'theory': {
-            'prefix': 'LRG_NGC_',
-            'Nl': 2,
-            'z': 0.7,
-            'kmA': 0.7,
-            'ndA': 7.91e-05,
-            'cache_dir_path': 'cobaya/cache',
-            'projection_config': {
-                'Om_AP': 0.307115,
-                'z_AP': 0.7,
-                'rdrag_fid': 147.66,
-                'windows_fourier_path': 'cobaya/cache/LRG_NGC_GB_interp.npy',
-                'windows_configspace_path': 'cobaya/data/window/LRG_NGC_GB_interp.dat',
-                'binning': True,
-            }
-        }
-    }
-    parser = SingleTracerParser(dct)
-    data_obj = parser.create_gaussian_data()
-    theory_obj = parser.create_vector_theory()
+    dct = yaml_load_file("tests/yamls/mock_LRG_NGC_km0p15_fixref_proposal.yaml")
+    dct = dct["likelihood"]["NGC"]["extra_args"]
+    with PathContext("cobaya"):
+        parser = SingleTracerParser(dct)
+        data_obj = parser.create_gaussian_data()
+        theory_obj = parser.create_vector_theory()
 
 
 def test_TwoTracerParser():
     info = r"""
     data:
-        cov_path: cobaya/data/cov/cov_NGC_L024E024_PQ.txt
-        Nreal: 1000
-        rescale: 1.0
-        pklinfo:
-            - pkl_path: cobaya/data/mock/LRG_NGC.txt
-            - pkl_path: cobaya/data/mock/ELG_NGC_Q.txt
-        common:
-            ls: [0, 2]
-            kmin: 0.02
-            kmax: 0.15
+      pklinfo:
+      - pkl_path: data/mock/LRG_NGC.txt
+      - pkl_path: data/mock/ELG_NGC_Q.txt
+      common:
+        ls: [0, 2]
+        kmin: 0.02
+        kmax: 0.15
+      cov_path: data/cov/cov_NGC_L024E024_PQ.txt
+      Nreal: 1000
     theory:
         prefix: [LRG_NGC_, ELG_NGC_]
         theory_info:
-            - z: 0.7
-              kmA: 0.7
-              ndA: 0.0000791
-              projection_config:
-                  z_AP: 0.7
-                  windows_fourier_path: cobaya/cache/LRG_NGC_GB_interp.npy
-                  windows_configspace_path: cobaya/data/window/LRG_NGC_GB_interp.dat
-            - z: 0.845
-              kmA: 0.45
-              ndA: 0.00018518518518518518
-              chained: True
-              projection_config:
-                  z_AP: 0.845
-                  windows_fourier_path: cobaya/cache/ELG_NGC_interp.npy
-                  windows_configspace_path: cobaya/data/window/ELG_NGC_interp.dat
+        - z: 0.7
+          km: 0.7
+          nd: 7.91e-05
+          config_settings:
+            APeffect:
+              z_AP: 0.7
+            window:
+              window_fourier_file: cache/LRG_NGC_GB_interp.npy
+              window_configspace_file: data/window/LRG_NGC_GB_interp.dat
+        - z: 0.845
+          km: 0.45
+          nd: 0.00018518518518518518
+          chained: true
+          config_settings:
+            APeffect:
+              z_AP: 0.845
+            window:
+              window_fourier_file: cache/ELG_NGC_interp.npy
+              window_configspace_file: data/window/ELG_NGC_interp.dat
         common:
-            cache_dir_path: cobaya/cache
-            Nl: 2
-            chained: False
-            projection_config:
-                Om_AP: 0.307115
-                rdrag_fid: 147.66
-                binning: true
+          cache_dir_path: cache
+          with_IRresum: true
+          with_APeffect: true
+          with_window: true
+          with_fiber: false
+          with_binning: true
+          config_settings:
+            APeffect:
+              Om_AP: 0.307115
+            binning:
+              binning: true
     """
-    dct = yaml.load(info, Loader=yaml.SafeLoader)
-    parser = TwoTracerParser(dct)
-    data_obj = parser.create_gaussian_data()
-    theory_obj = parser.create_vector_theory()
+    dct = yaml_load(info)
+    with PathContext("cobaya"):
+        parser = TwoTracerParser(dct)
+        data_obj = parser.create_gaussian_data()
+        theory_obj = parser.create_vector_theory()
 
 
 def test_TwoTracerCrossParser():
-    info = r"""
-    data:
-        cov_path: cobaya/data/cov/cov_NGC_L024E024X024_PQP.txt
-        Nreal: 1000
-        rescale: 1.0
-        pklinfo:
-            - pkl_path: cobaya/data/mock/LRG_NGC.txt
-            - pkl_path: cobaya/data/mock/ELG_NGC_Q.txt
-            - pkl_path: cobaya/data/mock/x_NGC.txt
-        common:
-            ls: [0, 2]
-            kmin: 0.02
-            kmax: 0.15
-    theory:
-        prefix: [LRG_NGC_, ELG_NGC_, x_NGC_]
-        theory_info:
-            - z: 0.7
-              kmA: 0.7
-              ndA: 0.0000791
-              projection_config:
-                  z_AP: 0.7
-                  windows_fourier_path: cobaya/cache/LRG_NGC_GB_interp.npy
-                  windows_configspace_path: cobaya/data/window/LRG_NGC_GB_interp.dat
-            - z: 0.845
-              kmA: 0.45
-              ndA: 0.00018518518518518518
-              chained: True
-              projection_config:
-                  z_AP: 0.845
-                  windows_fourier_path: cobaya/cache/ELG_NGC_interp.npy
-                  windows_configspace_path: cobaya/data/window/ELG_NGC_interp.dat
-            - z: 0.77
-              kmA: 0.7
-              ndA: 0.0000791
-              kmB: 0.45
-              ndB: 0.00018518518518518518
-              cross: True
-              projection_config:
-                z_AP: 0.77
-                windows_fourier_path: cobaya/cache/x_NGC_interp.npy
-                windows_configspace_path: cobaya/data/window/x_NGC_interp.dat
-        common:
-            cache_dir_path: cobaya/cache
-            Nl: 2
-            chained: False
-            projection_config:
-                Om_AP: 0.307115
-                rdrag_fid: 147.66
-                binning: true
-    """
-    dct = yaml.load(info, Loader=yaml.SafeLoader)
-    parser = TwoTracerCrossParser(dct)
-    data_obj = parser.create_gaussian_data()
-    theory_obj = parser.create_vector_theory()
+    dct = yaml_load_file("tests/yamls/mock_LRG_ELG_x_NGC_km0p15_fix_proposal.yaml")
+    dct = dct["likelihood"]["NGC"]["extra_args"]
+    with PathContext("cobaya"):
+        parser = TwoTracerCrossParser(dct)
+        data_obj = parser.create_gaussian_data()
+        theory_obj = parser.create_vector_theory()

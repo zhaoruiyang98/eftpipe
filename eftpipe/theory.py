@@ -1,33 +1,31 @@
 # global
-import numpy as np
+import inspect
 import sys
-from cobaya.theory import Provider
-from dataclasses import dataclass
-from numpy import ndarray as NDArray
-from scipy.special import legendre
+import numpy as np
 from pathlib import Path
 from typing import (
+    Any,
+    cast,
+    Dict,
     Iterable,
     List,
     Optional,
-    Any,
-    Callable,
-    Dict,
-    cast,
 )
 if sys.version_info >= (3, 8):
     from typing import Literal
 else:
     from typing_extensions import Literal
+from numpy import ndarray as NDArray
+from scipy.special import legendre
+from cobaya.log import HasLogger
+from cobaya.theory import Provider
 # local
+from eftpipe.interface import CambProvider
+from eftpipe.interface import CobayaCambProvider
 from eftpipe.pybird import pybird
-from eftpipe.pybird.pybird import Window
-from eftpipe.interface import CobayaCambProvider, CambProvider
 from eftpipe.typing import (
-    ProjectionConfig,
     BoltzmannProvider,
     Location,
-    LogFunc,
 )
 
 
@@ -176,177 +174,165 @@ class BirdPlus(pybird.Bird):
             self.PG = newPG[:, :-1, :]
 
 
-@dataclass
-class EFTTheoryState:
-    can_compute: bool = False
-    cross: bool = False
-    chained: bool = False
-    projection: bool = False
-    window: bool = False
-    fiber: bool = False
-    binning: bool = False
-    ic: bool = False
-    marg: bool = False
+class ConfigTwice(Exception):
+    pass
 
 
-class EFTTheory:
-    state: EFTTheoryState
-    co: pybird.Common
-    nonlinear: pybird.NonLinear
-    resum: pybird.Resum
-    projection: Optional[pybird.Projection]
-    bird: Optional[BirdPlus]
-    bolzmann_provider: Optional[BoltzmannProvider]
-    print_info: Callable[[str], None]
-    # for computing
-    z: float
-    ls: List[int]
-    ktrust: Optional[float]
-    fs: Optional[float]
-    Dfc: Optional[float]
+class InvalidConfig(Exception):
+    pass
 
+
+class Operator:
+    def __init__(self, setfunc, apply, **override) -> None:
+        if not inspect.isclass(setfunc):
+            raise NotImplementedError
+        self.setfunc = setfunc
+        if apply.__name__ not in dir(setfunc):
+            raise NotImplementedError
+        self.apply_name = apply.__name__
+
+        args: List[str] = []
+        kwargs: Dict[str, Any] = {}
+        for k, v in inspect.signature(setfunc).parameters.items():
+            if v.kind is v.VAR_KEYWORD:
+                continue
+            if v.kind is v.VAR_POSITIONAL:
+                raise NotImplementedError(
+                    f"{self.__class__.__name__} does not support *args")
+            default = v.default
+            if default is v.empty:
+                args.append(k)
+            else:
+                kwargs[k] = default
+        for k, v in override.items():
+            if k in args:
+                args.remove(k)
+            kwargs[k] = v
+        self.args = args
+        self.kwargs = kwargs
+        self.obj = None
+
+    def config(self, dct: Dict[str, Any]) -> None:
+        dct = dct if dct else {}
+        if self.obj is not None:
+            raise ConfigTwice(
+                f"{self.__class__.__name__} cannot be configured twice")
+        self.kwargs.update(dct)
+        for k in self.args:
+            if k not in self.kwargs.keys():
+                raise InvalidConfig(f"missing positional argument {k}")
+
+        self.obj = self.setfunc(**self.kwargs)
+
+    def apply(self, x):
+        return getattr(self.obj, self.apply_name)(x)
+
+
+class IncompleteTheory(Exception):
+    pass
+
+
+class EFTTheory(HasLogger):
     def __init__(
         self,
         z: float,
-        cache_dir_path: Location,
-        kmA: float,
-        ndA: float,
+        cache_dir_path: Optional[Location] = None,
+        km: Optional[float] = None,
+        nd: Optional[float] = None,
+        kmA: Optional[float] = None,
+        ndA: Optional[float] = None,
         kmB: Optional[float] = None,
         ndB: Optional[float] = None,
-        optiresum: bool = False,
-        Nl: int = 2,
         cross: bool = False,
+        Nl: int = 2,
+        optiresum: bool = False,
         chained: bool = False,
-        projection_config: Optional[ProjectionConfig] = None,
-        bolzmann_provider: Optional[BoltzmannProvider] = None,
-        print_info: LogFunc = print,
+        with_IRresum: bool = True,
+        with_APeffect: bool = False,
+        with_window: bool = False,
+        with_fiber: bool = False,
+        with_binning: bool = True,
+        boltzmann_provider: Optional[BoltzmannProvider] = None,
+        config_settings: Dict[str, Any] = None, # type: ignore
     ) -> None:
-        self.print_info = print_info
-        state = EFTTheoryState()
-        self.state = state
+        self.set_logger(name="eftpipe.EFTTheory")
 
-        print_info('==========================>')
-        print_info(f'Initializing EFTTheory:')
         self.z = z
-        print_info(f'effective redshift: {self.z:.3f}')
+        self.mpi_info("effective redshift: %.3f", self.z)
+
+        if (km is None or nd is None) and (kmA is None or ndA is None):
+            raise ValueError("expect parameters pair (km, nd) or (kmA, ndA)")
+        if km and nd and kmA and ndA:
+            raise ValueError(
+                "cannot pass both parameters pair (km, nd) and (kmdA, ndA)")
+        kmA = kmA if kmA else km
+        ndA = ndA if ndA else nd
+        if cross and (kmB is None or ndB is None):
+            raise ValueError("missing parameters pair (kmB, ndB)")
+        self.cross = cross
         if cross:
-            state.cross = True
-            print_info(f'computing cross power spectrum')
+            self.mpi_info("compute cross power spectrum")
+        self.chained = chained
         if chained:
-            state.chained = True
-            print_info(f'computing chained power spectrum up to {Nl}')
+            self.mpi_info("compute chained power spectrum up to %d", Nl)
             Nl = Nl + 1
         ls = [2 * i for i in range(Nl)]
-        self.ls = ls
-        print_info(f'computing power spectrum ls = {ls}')
+        self.mpi_info("compute power spectrum multipoles ls = %s", ls)
         self.co = pybird.Common(
             Nl=Nl, optiresum=optiresum, kmA=kmA, ndA=ndA, kmB=kmB, ndB=ndB)
-        if optiresum:
-            print_info('resummation: optimized')
-        else:
-            print_info('resummation: full')
+        self.bird: Optional[BirdPlus] = None
+
+        if cache_dir_path is None:
+            cache_dir_path = Path.cwd() / 'cache'
         self.nonlinear = pybird.NonLinear(
             load=True, save=True, co=self.co,
             path=str(Path(cache_dir_path).resolve())
         )
-        self.resum = pybird.Resum(co=self.co)
 
-        if bolzmann_provider is not None:
-            state.can_compute = True
-        self.bolzmann_provider = bolzmann_provider
-
-        self.projection = None
-        self.bird = None
-        self.ktrust, self.fs, self.Dfc = None, None, None
-        if projection_config is not None:
-            state.projection = True
-            self.set_projection(**projection_config)
-        print_info('<==========================')
-
-    def set_bolzman_provider(self, provider):
-        self.bolzmann_provider = provider
-        self.state.can_compute = True
-
-    def set_projection(
-        self,
-        Om_AP: float,
-        z_AP: float,
-        rdrag_fid: Optional[float] = None,
-        kdata: Optional[NDArray] = None,
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        windows_fourier_path: Optional[Location] = None,
-        windows_configspace_path: Optional[Location] = None,
-        load: bool = True,
-        save: bool = True,
-        check_meta: bool = True,
-        Na: Optional[int] = None,
-        Nl: Optional[int] = None,
-        Nq: int = 3,
-        pmax: float = 0.3,
-        accboost: int = 1,
-        withmask: bool = True,
-        windowk: float = 0.05,
-        Nmax: int = 4096,
-        xmin_factor: float = 1.0,
-        xmax_factor: float = 100.,
-        bias: float = -1.6,
-        window_st: bool = True,
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        ktrust: Optional[float] = None,
-        fs: Optional[float] = None,
-        Dfc: Optional[float] = None,
-        binning: bool = False,
-        integral_constraint_path: Optional[Path] = None,
-        shotnoise: float = 0.
-    ) -> None:
-        self.print_info('start setting projection:')
-        state = self.state
-
-        if kdata is None:
-            self.print_info('using default kdata')
-            kdata = np.linspace(0.005, 0.3, 50)
-
-        if rdrag_fid is not None:
-            self.print_info(f'fiducial rdrag = {rdrag_fid}')
-
-        if binning:
-            self.print_info('binning: on')
-            state.binning = True
-
-        if windows_fourier_path is None:
-            self.print_info('window: off')
-            projection = pybird.Projection(
-                kdata, Om_AP, z_AP, co=self.co,
-                binning=state.binning, rdrag_fid=rdrag_fid
+        self.boltzmann_provider = boltzmann_provider
+        self.operators: Dict[str, Operator] = {}
+        self.configured: bool = False
+        self.marg = False # default False but may be modified by other classes
+        # order is important
+        if with_IRresum:
+            self.operators["IRresum"] = Operator(
+                pybird.Resum, pybird.Resum.Ps, co=self.co)
+            self.mpi_info(
+                "IRresum enabled: %s", "optimized" if optiresum else "full")
+        if with_APeffect:
+            self.operators["APeffect"] = Operator(
+                pybird.APeffect, pybird.APeffect.AP, co=self.co)
+        if with_window:
+            self.operators["window"] = Operator(
+                pybird.Window, pybird.Window.Window, co=self.co)
+            self.mpi_info("APeffect enabled")
+        if with_fiber:
+            self.operators["fiber"] = Operator(
+                pybird.FiberCollision, pybird.FiberCollision.fibcolWindow,
+                co=self.co
             )
-        else:
-            self.print_info('window: on')
-            state.window = True
-            projection = pybird.Projection(
-                kdata, Om_AP, z_AP, co=self.co,
-                binning=state.binning, rdrag_fid=rdrag_fid
-            )
-            self.window = Window(
-                window_fourier_file=windows_fourier_path,
-                window_configspace_file=windows_configspace_path,
-                co=self.co, load=load, save=save, check_meta=check_meta,
-                Na=Na, Nl=Nl, Nq=Nq, pmax=pmax, accboost=accboost,
-                withmask=withmask, windowk=windowk,
-                Nmax=Nmax, xmin_factor=xmin_factor, xmax_factor=xmax_factor,
-                bias=bias, window_st=window_st,
-            )
-        self.projection = projection
+            self.mpi_info("fiber enabled")
+        if with_binning:
+            self.operators["binning"] = Operator(
+                pybird.Binning, pybird.Binning.match, co=self.co)
+            self.mpi_info("binning enabled")
+        if config_settings:
+            self.set_config(config_settings)
 
-        if all([_ is not None for _ in (ktrust, fs, Dfc)]):
-            self.print_info('fiber collision correction: on')
-            self.ktrust, self.fs, self.Dfc = ktrust, fs, Dfc
-            state.fiber = True
-        else:
-            self.print_info('fiber collision correction: off')
+    def set_boltzmann_provider(self, provider: BoltzmannProvider):
+        self.boltzmann_provider = provider
 
-        if integral_constraint_path is not None:
-            state.ic = True
-            raise NotImplementedError
+    def set_config(self, dct):
+        diff = set(dct.keys()).difference(self.operators.keys())
+        if diff:
+            self.mpi_warning(
+                "configuration contains %s, "
+                "but the corresponding operators are not loaded or not exist",
+                diff,
+            )
+        for k, op in self.operators.items():
+            op.config(dct.get(k, {}))
+        self.configured = True
 
     def theory_vector(
         self,
@@ -354,14 +340,13 @@ class EFTTheory:
         bsB: Optional[Iterable[float]] = None,
         es: Iterable[float] = (0., 0., 0.),
     ) -> NDArray:
-        if not self.state.can_compute:
-            raise ValueError("missing bolzmann provider")
-        provider = self.bolzmann_provider
-        assert provider is not None
-        if (not provider.cosmo_updated()) and (self.bird is not None):
-            self.bird.setreducePslb(
-                bsA, bsB, es=es, chained=self.state.chained)
-        else:
+        if self.boltzmann_provider is None:
+            raise IncompleteTheory("missing boltzmann_provider")
+        if not self.configured:
+            raise IncompleteTheory("theory has not been configured")
+        provider = self.boltzmann_provider
+
+        if self.bird is None or provider.cosmo_updated():
             # TODO: test larger kh range
             kh = np.logspace(-4, 0, 200)
             pkh = provider.interp_pkh(kh)
@@ -375,31 +360,25 @@ class EFTTheory:
                 kh, pkh, f, DA, H, self.z, which='all', co=self.co)
             self.nonlinear.PsCf(bird)
             bird.setPsCfl()
-            self.resum.Ps(bird)
-            state = self.state
-            if self.projection is not None:
-                self.projection.AP(bird, rdrag_true=provider.get_rdrag())
-                if state.window:
-                    self.window.Window(bird)
-                if state.fiber:
-                    self.projection.fibcolWindow(
-                        bird, ktrust=self.ktrust, fs=self.fs, Dfc=self.Dfc)  # type: ignore
-                if state.binning:
-                    self.projection.kbinning(bird)
-                else:
-                    self.projection.kdata(bird)
+            for op in self.operators.values():
+                op.apply(bird)
             bird.setreducePslb(
-                bsA, bsB, es=es, marg=state.marg, chained=self.state.chained)
+                bsA, bsB, es=es, marg=self.marg, chained=self.chained)
             self.bird = bird
+        else:
+            # TODO: missing marg=self.marg
+            self.bird.setreducePslb(
+                bsA, bsB, es=es, chained=self.chained)
 
         out: NDArray = self.bird.fullPs.copy()
 
-        if self.state.chained:
+        if self.chained:
             newout = np.empty_like(out)
             for i in range(self.co.Nl - 1):
                 newout[i, :] = out[i, :] - chain_coeff(2 * i) * out[i + 1, :]
             out = newout[:-1, :]
         return out.reshape(-1)
+
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~vector theory~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -415,12 +394,12 @@ class SingleTracerEFT:
         self.can_marg = True
 
     def set_provider(self, provider: Provider) -> None:
-        self.theory.set_bolzman_provider(
+        self.theory.set_boltzmann_provider(
             CobayaCambProvider(provider, self.theory.z)
         )
 
     def set_camb_provider(self, **kwargs) -> None:
-        self.theory.set_bolzman_provider(
+        self.theory.set_boltzmann_provider(
             CambProvider(z=self.theory.z, **kwargs))
 
     def required_params(self) -> Dict[str, Any]:
@@ -433,7 +412,7 @@ class SingleTracerEFT:
             'Pk_grid': {
                 'nonlinear': False,
                 'z': [z],
-                'k_max': 100
+                'k_max': 5
             },
             'Hubble': {'z': extra_zs + [z]},
             'angular_diameter_distance': {'z': [z]},
@@ -475,7 +454,7 @@ class SingleTracerEFT:
         ]
 
     def set_marg(self, prior: Dict[str, Any]) -> None:
-        self.theory.state.marg = True
+        self.theory.marg = True
         all_params = self.can_marg_params()
         marginds = [all_params.index(name) for name in prior.keys()]
         margcoef = np.ones(len(marginds), dtype=np.float64)
@@ -510,13 +489,13 @@ class TwoTracerEFT:
 
     def set_provider(self, provider: Provider) -> None:
         for theory in self.theories:
-            theory.set_bolzman_provider(
+            theory.set_boltzmann_provider(
                 CobayaCambProvider(provider, theory.z)
             )
 
     def set_camb_provider(self, **kwargs) -> None:
         for theory in self.theories:
-            theory.set_bolzman_provider(
+            theory.set_boltzmann_provider(
                 CambProvider(z=theory.z, **kwargs))
 
     def required_params(self) -> Dict[str, Any]:
@@ -530,7 +509,7 @@ class TwoTracerEFT:
             'Pk_grid': {
                 'nonlinear': False,
                 'z': zs,
-                'k_max': 100
+                'k_max': 5
             },
             'Hubble': {'z': extra_zs + zs},
             'angular_diameter_distance': {'z': zs},
@@ -597,7 +576,7 @@ class TwoTracerEFT:
         margcoefB = np.ones(len(margindsB), dtype=np.float64)
         for theory, inds in zip(self.theories, (margindsA, margindsB)):
             if len(inds) != 0:
-                theory.state.marg = True
+                theory.marg = True
         for marginds, margcoef in zip(
                 (margindsA, margindsB), (margcoefA, margcoefB)):
             for i, index in enumerate(marginds):
@@ -648,7 +627,7 @@ class TwoTracerCrossEFT:
             raise ValueError('TwoTracerCrossEFT needs three EFTTheory objects')
         ncross = 0
         for theory in theories:
-            if theory.state.cross:
+            if theory.cross:
                 ncross += 1
         if ncross != 1:
             raise ValueError(
@@ -664,13 +643,13 @@ class TwoTracerCrossEFT:
 
     def set_provider(self, provider: Provider) -> None:
         for theory in self.theories:
-            theory.set_bolzman_provider(
+            theory.set_boltzmann_provider(
                 CobayaCambProvider(provider, theory.z)
             )
 
     def set_camb_provider(self, **kwargs) -> None:
         for theory in self.theories:
-            theory.set_bolzman_provider(
+            theory.set_boltzmann_provider(
                 CambProvider(z=theory.z, **kwargs))
 
     def required_params(self) -> Dict[str, Any]:
@@ -681,7 +660,7 @@ class TwoTracerCrossEFT:
             Dict[Literal['A', 'B', 'x'], int],
             {'A': None, 'B': None, 'x': None})
         for i, theory in enumerate(self.theories):
-            if not theory.state.cross:
+            if not theory.cross:
                 if type_to_index['A'] is None:
                     type_to_index['A'] = i
                 else:
@@ -703,7 +682,7 @@ class TwoTracerCrossEFT:
             'Pk_grid': {
                 'nonlinear': False,
                 'z': zs,
-                'k_max': 100
+                'k_max': 5
             },
             'Hubble': {'z': extra_zs + zs},
             'angular_diameter_distance': {'z': zs},
@@ -720,7 +699,7 @@ class TwoTracerCrossEFT:
         eft_params = []
         for prefix, theory in zip(self.prefixes, self.theories):
             params_list = eft_params_names
-            if theory.state.cross:
+            if theory.cross:
                 params_list = cross_params_names
             eft_params += [prefix + name for name in params_list]
         eft_requires = dict(
@@ -806,7 +785,7 @@ class TwoTracerCrossEFT:
             ]
             margcoef = np.ones(len(marginds), dtype=np.float64)
             if len(marginds) != 0:
-                self.theories[i].state.marg = True
+                self.theories[i].marg = True
             if self._index_to_type[i] != 'x':
                 for i, index in enumerate(marginds):
                     if index < 4:

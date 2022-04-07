@@ -1,20 +1,20 @@
 # global
 import sys
-from cobaya.likelihood import Likelihood
-from cobaya.theory import Provider
 from pathlib import Path
 from typing import (
-    List,
-    Dict,
     Any,
+    Dict,
+    List,
 )
+from cobaya.likelihood import Likelihood
+from cobaya.theory import Provider
 if sys.version_info >= (3, 8):
     from typing import Literal
 else:
     from typing_extensions import Literal
 # local
-from eftpipe.tools import update_path_in_dict
 from eftpipe.parser import select_parser
+from eftpipe.tools import update_path_in_dict
 from eftpipe.typing import (
     GaussianData,
     VectorTheory,
@@ -35,9 +35,7 @@ class EFTLike(Likelihood):
         if base_path is not None:
             update_path_in_dict(self.extra_args, Path(str(base_path)))
         mode: Literal['single', 'two', 'all'] = self.extra_args['mode']
-        parser = select_parser(mode)(
-            self.extra_args, logfunc=self.mpi_info
-        )
+        parser = select_parser(mode)(self.extra_args)
         data_obj = parser.create_gaussian_data()
         theory_obj = parser.create_vector_theory()
         self.data_obj = data_obj
@@ -83,6 +81,3 @@ class EFTLike(Likelihood):
 
     def get_can_provide_params(self) -> List[str]:
         return [self.label + 'reduced_chi2']
-
-
-

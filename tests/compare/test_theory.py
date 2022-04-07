@@ -44,20 +44,27 @@ HYPERPARAMS = {
 
 EFTPIPE_SETTINGS = {
     'z': 0.7,
-    'kmA': HYPERPARAMS['km'],
-    'ndA': HYPERPARAMS['nd'],
+    'km': HYPERPARAMS['km'],
+    'nd': HYPERPARAMS['nd'],
     'cache_dir_path': EFTPIPE_CACHE,
     'optiresum': False,
     'Nl': 3,
-    'projection_config': {
-        'z_AP': 0.7,
-        'Om_AP': 0.307115,
-        'rdrag_fid': None,  # pybird_dev doesn't support rdrag rescale in AP effect
-        'kdata': get_kdata(),
-        'windows_fourier_path': EFTPIPE_CACHE / 'LRG_NGC_GB_interp.npy',
-        'windows_configspace_path': \
-        COBAYA_PATH / 'data' / 'window' / 'LRG_NGC_GB_interp.dat',
-        'binning': True,
+    'with_IRresum': True,
+    'with_APeffect': True,
+    'with_window': True,
+    'with_fiber': False,
+    'with_binning': True,
+    'config_settings': {
+        "APeffect": {"Om_AP": 0.307115, "z_AP": 0.7},
+        "window": {
+            'window_fourier_file': EFTPIPE_CACHE / 'LRG_NGC_GB_interp.npy',
+            'window_configspace_file': \
+            COBAYA_PATH / 'data' / 'window' / 'LRG_NGC_GB_interp.dat',
+        },
+        "binning": {
+            "kout": get_kdata(),
+            "binning": True,
+        }
     }
 }
 
@@ -67,7 +74,7 @@ EFTPIPE_SETTINGS = {
 PYBIRDDEV_SETTINGS = {
     'output': 'bPk',
     'multipole': EFTPIPE_SETTINGS['Nl'],
-    'xdata': EFTPIPE_SETTINGS['projection_config']['kdata'],
+    'xdata': EFTPIPE_SETTINGS['config_settings']['binning']['kout'],
     'z': EFTPIPE_SETTINGS['z'],
     'km': HYPERPARAMS['km'],
     'nd': HYPERPARAMS['nd'],
@@ -77,14 +84,14 @@ PYBIRDDEV_SETTINGS = {
     'with_bias': False,
     'kmax': 0.3,
     'with_AP': True,
-    'z_AP': EFTPIPE_SETTINGS['projection_config']['z_AP'],
-    'Omega_m_AP': EFTPIPE_SETTINGS['projection_config']['Om_AP'],
+    'z_AP': EFTPIPE_SETTINGS['config_settings']['APeffect']['z_AP'],
+    'Omega_m_AP': EFTPIPE_SETTINGS['config_settings']['APeffect']['Om_AP'],
     'with_window': True,
     'windowPk': str(PYBIRDDEV_CACHE / 'LRG_NGC_GB_interp'),
     'windowCf': str(
         COBAYA_PATH / 'data' / 'window' / 'LRG_NGC_GB_interp.dat'
     ),
-    'with_binning': EFTPIPE_SETTINGS['projection_config']['binning'],
+    'with_binning': EFTPIPE_SETTINGS['config_settings']['binning']['binning'],
     'with_fibercol': False
 }
 
@@ -97,11 +104,10 @@ class CambProviderNoCache(CambProvider):
 
 class EFTPipeTh:
     def __init__(self, settings):
-        self.theory = \
-            EFTTheory(print_info=lambda x: None, **settings)  # type: ignore
+        self.theory = EFTTheory(**settings)  # type: ignore
 
-    def set_bolzman_provider(self, provider):
-        self.theory.set_bolzman_provider(provider)
+    def set_boltzmann_provider(self, provider):
+        self.theory.set_boltzmann_provider(provider)
 
     def theory_vector(self, params_dict):
         bs = [
@@ -214,7 +220,7 @@ class EFTPair:
             cosmo_dict = {
                 k: v for k, v in params_dict.items() if k in cosmonames}
             provider = CambProviderNoCache(z=self.z, **cosmo_dict)
-            self.eftpipe_th.set_bolzman_provider(provider)
+            self.eftpipe_th.set_boltzmann_provider(provider)
             self.pybird_th.set_bolzman_provider(provider)
             yield (self.eftpipe_th.theory_vector(params_dict),
                    self.pybird_th.theory_vector(params_dict))
@@ -226,7 +232,7 @@ class EFTPair:
 
 def has_pybird_dev() -> bool:
     try:
-        Correlator
+        Correlator # type: ignore
     except NameError:
         return False
     else:
