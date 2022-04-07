@@ -58,7 +58,6 @@ likelihood:
           cache_dir_path: cache
           projection_config:
             Om_AP: 0.307115
-            rdrag_fid: 147.66
             binning: true
 params:
   ombh2:
