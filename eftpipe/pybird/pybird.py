@@ -44,7 +44,7 @@ def Hubble(Om, z):
     return ((Om) * (1 + z)**3. + (1 - Om))**0.5
 
 
-def DA(Om, z):
+def DAfunc(Om, z):
     """ LCDM AP parameter auxiliary function """
     r = quad(lambda x: 1. / Hubble(Om, x), 0, z)[0]
     return r / (1 + z)
@@ -1958,6 +1958,10 @@ class Window(HasLogger):
 
     def _compute_Wal(self):
         self.mpi_info("Computing new mask")
+        self.mpi_warning(
+            "please manually check the fourier matrix after computation, "
+            "since the default FFTLog settings may not be optimal"
+        )
         Na, Nl, Nq = [cast(int, self.meta[x]) for x in ("Na", "Nl", "Nq")]
         if self.window_configspace_file is None:
             raise ValueError(
@@ -2118,45 +2122,73 @@ class Window(HasLogger):
         self._cached_path = {}
 
 
-class Projection(object):
+class APeffect(HasLogger):
+    """AP effect
+
+    Parameters
+    ----------
+    Om_AP: float, optional
+        omega matter for fiducial cosmology
+    z_AP: float, optional
+        fiducial effective redshift
+    DA: float, optional
+        fiducial DA
+    H: float, optional
+        fiducial H
+    nbinsmu: int
+        mu bins in [0, 1], default 200
+    accboost: int
+        boost the accuracy, default 1
+    Nlmax: int
+        approximate Pkmu using Nlmax multipoles, default self.co.Nl
+    co: Common
+        this class only uses co.k and co.Nl, default pybird.Common
+
+    Methods
+    -------
+    AP(bird, q=None): apply APeffect
     """
-    A class to apply projection effects:
-    - Alcock-Pascynski (AP) effect
-    - Window functions (survey masks)
-    - k-binning or interpolation over the data k-array
-    - Fiber collision corrections
-    """
-    def __init__(self, kout, Om_AP, z_AP, nbinsmu=200, 
-        window_fourier_name=None, path_to_window=None, window_configspace_file=None,
-        binning=False, fibcol=False, co=common,
-        xmin_factor=1.0, xmax_factor=100., rdrag_fid=None):
+    def __init__(
+        self,
+        Om_AP: Optional[float] = None,
+        z_AP: Optional[float] = None,
+        DA: Optional[float] = None,
+        H: Optional[float] = None,
+        nbinsmu: int = 200,
+        accboost: int = 1,
+        Nlmax: Optional[int] = None,
+        co: Common = common,
+    ):
+        self.set_logger(lowercase=False, name='pybird.APeffect')
+        self.co = co
+        if (DA is not None) and (H is not None):
+            self.DA, self.H = DA, H
+        elif (Om_AP is not None) and (z_AP is not None):
+            self.mpi_warning(
+                "DA and H not given, compute using Om_AP and z_AP instead")
+            self.mpi_info('Om_AP=%.5f, z_AP=%.5f', Om_AP, z_AP)
+            self.DA: float = DAfunc(Om_AP, z_AP)
+            self.H: float = Hubble(Om_AP, z_AP)
+        else:
+            raise ValueError("expect input params: Om_AP and z_AP, or DA and H")
 
-        self.co: Common = co
-        self.kout = kout
-
-        self.Om = Om_AP
-        self.z = z_AP
-        self.rdrag_fid = rdrag_fid
-
-        self.DA = DA(self.Om, self.z)
-        self.H = Hubble(self.Om, self.z)
-
-        self.muacc = np.linspace(0., 1., nbinsmu)
-        self.kgrid, self.mugrid = np.meshgrid(self.co.k, self.muacc, indexing='ij')
-        # TODO: support higher N
+        self.nbinsmu = accboost * nbinsmu
+        self.muacc = np.linspace(0, 1, self.nbinsmu)
+        self.kgrid, self.mugrid = np.meshgrid(
+            self.co.k, self.muacc, indexing='ij')
+        self.Nlmax = self.Nlmax if Nlmax else self.co.Nl
+        if self.Nlmax > self.co.Nl:
+            raise ValueError(
+                f"request Nlmax={self.Nlmax}, "
+                f"while bird only compute Nl up to {self.co.Nl}"
+            )
         self.arrayLegendremugrid = np.array(
-            [(2 * 0 + 1) / 2. * legendre(0)(self.mugrid),
-             (2 * 2 + 1) / 2. * legendre(2)(self.mugrid),
-             (2 * 4 + 1) / 2. * legendre(4)(self.mugrid),])[:self.co.Nl]
-
-        if window_fourier_name is not None: 
-            self.path_to_window = path_to_window
-            self.window_fourier_name = window_fourier_name
-            self.window_configspace_file = window_configspace_file
-            self.setWindow(xmin_factor=xmin_factor, xmax_factor=xmax_factor)
-
-        if binning:
-            self.loadBinning(self.kout)
+            [(2 * l + 1) / 2. * legendre(l)(self.mugrid)
+             for l in 2 * np.arange(self.Nlmax)]
+        )
+        self._cached_path1 = {}
+        self._cached_path2 = {}
+        self.logstate()
 
     def get_AP_param(self, bird):
         """
@@ -2171,210 +2203,223 @@ class Projection(object):
         AP integration
         Credit: Jerome Gleyzes
         """
-        Pkint = interp1d(self.co.k, Pk, axis=-1, kind='cubic', bounds_error=False, fill_value='extrapolate')
+        Pkint = interp1d(
+            self.co.k, Pk, axis=-1, kind='cubic',
+            bounds_error=False, fill_value='extrapolate'
+        )(kp)
         if many:
-            Pkmu = np.einsum('lpkm,lkm->pkm', Pkint(kp), arrayLegendremup)
-            Integrandmu = np.einsum('pkm,lkm->lpkm', Pkmu, self.arrayLegendremugrid)
+            path1 = self._cached_path1.get(Pkint.shape, None)
+            if path1 is None:
+                path1 = np.einsum_path(
+                    'lpkm,lkm->pkm', Pkint, arrayLegendremup,
+                    optimize='optimal',
+                )[0]
+                self._cached_path1[Pkint.shape] = path1
+            Pkmu = np.einsum(
+                'lpkm,lkm->pkm', Pkint, arrayLegendremup, optimize=path1)
+
+            path2 = self._cached_path2.get(Pkmu.shape, None)
+            if path2 is None:
+                path2 = np.einsum_path(
+                    'pkm,lkm->lpkm', Pkmu, self.arrayLegendremugrid,
+                    optimize='optimal',
+                )[0]
+                self._cached_path2[Pkmu.shape] = path2
+            Integrandmu = np.einsum(
+                'pkm,lkm->lpkm', Pkmu, self.arrayLegendremugrid, optimize=path2)
         else:
-            Pkmu = np.einsum('lkm,lkm->km', Pkint(kp), arrayLegendremup)
-            Integrandmu = np.einsum('km,lkm->lkm', Pkmu, self.arrayLegendremugrid)
+            # TODO: cache
+            Pkmu = np.einsum('lkm,lkm->km', Pkint, arrayLegendremup)
+            Integrandmu = np.einsum(
+                'km,lkm->lkm', Pkmu, self.arrayLegendremugrid)
         return 2 * np.trapz(Integrandmu, x=self.mugrid, axis=-1)
 
-    def AP(self, bird: Bird, q=None, rdrag_true=None):
+    def AP(self, bird: Bird, q=None):
         """
         Apply the AP effect to the bird power spectrum
         Credit: Jerome Gleyzes
         """
         if q is None:
             qperp, qpar = self.get_AP_param(bird)
-            if (rdrag_true is not None) and (self.rdrag_fid is not None):
-                factor = self.rdrag_fid / rdrag_true
-                qperp, qpar = qperp * factor, qpar * factor
         else:
             qperp, qpar = q
         F = qpar / qperp
         kp = self.kgrid / qperp * (1 + self.mugrid**2 * (F**-2 - 1))**0.5
         mup = self.mugrid / F * (1 + self.mugrid**2 * (F**-2 - 1))**-0.5
-        arrayLegendremup = np.array([legendre(2*i)(mup) for i in range(self.co.Nl)])
+        arrayLegendremup = np.array(
+            [legendre(2*i)(mup) for i in range(self.Nlmax)])
 
-        if bird.which == 'marg':
-            bird.fullPs = 1. / (qperp**2 * qpar) * self.integrAP(bird.fullPs, kp, arrayLegendremup, many=False)
-            bird.Pb3 = 1. / (qperp**2 * qpar) * self.integrAP(bird.Pb3, kp, arrayLegendremup, many=False)
-            bird.Pctl = 1. / (qperp**2 * qpar) * self.integrAP(bird.Pctl, kp, arrayLegendremup, many=True)
-        elif bird.which == 'all':
+        if bird.which == 'all':
             # no effect on bird.Pstl, since the AP effect can be absorbed into coefficients
-            bird.P11l = 1. / (qperp**2 * qpar) * self.integrAP(bird.P11l, kp, arrayLegendremup, many=True)
-            bird.Pctl = 1. / (qperp**2 * qpar) * self.integrAP(bird.Pctl, kp, arrayLegendremup, many=True)
-            bird.Ploopl = 1. / (qperp**2 * qpar) * self.integrAP(bird.Ploopl, kp, arrayLegendremup, many=True)
-
+            bird.P11l = 1. / (qperp**2 * qpar) * self.integrAP(
+                bird.P11l, kp, arrayLegendremup, many=True)
+            bird.Pctl = 1. / (qperp**2 * qpar) * self.integrAP(
+                bird.Pctl, kp, arrayLegendremup, many=True)
+            bird.Ploopl = 1. / (qperp**2 * qpar) * self.integrAP(
+                bird.Ploopl, kp, arrayLegendremup, many=True)
+        elif bird.which == 'marg':
+            bird.fullPs = 1. / (qperp**2 * qpar) * self.integrAP(
+                bird.fullPs, kp, arrayLegendremup, many=False)
+            bird.Pb3 = 1. / (qperp**2 * qpar) * self.integrAP(
+                bird.Pb3, kp, arrayLegendremup, many=False)
+            bird.Pctl = 1. / (qperp**2 * qpar) * self.integrAP(
+                bird.Pctl, kp, arrayLegendremup, many=True)
         elif bird.which == 'full':
-            bird.fullPs = 1. / (qperp**2 * qpar) * self.integrAP(bird.fullPs, kp, arrayLegendremup, many=False)
-
-    def setWindow(self, load=True, save=True, Nl=3, withmask=True, windowk=0.05, xmin_factor=1.0, xmax_factor=100.):
-
-        r"""
-        Pre-load the window function to apply to the power spectrum by convolution in Fourier space
-        Wal is an array of shape l,l',k',k where so that $P_a(k) = \int dk' \sum_l W_{a l}(k,k') P_l(k')$
-        If it cannot find the file, it will compute a new one from a provided mask in configuration space.
-
-        Inputs
-        ------
-        withmask: whether to only do the convolution over a small range around k
-        windowk: the size of said range
-
-        Notes
-        -----
-        ds in mask file should be small enough because the value will be multiplied by a spherical 
-        bessel function and then will be interpolated
-        """
-        
-        self.p = window_kgrid()
-        
-        window_fourier_file = os.path.join(self.path_to_window, f'{self.window_fourier_name}') # type: ignore
-        
-        if load is True:
-            try:
-                self.Wal = np.load(window_fourier_file)
-                print ('Loaded mask: %s'%window_fourier_file)
-                save = False
-            except:
-                print ('Can\'t load mask: %s \n instead,' % window_fourier_file )
-                load = False
-            else:
-                if self.Wal.shape[0] != self.co.Nl:
-                    save = True
-                    print(f"Nl not match, load the one with suffix '_Nl{self.co.Nl}'")
-                    new_file_name = Path(self.path_to_window) / (Path(self.window_fourier_name).stem + f'_Nl{self.co.Nl}.npy') # type: ignore
-                    try:
-                        self.Wal = np.load(new_file_name)
-                        print(f'Loaded mask: {new_file_name}')
-                        save = False
-                        assert self.Wal.shape[0] == self.co.Nl
-                    except FileNotFoundError:
-                        print(f"Can't load mask: {new_file_name}\n instead,")
-                        load = False
-            
-        if load is False:
-            print ('Computing new mask.')
-            if self.window_configspace_file is None:
-                print ('Error: please specify a configuration-space mask file.')
-                compute = False
-            else:    
-                try:
-                    #swindow_config_space = np.loadtxt('dev_window_BOSS_CMASS_z057.dat')
-                    swindow_config_space = np.loadtxt(self.window_configspace_file)
-                    if swindow_config_space[0,0] == 0.0:
-                        swindow_config_space = swindow_config_space[1:,:]
-                    if swindow_config_space.shape[-1] > (1 + 3):
-                        swindow_config_space = swindow_config_space[:, :4]
-                    compute = True
-                except:
-                    print ('Error: can\'t load mask file: %s.'%self.window_configspace_file)
-                    compute = False
-        
-            if compute is True:
-                Calp = np.array([ 
-                    [ [1., 0., 0.],
-                      [0., 1/5., 0.],
-                      [0., 0., 1/9.] ],
-                    [ [0., 1., 0.],
-                      [1., 2/7., 2/7.],
-                      [0., 2/7., 100/693.] ],
-                    [ [0., 0., 1.],
-                      [0., 18/35., 20/77.],
-                      [1., 20/77., 162/1001.] ],
-                    ])
-
-                sw = swindow_config_space[:,0] # type: ignore
-                Qp = np.moveaxis(swindow_config_space[:,1:].reshape(-1,3), 0, -1 )[:Nl] # type: ignore
-
-                Qal = np.einsum('alp,ps->als', Calp, Qp)[:self.co.Nl, :Nl, :]
-
-                self.fftsettings = dict(Nmax=4096, xmin=sw[0] * xmin_factor, xmax=sw[-1]*xmax_factor, bias=-1.6) # 1e-2 - 1e6 [Mpc/h]
-                self.fft = FFTLog(**self.fftsettings)
-                self.pPow = exp(np.einsum('n,s->ns', -self.fft.Pow-3., log(self.p)))
-                self.M = np.empty(shape=(Nl, self.fft.Pow.shape[0]), dtype='complex')
-                for l in range(Nl): self.M[l] = 4*pi * MPC(2*l, -0.5*self.fft.Pow)
-
-                self.Coef = np.empty(shape=(self.co.Nl, Nl, self.co.Nk, self.fft.Pow.shape[0]), dtype='complex')
-                co_Nls = np.arange(self.co.Nl)
-                Nls = np.arange(Nl)
-                # vectorize the expression with broadcasting, index: alkn
-                self.Coef[...] = (
-                    (-1j)**(2 * co_Nls)[:, None, None, None]
-                    * 1j**(2 * Nls)[None, :, None, None]
-                    * self.fft.Coef(
-                        sw,
-                        Qal[:, :, None, :] * spherical_jn(
-                            2 * co_Nls[:, None, None, None],
-                            sw[None, None, None, :] *
-                            self.co.k[None, None, :, None]
-                        ),
-                        extrap='padding'
-                    )
-                )
-
-                self.Wal = self.p**2 * np.real( np.einsum('alkn,np,ln->alkp', self.Coef, self.pPow, self.M) )
-
-                if save is True: 
-                    try:
-                        _ = new_file_name # type: ignore
-                        window_fourier_file = new_file_name # type: ignore
-                    except NameError:
-                        pass
-                    print (f'Saving mask: {window_fourier_file}')
-                    np.save(window_fourier_file, self.Wal)
-
-        self.Wal = self.Wal[:,:self.co.Nl]
- 
-        # Apply masking centered around the value of k
-        Wal_masked = self.Wal
-        if withmask:
-            kpgrid, kgrid = np.meshgrid(self.p, self.co.k, indexing='ij')
-            mask = (kpgrid < kgrid + windowk) & (kpgrid > kgrid - windowk)
-            Wal_masked = np.einsum('alkp,pk->alkp', self.Wal, mask)
-
-        # the spacing (needed to do the convolution as a sum)
-        deltap = self.p[1:] - self.p[:-1]
-        deltap = np.concatenate([[0], deltap])
-        self.Waldk = np.einsum('alkp,p->alkp', Wal_masked, deltap)
-
-    def integrWindow(self, P, many=False):
-        """
-        Convolve the window functions to a power spectrum P
-        """
-        Pk = interp1d(self.co.k, P, axis=-1, kind='cubic', bounds_error=False, fill_value='extrapolate')(self.p)
-        # (multipole l, multipole ' p, k, k' m) , (multipole ', power pectra s, k' m)
-        #print (self.Qlldk.shape, Pk.shape)
-        if many:
-            return np.einsum('alkp,lsp->ask', self.Waldk, Pk)
+            bird.fullPs = 1. / (qperp**2 * qpar) * self.integrAP(
+                bird.fullPs, kp, arrayLegendremup, many=False)
         else:
-            return np.einsum('alkp,lp->ak', self.Waldk, Pk)
+            raise ValueError(f"unexpected bird.which={bird.which}")
 
-    def Window(self, bird: Bird):
+    def logstate(self):
+        self.mpi_info("fiducial DA=%.5f, H=%.5f", self.DA, self.H)
+        self.mpi_info("nbinsmu=%d", self.nbinsmu)
+        self.mpi_info("Nlmax=%d", self.Nlmax)
+
+    def clear_cache(self):
+        self._cached_path1 = {}
+        self._cached_path2 = {}
+
+
+class Binning(HasLogger):
+    """Match the theoretical output to data, doing binning or interpolation
+
+    Parameters
+    ----------
+    kout: ArrayLike, 1d
+        k of data
+    binning: bool
+        set it True to perform binning correction, default False
+    accboost: int
+        accuracy boost, default 1
+    co: Common
+        this class only uses co.k, default pybird.Common
+
+    Methods
+    -------
+    match(bird): apply binning or interpolation
+
+    Notes
+    -----
+    if binning=True, kbins will be constructed using kout[-1] - kout[-2]
+    """
+    def __init__(
+        self,
+        kout,
+        binning: bool = False,
+        accboost: int = 1,
+        co: Common = common
+    ) -> None:
+        self.set_logger(name='pybird.Binning')
+        self.kout = np.array(kout)
+        self.co = co
+        self.binning = binning
+        self.accboost = accboost
+        self.mpi_info("matching theory output with data")
+        self.mpi_info(
+            "%d points, from %.3f to %.3f",
+            self.kout.size, self.kout[0], self.kout[-1]
+        )
+        self.mpi_info("binning correction: %s", "on" if self.binning else "off")
+        if self.binning:
+            kspaces = self.kout[1:] - self.kout[:-1]
+            kspace_diff = kspaces[1:] - kspaces[:-1]
+            if not np.allclose(kspace_diff, 0, rtol=0, atol=1e-6):
+                self.mpi_warning(
+                    "binning correction on, "
+                    "but given kout seems not linearly spaced, "
+                    "be careful because the constructed kbins may be wrong, "
+                    "especially when 'kmax' is small",
+                )
+            self.loadBinning(self.kout)
+            self.mpi_info("num of kgrids in each bin: %d", self.points[0].size)
+
+    def loadBinning(self, setkout):
         """
-        Apply the survey window function to the bird power spectrum 
+        Create the bins of the data k's
         """
-        if bird.which == 'marg':
-            bird.fullPs = self.integrWindow(bird.fullPs, many=False)
-            bird.Pb3 = self.integrWindow(bird.Pb3, many=False)
-            bird.Pctl = self.integrWindow(bird.Pctl, many=True)
+        delta_k = np.round(setkout[-1] - setkout[-2], 2)
+        kcentral = (setkout[-1] - delta_k * np.arange(len(setkout)))[::-1]
+        binmin = kcentral - delta_k / 2
+        binmax = kcentral + delta_k / 2
+        self.binvol = np.array([quad(lambda k: k**2, kbinmin, kbinmax)[0]
+                                for (kbinmin, kbinmax) in zip(binmin, binmax)])
+        points = [np.linspace(kbinmin, kbinmax, 100 * self.accboost)
+                  for (kbinmin, kbinmax) in zip(binmin, binmax)]
+        self.points = np.array(points)
 
-        elif bird.which == 'all':
-            bird.P11l = self.integrWindow(bird.P11l, many=True)
-            bird.Pctl = self.integrWindow(bird.Pctl, many=True)
-            bird.Ploopl = self.integrWindow(bird.Ploopl, many=True)
-            bird.setPstl(self.p)
-            bird.Pstl = np.einsum('alkp,lsp->ask', self.Waldk, bird.Pstl)
+    def integrBinning(self, P):
+        """
+        Integrate over each bin of the data k's
+        """
+        Pkint = interp1d(self.co.k, P, axis=-1, kind='cubic', bounds_error=False, fill_value='extrapolate')
+        res = np.trapz(Pkint(self.points) * self.points**2, x=self.points, axis=-1)
+        return res / self.binvol
 
-        elif bird.which == 'full':
-            bird.fullPs = self.integrWindow(bird.fullPs, many=False)
+    def kbinning(self, bird: Bird):
+        """
+        Apply binning in k-space for linear-spaced data k-array
+        """
+        if bird.which == 'all':
+            bird.P11l = self.integrBinning(bird.P11l)
+            bird.Pctl = self.integrBinning(bird.Pctl)
+            bird.Ploopl = self.integrBinning(bird.Ploopl)
+            bird.Pstl = self.integrBinning(bird.Pstl)
+
+    def kdata(self, bird: Bird):
+        """
+        Interpolate the bird power spectrum on the data k-array
+        """
+        if bird.which == 'all':
+            bird.P11l = interp1d(self.co.k, bird.P11l, axis=-1, kind='cubic', bounds_error=False)(self.kout)
+            bird.Pctl = interp1d(self.co.k, bird.Pctl, axis=-1, kind='cubic', bounds_error=False)(self.kout)
+            bird.Ploopl = interp1d(self.co.k, bird.Ploopl, axis=-1, kind='cubic', bounds_error=False)(self.kout)
+            bird.Pstl = interp1d(self.co.k, bird.Pstl, axis=-1, kind='cubic', bounds_error=False)(self.kout)
+        if bird.which == 'full':
+            bird.fullPs = interp1d(self.co.k, bird.fullPs, axis=-1, kind='cubic', bounds_error=False)(self.kout)
+
+    def match(self, bird: Bird):
+        if self.binning:
+            self.kbinning(bird)
+        else:
+            self.kdata(bird)
+
+
+class FiberCollision(HasLogger):
+    """Fiber Collision correction
+
+    Parameters
+    ----------
+    ktrust: float
+        a UV cutoff, default 0.25
+    fs: float
+        fraction of the survey affected by fiber collisions, default 0.6
+    Dfc: float
+        angular distance of the fiber channel, default Dfc(z = 0.55) = 0.43 / 0.6777 Mpc/h
+    co: Common
+        this class only uses co.k and co.Nl, default pybird.Common
+    """
+    def __init__(
+        self,
+        ktrust: float = 0.25,
+        fs: float = 0.6,
+        Dfc: float = 0.43 / 0.6777,
+        co: Common = common,
+    ) -> None:
+        self.set_logger(name='pybird.FiberCollision')
+        self.ktrust = ktrust
+        self.fs = fs
+        self.Dfc = Dfc
+        self.co = co
+        self.mpi_info("Apply fiber collision correction")
+        self.mpi_info("ktrust: %.3f", self.fs)
+        self.mpi_info("fs: %.3f", self.fs)
+        self.mpi_info("Dfc: %.3f", self.Dfc)
 
     def dPuncorr(self, kout, fs=0.6, Dfc=0.43 / 0.6777):
         """
         Compute the uncorrelated contribution of fiber collisions
 
-        kPS : a cbird wavenumber output, typically a (39,) np array
+        kout : a cbird wavenumber output, typically a (39,) np array
         fs : fraction of the survey affected by fiber collisions
         Dfc : angular distance of the fiber channel Dfc(z = 0.55) = 0.43Mpc
 
@@ -2413,12 +2458,22 @@ class Projection(object):
                         for i, k in enumerate(kout):
                             if lp <= l:
                                 maskIR = (q_ref < k)
-                                dPcorr[l, j, i] += - 0.5 * fs * Dfc**2 * np.einsum('q,q,q,q->', q_ref[maskIR],
-                                                                                   dq_ref[maskIR], PS_interp[lp, j, maskIR], fllp_IR(2 * l, 2 * lp, k, q_ref[maskIR], Dfc))
+                                dPcorr[l, j, i] += - 0.5 * fs * Dfc**2 * np.einsum(
+                                    'q,q,q,q->',
+                                    q_ref[maskIR],
+                                    dq_ref[maskIR],
+                                    PS_interp[lp, j, maskIR],
+                                    fllp_IR(2 * l, 2 * lp, k, q_ref[maskIR], Dfc)
+                                )
                             if lp >= l:
                                 maskUV = ((q_ref > k) & (q_ref < ktrust))
-                                dPcorr[l, j, i] += - 0.5 * fs * Dfc**2 * np.einsum('q,q,q,q->', q_ref[maskUV],
-                                                                                   dq_ref[maskUV], PS_interp[lp, j, maskUV], fllp_UV(2 * l, 2 * lp, k, q_ref[maskUV], Dfc))
+                                dPcorr[l, j, i] += - 0.5 * fs * Dfc**2 * np.einsum(
+                                    'q,q,q,q->',
+                                    q_ref[maskUV],
+                                    dq_ref[maskUV],
+                                    PS_interp[lp, j, maskUV],
+                                    fllp_UV(2 * l, 2 * lp, k, q_ref[maskUV], Dfc)
+                                )
         else:
             dPcorr = np.zeros(shape=(PS.shape[0], len(kout)))
             for l in range(self.co.Nl):
@@ -2426,63 +2481,31 @@ class Projection(object):
                     for i, k in enumerate(kout):
                         if lp <= l:
                             maskIR = (q_ref < k)
-                            dPcorr[l, i] += - 0.5 * fs * Dfc**2 * np.einsum('q,q,q,q->', q_ref[maskIR],
-                                                                            dq_ref[maskIR], PS_interp[lp, maskIR], fllp_IR(2 * l, 2 * lp, k, q_ref[maskIR], Dfc))
+                            dPcorr[l, i] += - 0.5 * fs * Dfc**2 * np.einsum(
+                                'q,q,q,q->',
+                                q_ref[maskIR],
+                                dq_ref[maskIR],
+                                PS_interp[lp, maskIR],
+                                fllp_IR(2 * l, 2 * lp, k, q_ref[maskIR], Dfc)
+                            )
                         if lp >= l:
                             maskUV = ((q_ref > k) & (q_ref < ktrust))
-                            dPcorr[l, i] += - 0.5 * fs * Dfc**2 * np.einsum('q,q,q,q->', q_ref[maskUV],
-                                                                            dq_ref[maskUV], PS_interp[lp, maskUV], fllp_UV(2 * l, 2 * lp, k, q_ref[maskUV], Dfc))
+                            dPcorr[l, i] += - 0.5 * fs * Dfc**2 * np.einsum(
+                                'q,q,q,q->',
+                                q_ref[maskUV],
+                                dq_ref[maskUV],
+                                PS_interp[lp, maskUV],
+                                fllp_UV(2 * l, 2 * lp, k, q_ref[maskUV], Dfc)
+                            )
         return dPcorr
 
-    def fibcolWindow(self, bird: Bird, *, ktrust=0.25, fs=0.6, Dfc=0.43 / 0.6777):
+    # TODO: stochastic terms? uncorrelated contribution?
+    def fibcolWindow(self, bird: Bird):
         """
         Apply window effective method correction to fiber collisions to the bird power spectrum
         """
+        ktrust, fs, Dfc = self.ktrust, self.fs, self.Dfc
         if bird.which == 'all':
             bird.P11l += self.dPcorr(self.co.k, self.co.k, bird.P11l, many=True, ktrust=ktrust, fs=fs, Dfc=Dfc)
             bird.Pctl += self.dPcorr(self.co.k, self.co.k, bird.Pctl, many=True, ktrust=ktrust, fs=fs, Dfc=Dfc)
             bird.Ploopl += self.dPcorr(self.co.k, self.co.k, bird.Ploopl, many=True, ktrust=ktrust, fs=fs, Dfc=Dfc)
-
-    def loadBinning(self, setkout):
-        """
-        Create the bins of the data k's
-        """
-        delta_k = np.round(setkout[-1] - setkout[-2], 2)
-        kcentral = (setkout[-1] - delta_k * np.arange(len(setkout)))[::-1]
-        binmin = kcentral - delta_k / 2
-        binmax = kcentral + delta_k / 2
-        self.binvol = np.array([quad(lambda k: k**2, kbinmin, kbinmax)[0]
-                                for (kbinmin, kbinmax) in zip(binmin, binmax)])
-        points = [np.linspace(kbinmin, kbinmax, 100) for (kbinmin, kbinmax) in zip(binmin, binmax)]
-        self.points = np.array(points)
-
-    def integrBinning(self, P):
-        """
-        Integrate over each bin of the data k's
-        """
-        Pkint = interp1d(self.co.k, P, axis=-1, kind='cubic', bounds_error=False, fill_value='extrapolate')
-        res = np.trapz(Pkint(self.points) * self.points**2, x=self.points, axis=-1)
-        return res / self.binvol
-
-    def kbinning(self, bird: Bird):
-        """
-        Apply binning in k-space for linear-spaced data k-array
-        """
-        if bird.which == 'all':
-            bird.P11l = self.integrBinning(bird.P11l)
-            bird.Pctl = self.integrBinning(bird.Pctl)
-            bird.Ploopl = self.integrBinning(bird.Ploopl)
-            bird.Pstl = self.integrBinning(bird.Pstl)
-            # bird.Pstl = interp1d(self.co.k, bird.Pstl, axis=-1, kind='cubic', bounds_error=False)(self.kout)
-
-    def kdata(self, bird: Bird):
-        """
-        Interpolate the bird power spectrum on the data k-array
-        """
-        if bird.which == 'all':
-            bird.P11l = interp1d(self.co.k, bird.P11l, axis=-1, kind='cubic', bounds_error=False)(self.kout)
-            bird.Pctl = interp1d(self.co.k, bird.Pctl, axis=-1, kind='cubic', bounds_error=False)(self.kout)
-            bird.Ploopl = interp1d(self.co.k, bird.Ploopl, axis=-1, kind='cubic', bounds_error=False)(self.kout)
-            bird.Pstl = interp1d(self.co.k, bird.Pstl, axis=-1, kind='cubic', bounds_error=False)(self.kout)
-        if bird.which == 'full':
-            bird.fullPs = interp1d(self.co.k, bird.fullPs, axis=-1, kind='cubic', bounds_error=False)(self.kout)

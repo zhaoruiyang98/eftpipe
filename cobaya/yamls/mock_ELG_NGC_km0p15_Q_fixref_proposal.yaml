@@ -25,16 +25,23 @@ likelihood:
         Nl: 2
         chained: true
         z: 0.845
-        kmA: 0.45
-        ndA: 0.00018518518518518518
+        km: 0.45
+        nd: 0.00018518518518518518
         cache_dir_path: cache
-        projection_config:
-          Om_AP: 0.307115
-          z_AP: 0.845
-          rdrag_fid: 147.66
-          windows_fourier_path: cache/ELG_NGC_interp.npy
-          windows_configspace_path: data/window/ELG_NGC_interp.dat
-          binning: true
+        with_IRresum: true
+        with_APeffect: true
+        with_window: true
+        with_fiber: false
+        with_binning: true
+        config_settings:
+          APeffect:
+            Om_AP: 0.307115
+            z_AP: 0.845
+          window:
+            window_fourier_file: cache/ELG_NGC_interp.npy
+            window_configspace_file: data/window/ELG_NGC_interp.dat
+          binning:
+            binning: true
 params:
   ombh2:
     value: 0.02214

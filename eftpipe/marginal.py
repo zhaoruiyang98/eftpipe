@@ -1,33 +1,36 @@
 import numpy as np
-from numpy import ndarray as NDArray
 from typing import (
     Dict,
     Tuple,
     Any,
 )
-from eftpipe.typing import GaussianData, VectorTheory, LogFunc
+from numpy import ndarray as NDArray
+from cobaya.log import HasLogger
+from eftpipe.typing import (
+    GaussianData,
+    VectorTheory,
+)
 
 
-class MargGaussian:
+class MargGaussian(HasLogger):
     def __init__(
         self,
         data_obj: GaussianData,
         theory_obj: VectorTheory,
         prior: Dict[str, Any],
-        logfunc: LogFunc = print
     ) -> None:
+        self.set_logger(lowercase=False, name="eftpipe.MargGaussian")
+
         self.data_obj = data_obj
         self.theory_obj = theory_obj
         self.invcov = data_obj.invcov
         self.D = data_obj.data_vector
         valid_prior = self._update_prior(prior)
-        logfunc('==========================>')
-        logfunc(f'the following parameters are marginalized with gaussian prior:')
+        self.mpi_info(f'the following parameters are marginalized with gaussian prior:')
         for name, dct in valid_prior.items():
-            logfunc(f'{name}:')
-            logfunc(f"  loc: {dct['loc']}")
-            logfunc(f"  scale: {dct['scale']}")
-        logfunc('<==========================')
+            self.mpi_info(f'{name}:')
+            self.mpi_info(f"  loc: {dct['loc']}")
+            self.mpi_info(f"  scale: {dct['scale']}")
         self.theory_obj.set_marg(valid_prior)
         self.mu_G, self.sigma_inv = self._calc_prior(valid_prior)
 

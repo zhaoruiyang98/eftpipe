@@ -12,15 +12,14 @@ if sys.version_info >= (3, 8):
 else:
     from typing_extensions import Literal
 # local
-from eftpipe.lssdata import FullShapeData, FullShapeDataDict
-from eftpipe.theory import (
-    EFTTheory,
-    SingleTracerEFT,
-    TwoTracerEFT,
-    TwoTracerCrossEFT,
-)
+from eftpipe.lssdata import FullShapeData
+from eftpipe.lssdata import FullShapeDataDict
 from eftpipe.marginal import MargGaussian
-from eftpipe.typing import LogFunc
+from eftpipe.theory import EFTTheory
+from eftpipe.theory import SingleTracerEFT
+from eftpipe.theory import TwoTracerCrossEFT
+from eftpipe.theory import TwoTracerEFT
+from eftpipe.tools import recursively_update_dict
 
 
 # TODO: deprecated
@@ -65,8 +64,6 @@ class SingleTracerParser:
     ----------
     dct: dict[str, Any]
         a dictionary which contains all the information to create SingleTracerEFT
-    logfunc: Callable[[str], None]
-        function used for logging, default print
 
     Methods
     -------
@@ -76,21 +73,18 @@ class SingleTracerParser:
         create a FullShapeData object
     create_vector_theory(self):
         create a SingleTracerEFT object
+    
+    Notes
+    -----
+    kdata of data_obj will be passed to config Binning
     """
 
-    def __init__(
-        self,
-        dct: Dict[str, Any],
-        logfunc: LogFunc = print
-    ) -> None:
+    def __init__(self, dct: Dict[str, Any]) -> None:
         self._data_parser = FullShapeDataParser(dct['data'])
         theory_info = deepcopy(dct['theory'])
-        theory_info['projection_config']['kdata'] = None
-        theory_info['print_info'] = logfunc
         prefix = str(theory_info.pop('prefix', ""))
         self._prefix = prefix
         self._theory_info = theory_info
-        self.logfunc = logfunc
         self.marg_info = deepcopy(dct.get('marg', {}))
 
     def create_gaussian_data(self, quiet=False) -> FullShapeData:
@@ -102,12 +96,14 @@ class SingleTracerParser:
     def create_vector_theory(self) -> SingleTracerEFT:
         data_obj = self.create_gaussian_data(quiet=True)
         kdata = data_obj.pkldatas[0].kdata
-        self._theory_info['projection_config']['kdata'] = kdata
+        if "config_settings" in self._theory_info.keys():
+            if "binning" in self._theory_info["config_settings"].keys():
+                self._theory_info["config_settings"]["binning"]["kout"] = kdata
         theory = EFTTheory(**self._theory_info)
         return SingleTracerEFT(theory, self._prefix)
 
     def create_marglike(self, data_obj, vector_theory):
-        return MargGaussian(data_obj, vector_theory, self.marg_info, self.logfunc)
+        return MargGaussian(data_obj, vector_theory, self.marg_info)
 
     @classmethod
     def helper_dict(cls):
@@ -125,20 +121,24 @@ class SingleTracerParser:
             },
             "theory": {
                 "prefix": "",
-                "Nl": 2,
                 "z": 0.5,
-                "kmA": 0.7,
-                "ndA": 7.91e-05,
                 "cache_dir_path": "",
+                "km": 0.7,
+                "nd": 7.91e-05,
+                "Nl": 2,
+                "optiresum": False,
                 "chained": False,
-                "projection_config": {
-                    "Om_AP": 0.3,
-                    "z_AP": 0.5,
-                    "rdrag_fid": 150.0,
-                    "window_fourier_path": "",
-                    "window_configspace_path": "",
-                    "binning": True,
-                }
+                "with_IRresum": True,
+                "with_APeffect": True,
+                "with_window": True,
+                "with_fiber": False,
+                "with_binning": True,
+                "config_settings": {
+                    "APeffect": {},
+                    "window": {},
+                    "fiber": {},
+                    "binning": {},
+                },
             }
         }
 
@@ -150,8 +150,6 @@ class TwoTracerParser:
     ----------
     dct: dict[str, Any]
         a dictionary which contains all the information to create TwoTracerEFT
-    logfunc: Callable[[str], None]
-        function used for logging, default print
 
     Methods
     -------
@@ -161,13 +159,13 @@ class TwoTracerParser:
         create a FullShapeData object
     create_vector_theory(self):
         create a TwoTracerEFT object
+
+    Notes
+    -----
+    kdata of data_obj will be passed to config Binning
     """
 
-    def __init__(
-        self,
-        dct: Dict[str, Any],
-        logfunc: LogFunc = print
-    ) -> None:
+    def __init__(self, dct: Dict[str, Any]) -> None:
         self._data_parser = FullShapeDataParser(dct['data'])
         theory_info = deepcopy(dct['theory'])
         prefixes = theory_info.pop('prefix')
@@ -179,16 +177,11 @@ class TwoTracerParser:
         theory_infos = theory_info['theory_info']
         common = theory_info.pop('common', None)
         if common is not None:
-            new_theory_infos = [deepcopy(common) for _ in theory_infos]
-            for raw, new in zip(new_theory_infos, theory_infos):
-                raw_projection = raw.pop('projection_config', {})
-                new_projection = new.pop('projection_config', {})
-                raw.update(new)
-                raw_projection.update(new_projection)
-                raw['projection_config'] = raw_projection
-            theory_infos = new_theory_infos
+            common_infos = [deepcopy(common) for _ in theory_infos]
+            for ref, new in zip(common_infos, theory_infos):
+                recursively_update_dict(ref, new)
+            theory_infos = common_infos
         self._theory_infos = theory_infos
-        self.logfunc = logfunc
         self.marg_info = deepcopy(dct.get('marg', {}))
 
     def create_gaussian_data(self, quiet=False) -> FullShapeData:
@@ -200,15 +193,17 @@ class TwoTracerParser:
     def create_vector_theory(self) -> TwoTracerEFT:
         data_obj = self.create_gaussian_data(quiet=True)
         for theory_info, pkldata in zip(self._theory_infos, data_obj.pkldatas):
-            theory_info['projection_config']['kdata'] = pkldata.kdata
+            if "config_settings" in theory_info.keys():
+                if "binning" in theory_info["config_settings"].keys():
+                    theory_info["config_settings"]["binning"]["kout"] = pkldata.kdata
         theories = [
-            EFTTheory(**theory_info, print_info=self.logfunc)
+            EFTTheory(**theory_info)
             for theory_info in self._theory_infos
         ]
         return TwoTracerEFT(theories, self._prefixes)
 
     def create_marglike(self, data_obj, vector_theory):
-        return MargGaussian(data_obj, vector_theory, self.marg_info, self.logfunc)
+        return MargGaussian(data_obj, vector_theory, self.marg_info)
 
     @classmethod
     def helper_dict(cls):
@@ -232,22 +227,24 @@ class TwoTracerParser:
                 "theory_info": [
                     {
                         "z": 0.7,
-                        "kmA": 0.7,
-                        "ndA": 7.91e-05,
-                        "projection_config": {
-                            "z_AP": 0.7,
-                            "window_fourier_path": "",
-                            "window_configspace_path": "",
+                        "km": 0.7,
+                        "nd": 7.91e-05,
+                        "config_settings": {
+                            "APeffect": {},
+                            "window": {},
+                            "fiber": {},
+                            "binning": {},
                         }
                     },
                     {
                         "z": 0.77,
-                        "kmA": 0.45,
-                        "ndA": 0.00018518518518518518,
-                        "projection_config": {
-                            "z_AP": 0.77,
-                            "window_fourier_path": "",
-                            "window_configspace_path": "",
+                        "km": 0.45,
+                        "nd": 0.00018518518518518518,
+                        "config_settings": {
+                            "APeffect": {},
+                            "window": {},
+                            "fiber": {},
+                            "binning": {},
                         }
                     },
                 ],
@@ -255,10 +252,9 @@ class TwoTracerParser:
                     "cache_dir_path": "",
                     "Nl": 2,
                     "chained": False,
-                    "projection_config": {
-                        "Om_AP": 0.3,
-                        "rdrag_fid": 150.0,
-                        "binning": True
+                    "config_settings": {
+                        "APeffect": {"Om_AP": 0.3},
+                        "binning": {"binning": True},
                     }
                 }
             }
@@ -272,8 +268,6 @@ class TwoTracerCrossParser:
     ----------
     dct: dict[str, Any]
         a dictionary which contains all the information to create TwoTracerCrossEFT
-    logfunc: Callable[[str], None]
-        function used for logging, default print
 
     Methods
     -------
@@ -283,13 +277,13 @@ class TwoTracerCrossParser:
         create a FullShapeData object
     create_vector_theory(self):
         create a TwoTracerEFT object
+    
+    Notes
+    -----
+    kdata of data_obj will be passed to config Binning
     """
 
-    def __init__(
-        self,
-        dct: Dict[str, Any],
-        logfunc: LogFunc = print
-    ) -> None:
+    def __init__(self, dct: Dict[str, Any]) -> None:
         self._data_parser = FullShapeDataParser(dct['data'])
         theory_info = deepcopy(dct['theory'])
         prefixes = theory_info.pop('prefix')
@@ -301,17 +295,12 @@ class TwoTracerCrossParser:
         theory_infos = theory_info['theory_info']
         common = theory_info.pop('common', None)
         if common is not None:
-            new_theory_infos = [deepcopy(common) for _ in theory_infos]
-            for raw, new in zip(new_theory_infos, theory_infos):
-                raw_projection = raw.pop('projection_config', {})
-                new_projection = new.pop('projection_config', {})
-                raw.update(new)
-                raw_projection.update(new_projection)
-                raw['projection_config'] = raw_projection
-            theory_infos = new_theory_infos
+            common_infos = [deepcopy(common) for _ in theory_infos]
+            for ref, new in zip(common_infos, theory_infos):
+                recursively_update_dict(ref, new)
+            theory_infos = common_infos
         # TODO: cross's km, nd can be set from other two theories
         self._theory_infos = theory_infos
-        self.logfunc = logfunc
         self.marg_info = deepcopy(dct.get('marg', {}))
 
     def create_gaussian_data(self, quiet=False) -> FullShapeData:
@@ -324,15 +313,17 @@ class TwoTracerCrossParser:
     def create_vector_theory(self) -> TwoTracerCrossEFT:
         data_obj = self.create_gaussian_data(quiet=True)
         for theory_info, pkldata in zip(self._theory_infos, data_obj.pkldatas):
-            theory_info['projection_config']['kdata'] = pkldata.kdata
+            if "config_settings" in theory_info.keys():
+                if "binning" in theory_info["config_settings"].keys():
+                    theory_info["config_settings"]["binning"]["kout"] = pkldata.kdata
         theories = [
-            EFTTheory(**theory_info, print_info=self.logfunc)
+            EFTTheory(**theory_info)
             for theory_info in self._theory_infos
         ]
         return TwoTracerCrossEFT(theories, self._prefixes)
 
     def create_marglike(self, data_obj, vector_theory):
-        return MargGaussian(data_obj, vector_theory, self.marg_info, self.logfunc)
+        return MargGaussian(data_obj, vector_theory, self.marg_info)
 
     @classmethod
     def helper_dict(cls):
@@ -357,22 +348,24 @@ class TwoTracerCrossParser:
                 "theory_info": [
                     {
                         "z": 0.7,
-                        "kmA": 0.7,
-                        "ndA": 7.91e-05,
-                        "projection_config": {
-                            "z_AP": 0.7,
-                            "window_fourier_path": "",
-                            "window_configspace_path": "",
+                        "km": 0.7,
+                        "nd": 7.91e-05,
+                        "config_settings": {
+                            "APeffect": {},
+                            "window": {},
+                            "fiber": {},
+                            "binning": {},
                         }
                     },
                     {
                         "z": 0.845,
-                        "kmA": 0.45,
-                        "ndA": 0.00018518518518518518,
-                        "projection_config": {
-                            "z_AP": 0.845,
-                            "window_fourier_path": "",
-                            "window_configspace_path": "",
+                        "km": 0.45,
+                        "nd": 0.00018518518518518518,
+                        "config_settings": {
+                            "APeffect": {},
+                            "window": {},
+                            "fiber": {},
+                            "binning": {},
                         }
                     },
                     {
@@ -382,10 +375,11 @@ class TwoTracerCrossParser:
                         "kmB": 0.45,
                         "ndB": 0.00018518518518518518,
                         "cross": True,
-                        "projection_config": {
-                            "z_AP": 0.77,
-                            "window_fourier_path": "",
-                            "window_configspace_path": "",
+                        "config_settings": {
+                            "APeffect": {},
+                            "window": {},
+                            "fiber": {},
+                            "binning": {},
                         }
                     },
                 ],
@@ -393,10 +387,9 @@ class TwoTracerCrossParser:
                     "cache_dir_path": "",
                     "Nl": 2,
                     "chained": False,
-                    "projection_config": {
-                        "Om_AP": 0.3,
-                        "rdrag_fid": 150.0,
-                        "binning": True
+                    "config_settings": {
+                        "APeffect": {"Om_AP": 0.3},
+                        "binning": {"binning": True},
                     }
                 }
             }

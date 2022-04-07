@@ -24,16 +24,23 @@ likelihood:
         prefix: LRG_NGC_
         Nl: 2
         z: 0.7
-        kmA: 0.7
-        ndA: 7.91e-05
+        km: 0.7
+        nd: 7.91e-05
         cache_dir_path: cache
-        projection_config:
-          Om_AP: 0.307115
-          z_AP: 0.7
-          rdrag_fid: 147.66
-          windows_fourier_path: cache/LRG_NGC_GB_interp.npy
-          windows_configspace_path: data/window/LRG_NGC_GB_interp.dat
-          binning: true
+        with_IRresum: true
+        with_APeffect: true
+        with_window: true
+        with_fiber: false
+        with_binning: true
+        config_settings:
+          APeffect:
+            Om_AP: 0.307115
+            z_AP: 0.7
+          window:
+            window_fourier_file: cache/LRG_NGC_GB_interp.npy
+            window_configspace_file: data/window/LRG_NGC_GB_interp.dat
+          binning:
+            binning: true
 params:
   ombh2:
     value: 0.02214

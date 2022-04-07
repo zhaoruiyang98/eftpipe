@@ -1,22 +1,23 @@
 import os
 import numpy as np
 import numpy.typing as npt
+from enum import Enum
 from pathlib import Path
 from typing import (
     Any,
-    List,
-    TYPE_CHECKING,
-    Iterable,
-    Dict,
-    Optional,
-    Union,
-    Tuple,
-    Set,
     cast,
+    Dict,
+    Iterable,
+    List,
+    Optional,
+    Set,
+    Tuple,
+    TYPE_CHECKING,
+    Union,
 )
 from eftpipe.typing import SimpleYaml
 
-# This Mixin is not reliable, don't use it
+# This Mixin is not reliable, do not use it
 class SampledParamsMixin:
 
     @property
@@ -47,6 +48,24 @@ def update_path_in_dict(d: SimpleYaml, base: Path) -> None:
         for item in d:
             update_path_in_dict(item, base)
 
+
+class _NotFound(Enum):
+    NOTFOUND = 0
+
+
+NOTFOUND = _NotFound.NOTFOUND
+
+
+def recursively_update_dict(ref: Dict, new: Dict):
+    for k, v in new.items():
+        rawv = ref.get(k, NOTFOUND)
+        if rawv is NOTFOUND:
+            ref[k] = v
+        else:
+            if isinstance(rawv, dict):
+                recursively_update_dict(rawv, v)
+            else:
+                ref[k] = v
 
 class PathContext:
     def __init__(self, path) -> None:

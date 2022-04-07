@@ -55,36 +55,48 @@ likelihood:
         - x_NGC_
         theory_info:
         - z: 0.7
-          kmA: 0.7
-          ndA: 7.91e-05
-          projection_config:
-            z_AP: 0.7
-            windows_fourier_path: cache/LRG_NGC_GB_interp.npy
-            windows_configspace_path: data/window/LRG_NGC_GB_interp.dat
+          km: 0.7
+          nd: 7.91e-05
+          config_settings:
+            APeffect:
+              z_AP: 0.7
+            window:
+              window_fourier_file: cache/LRG_NGC_GB_interp.npy
+              window_configspace_file: data/window/LRG_NGC_GB_interp.dat
         - z: 0.845
-          kmA: 0.45
-          ndA: 0.00018518518518518518
+          km: 0.45
+          nd: 0.00018518518518518518
           chained: true
-          projection_config:
-            z_AP: 0.845
-            windows_fourier_path: cache/ELG_NGC_interp.npy
-            windows_configspace_path: data/window/ELG_NGC_interp.dat
+          config_settings:
+            APeffect:
+              z_AP: 0.845
+            window:
+              window_fourier_file: cache/ELG_NGC_interp.npy
+              window_configspace_file: data/window/ELG_NGC_interp.dat
         - z: 0.77
           kmA: 0.7
           ndA: 7.91e-05
           kmB: 0.45
           ndB: 0.00018518518518518518
           cross: true
-          projection_config:
-            z_AP: 0.77
-            windows_fourier_path: cache/x_NGC_interp.npy
-            windows_configspace_path: data/window/x_NGC_interp.dat
+          config_settings:
+            APeffect:
+              z_AP: 0.77
+            window:
+              window_fourier_file: cache/x_NGC_interp.npy
+              window_configspace_file: data/window/x_NGC_interp.dat
         common:
           cache_dir_path: cache
-          projection_config:
-            Om_AP: 0.307115
-            rdrag_fid: 147.66
-            binning: true
+          with_IRresum: true
+          with_APeffect: true
+          with_window: true
+          with_fiber: false
+          with_binning: true
+          config_settings:
+            APeffect:
+              Om_AP: 0.307115
+            binning:
+              binning: true
 params:
   ombh2:
     value: 0.02214
