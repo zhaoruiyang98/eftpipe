@@ -67,6 +67,21 @@ def recursively_update_dict(ref: Dict, new: Dict):
             else:
                 ref[k] = v
 
+
+def set_value_in_nested_dict(dct: Dict[str, Any], value, *keys: str):
+    *init, last = keys
+    anchor = dct
+    for key in init:
+        # not found or None or dict
+        newanchor = anchor.get(key, None)
+        # if value is None, or missing key, create an empty dict. 
+        if newanchor is None:
+            newanchor = {}
+            anchor[key] = newanchor
+        anchor = newanchor
+    anchor[last] = value
+
+
 class PathContext:
     def __init__(self, path) -> None:
         self.old = Path.cwd()
