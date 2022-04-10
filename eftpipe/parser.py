@@ -21,6 +21,7 @@ from eftpipe.theory import SingleTracerEFT
 from eftpipe.theory import TwoTracerCrossEFT
 from eftpipe.theory import TwoTracerEFT
 from eftpipe.tools import recursively_update_dict
+from eftpipe.tools import set_value_in_nested_dict
 
 
 # TODO: deprecated
@@ -97,9 +98,8 @@ class SingleTracerParser:
     def create_vector_theory(self) -> SingleTracerEFT:
         data_obj = self.create_gaussian_data(quiet=True)
         kdata = data_obj.pkldatas[0].kdata
-        if "config_settings" in self._theory_info.keys():
-            if "binning" in self._theory_info["config_settings"].keys():
-                self._theory_info["config_settings"]["binning"]["kout"] = kdata
+        set_value_in_nested_dict(
+            self._theory_info, kdata, "config_settings", "binning", "kout")
         theory = EFTTheory(**self._theory_info)
         return SingleTracerEFT(theory, self._prefix)
 
@@ -194,9 +194,8 @@ class TwoTracerParser:
     def create_vector_theory(self) -> TwoTracerEFT:
         data_obj = self.create_gaussian_data(quiet=True)
         for theory_info, pkldata in zip(self._theory_infos, data_obj.pkldatas):
-            if "config_settings" in theory_info.keys():
-                if "binning" in theory_info["config_settings"].keys():
-                    theory_info["config_settings"]["binning"]["kout"] = pkldata.kdata
+            set_value_in_nested_dict(
+                theory_info, pkldata.kdata, "config_settings", "binning", "kout")
         theories = [
             EFTTheory(**theory_info)
             for theory_info in self._theory_infos
@@ -314,9 +313,8 @@ class TwoTracerCrossParser:
     def create_vector_theory(self) -> TwoTracerCrossEFT:
         data_obj = self.create_gaussian_data(quiet=True)
         for theory_info, pkldata in zip(self._theory_infos, data_obj.pkldatas):
-            if "config_settings" in theory_info.keys():
-                if "binning" in theory_info["config_settings"].keys():
-                    theory_info["config_settings"]["binning"]["kout"] = pkldata.kdata
+            set_value_in_nested_dict(
+                theory_info, pkldata.kdata, "config_settings", "binning", "kout")
         theories = [
             EFTTheory(**theory_info)
             for theory_info in self._theory_infos
