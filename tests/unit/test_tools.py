@@ -23,13 +23,17 @@ def test_update_path_in_dict():
             theory_info:
             - z: 0.7
               projection_config:
-                  windows_fourier_path: cache/LRG.npy
+                  windows_fourier_file: cache/LRG.npy
             - z: 0.845
               projection_config:
                   windows_fourier_path: cache/ELG.npy
+                  windows_configspace_file: test/ELG_window.txt
     """
     dct = yaml.load(info, Loader=yaml.SafeLoader)
-    update_path_in_dict(dct, Path('test'))
+    update_path_in_dict(
+        dct, Path('test'),
+        extra=("windows_fourier_file", "windows_configspace_file")
+    )
     def join(s):
         return str(Path('test') / s)
     true_dct = {
@@ -49,13 +53,14 @@ def test_update_path_in_dict():
                     {
                         "z": 0.7,
                         "projection_config": {
-                            "windows_fourier_path": join("cache/LRG.npy")
+                            "windows_fourier_file": join("cache/LRG.npy")
                         }
                     },
                     {
                         "z": 0.845,
                         "projection_config": {
-                            "windows_fourier_path": join("cache/ELG.npy")
+                            "windows_fourier_path": join("cache/ELG.npy"),
+                            "windows_configspace_file": join("test/ELG_window.txt")
                         }
                     }
                 ]
