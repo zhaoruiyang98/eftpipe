@@ -1,11 +1,11 @@
-import camb
 import numpy as np
 from copy import deepcopy
+from typing import Optional, TYPE_CHECKING
 from numpy import ndarray as NDArray
 from scipy.interpolate import interp1d
 from cobaya.theory import Provider
-from camb import CAMBparams
-from typing import Optional
+if TYPE_CHECKING:
+    from camb import CAMBparams
 
 
 class CambProvider:
@@ -42,7 +42,7 @@ class CambProvider:
 
     def __init__(
         self,
-        pars: Optional[CAMBparams] = None,
+        pars: Optional["CAMBparams"] = None,
         ombh2: float = 0.02220129,
         omch2: float = 0.12011,
         H0: float = 67.6,
@@ -52,6 +52,9 @@ class CambProvider:
         tau: float = 0.0543,
         z: float = 0.0
     ) -> None:
+        import camb
+        from camb import CAMBparams
+
         self.z = z
         if pars is not None:
             results = camb.get_results(pars)
@@ -82,6 +85,7 @@ class CambProvider:
         return self.get_angular_diameter_distance(z) \
             * (self.get_h0() * 100) / 299792.458
 
+    # warning: f computed here is different from that in classy
     def get_f(self, z: float) -> float:
         return self.get_fsigma8(z) / self.get_sigma8_z(z)
 
@@ -141,6 +145,7 @@ class CobayaCambProvider:
         return self.get_angular_diameter_distance(z) \
             * (self.get_h0() * 100) / 299792.458
 
+    # warning: f computed here is different from that in classy
     def get_f(self, z: float) -> float:
         return self.get_fsigma8(z) / self.get_sigma8_z(z)
 
@@ -170,6 +175,64 @@ class CobayaCambProvider:
         if len(transfer._states) != 0 and len(camb._states) != 0:
             cosmo_params_dct = deepcopy(transfer._states[0]['params'])
             cosmo_params_dct.update(camb._states[0]['params'])
+            if cosmo_params_dct == self.cosmo_params_dct:
+                flag = False
+            else:
+                self.cosmo_params_dct = cosmo_params_dct
+        return flag
+
+
+class CobayaClassyProvider:
+    """BoltzmannProvider which uses Cobaya's Classy Provider as backend
+
+    Parameters
+    ----------
+    provider: Provider
+        cobaya's classy provider
+    z: float
+        redshift
+    """
+
+    def __init__(self, provider: Provider, z: float) -> None:
+        self.provider = provider
+        self.z = z
+        self.cosmo_params_dct = {}
+
+    def interp_pkh(self, kh: NDArray) -> NDArray:
+        # TODO: extrap_kmin not yet supported in cobaya 3.1.1, should update in the future
+        interpolator = self.provider.get_Pk_interpolator(nonlinear=False)
+        h = float(self.get_h0())
+        pkh = interpolator.P(self.z, kh * h)
+        pkh *= h**3
+        return pkh
+
+    def get_H(self, z: float) -> float:
+        return self.get_Hubble(z) / (self.get_h0() * 100)
+
+    def get_DA(self, z: float) -> float:
+        return self.get_angular_diameter_distance(z) \
+            * (self.get_h0() * 100) / 299792.458
+
+    def get_f(self, z: float) -> float:
+        return self.provider.model.theory['classy'].classy.scale_independent_growth_factor_f(z)
+
+    def get_h0(self) -> float:
+        return float(self.provider.get_Hubble(0.)) / 100.
+
+    def get_Hubble(self, z) -> float:
+        return float(self.provider.get_Hubble(z))
+
+    def get_angular_diameter_distance(self, z) -> float:
+        return float(self.provider.get_angular_diameter_distance(z))
+
+    def get_rdrag(self) -> float:
+        return float(self.provider.get_param('rdrag'))  # type: ignore
+
+    def cosmo_updated(self) -> bool:
+        flag = True
+        classy = self.provider.model.theory['classy']
+        if len(classy._states) != 0:
+            cosmo_params_dct = deepcopy(classy._states[0]['params'])
             if cosmo_params_dct == self.cosmo_params_dct:
                 flag = False
             else:

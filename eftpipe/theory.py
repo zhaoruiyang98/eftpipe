@@ -22,6 +22,7 @@ from cobaya.theory import Provider
 # local
 from eftpipe.interface import CambProvider
 from eftpipe.interface import CobayaCambProvider
+from eftpipe.interface import CobayaClassyProvider
 from eftpipe.pybird import pybird
 from eftpipe.typing import (
     BoltzmannProvider,
@@ -382,20 +383,42 @@ class EFTTheory(HasLogger):
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~vector theory~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 
-class SingleTracerEFT:
-    theory: EFTTheory
-    prefix: str
+class SingleTracerEFT(HasLogger):
+    """A wrapped theory class to interact with cobaya
 
-    def __init__(self, theory: EFTTheory, prefix: str = "") -> None:
+    Parameters
+    ----------
+    theory: EFTTheory
+        basic theory
+    prefix: str
+        prefix of EFT parameters, by default ""
+    provider: "camb" or "classy"
+        use cobaya's camb or cobaya's classy, by default "camb"
+    """
+
+    def __init__(
+        self,
+        theory: EFTTheory, prefix: str = "",
+        provider: Literal["camb", "classy"] = "camb",
+    ) -> None:
+        self.set_logger(name="eftpipe.SingleTracerEFT")
+
         self.theory = theory
         self.prefix = prefix
-        self._set_required_params()
         self.can_marg = True
+        self.provider = provider
+        if provider not in ("camb", "classy"):
+            raise ValueError("only support provider: camb or provider: classy")
+        self.mpi_info("using provider %s", self.provider)
+        self._set_required_params()
 
     def set_provider(self, provider: Provider) -> None:
-        self.theory.set_boltzmann_provider(
-            CobayaCambProvider(provider, self.theory.z)
-        )
+        if self.provider == "camb":
+            self.theory.set_boltzmann_provider(
+                CobayaCambProvider(provider, self.theory.z))
+        elif self.provider == "classy":
+            self.theory.set_boltzmann_provider(
+                CobayaClassyProvider(provider, self.theory.z))
 
     def set_camb_provider(self, **kwargs) -> None:
         self.theory.set_boltzmann_provider(
@@ -407,18 +430,30 @@ class SingleTracerEFT:
     def _set_required_params(self) -> None:
         z = self.theory.z
         extra_zs = [] if z == 0. else [0.]
-        requires = {
-            'Pk_grid': {
-                'nonlinear': False,
-                'z': [z],
-                'k_max': 5
-            },
-            'Hubble': {'z': extra_zs + [z]},
-            'angular_diameter_distance': {'z': [z]},
-            'fsigma8': {'z': [z]},
-            'sigma8_z': {'z': [z]},
-            'rdrag': None
-        }
+        if self.provider == "camb":
+            requires = {
+                'Pk_grid': {
+                    'nonlinear': False,
+                    'z': [z],
+                    'k_max': 5,
+                },
+                'Hubble': {'z': extra_zs + [z]},
+                'angular_diameter_distance': {'z': [z]},
+                'fsigma8': {'z': [z]},
+                'sigma8_z': {'z': [z]},
+                'rdrag': None,
+            }
+        else:
+            requires = {
+                'Pk_interpolator': {
+                    'nonlinear': False,
+                    'z': [z],
+                    'k_max': 5,
+                },
+                'Hubble': {'z': extra_zs + [z]},
+                'angular_diameter_distance': {'z': [z]},
+                'rdrag': None,
+            }
         eft_params = [
             self.prefix + name for name in
             ('b1', 'b2', 'b3', 'b4',
@@ -474,23 +509,45 @@ class SingleTracerEFT:
         return self.theory_vector(all_params_dict)
 
 
-class TwoTracerEFT:
-    theories: List[EFTTheory]
-    prefixes: List[str]
+class TwoTracerEFT(HasLogger):
+    """A wrapped theory class to interact with cobaya
 
-    def __init__(self, theories: List[EFTTheory], prefixes: List[str]) -> None:
+    Parameters
+    ----------
+    theories: list[EFTTheory]
+        basic theories list
+    prefixes: list[str]
+        EFT parameters' prefixes list
+    provider: "camb" or "classy"
+        use cobaya's camb or cobaya's classy, default is "camb"
+    """
+
+    def __init__(
+        self,
+        theories: List[EFTTheory], prefixes: List[str],
+        provider: Literal["camb", "classy"] = "camb",
+    ) -> None:
+        self.set_logger(name="eftpipe.TwoTracerEFT")
+
         self.theories = theories
         if len(set(prefixes)) != 2:
             raise ValueError('TwoTracerEFT needs two different prefixes')
         self.prefixes = prefixes
-        self._set_required_params()
         self.can_marg = True
+        self.provider = provider
+        if provider not in ("camb", "classy"):
+            raise ValueError("only support provider: camb or provider: classy")
+        self.mpi_info("using provider %s", self.provider)
+        self._set_required_params()
 
     def set_provider(self, provider: Provider) -> None:
         for theory in self.theories:
-            theory.set_boltzmann_provider(
-                CobayaCambProvider(provider, theory.z)
-            )
+            if self.provider == "camb":
+                theory.set_boltzmann_provider(
+                    CobayaCambProvider(provider, theory.z))
+            elif self.provider == "classy":
+                theory.set_boltzmann_provider(
+                    CobayaClassyProvider(provider, theory.z))
 
     def set_camb_provider(self, **kwargs) -> None:
         for theory in self.theories:
@@ -504,18 +561,30 @@ class TwoTracerEFT:
         zs = [theory.z for theory in self.theories]
         zs = list(set(zs))
         extra_zs = [] if 0. in zs else [0.]
-        requires = {
-            'Pk_grid': {
-                'nonlinear': False,
-                'z': zs,
-                'k_max': 5
-            },
-            'Hubble': {'z': extra_zs + zs},
-            'angular_diameter_distance': {'z': zs},
-            'fsigma8': {'z': zs},
-            'sigma8_z': {'z': zs},
-            'rdrag': None
-        }
+        if self.provider == "camb":
+            requires = {
+                'Pk_grid': {
+                    'nonlinear': False,
+                    'z': zs,
+                    'k_max': 5
+                },
+                'Hubble': {'z': extra_zs + zs},
+                'angular_diameter_distance': {'z': zs},
+                'fsigma8': {'z': zs},
+                'sigma8_z': {'z': zs},
+                'rdrag': None
+            }
+        else:
+            requires = {
+                "Pk_interpolator": {
+                    "nonlinear": False,
+                    "z": zs,
+                    "k_max": 5,
+                },
+                "Hubble": {"z": extra_zs + zs},
+                "angular_diameter_distance": {"z": zs},
+                "rdrag": None,
+            }
         eft_params_names = [
             'b1', 'b2', 'b3', 'b4',
             'cct', 'cr1', 'cr2',
@@ -615,13 +684,26 @@ class TwoTracerEFT:
         return self.theory_vector(all_params_dict)
 
 
-class TwoTracerCrossEFT:
-    _type_to_index: Dict[str, int]
-    _index_to_type: Dict[int, str]
-    theories: List[EFTTheory]
-    prefixes: List[str]
+class TwoTracerCrossEFT(HasLogger):
+    """A wrapped theory class to interact with cobaya
 
-    def __init__(self, theories: List[EFTTheory], prefixes: List[str]) -> None:
+    Parameters
+    ----------
+    theories: list[EFTTheory]
+        basic theories list
+    prefixes: list[str]
+        EFT parameters' prefixes list
+    provider: "camb" or "classy"
+        use cobaya's camb or cobaya's classy, default is "camb"
+    """
+
+    def __init__(
+        self,
+        theories: List[EFTTheory], prefixes: List[str],
+        provider: Literal["camb", "classy"] = "camb",
+    ) -> None:
+        self.set_logger(name="eftpipe.TwoTracerCrossEFT")
+
         if len(theories) != 3:
             raise ValueError('TwoTracerCrossEFT needs three EFTTheory objects')
         ncross = 0
@@ -636,15 +718,24 @@ class TwoTracerCrossEFT:
             raise ValueError(
                 'TwoTracerCrossEFT needs three different prefixes')
         self.prefixes = prefixes
-        self._set_required_params()
+        self._type_to_index: Dict[str, int]
+        self._index_to_type: Dict[int, str]
         self._set_index_mapping()
         self.can_marg = True
+        self.provider = provider
+        if provider not in ("camb", "classy"):
+            raise ValueError("only support provider: camb or provider: classy")
+        self.mpi_info("using provider %s", self.provider)
+        self._set_required_params()
 
     def set_provider(self, provider: Provider) -> None:
         for theory in self.theories:
-            theory.set_boltzmann_provider(
-                CobayaCambProvider(provider, theory.z)
-            )
+            if self.provider == "camb":
+                theory.set_boltzmann_provider(
+                    CobayaCambProvider(provider, theory.z))
+            elif self.provider == "classy":
+                theory.set_boltzmann_provider(
+                    CobayaClassyProvider(provider, theory.z))
 
     def set_camb_provider(self, **kwargs) -> None:
         for theory in self.theories:
@@ -677,18 +768,30 @@ class TwoTracerCrossEFT:
         zs = [theory.z for theory in self.theories]
         zs = list(set(zs))
         extra_zs = [] if 0. in zs else [0.]
-        requires = {
-            'Pk_grid': {
-                'nonlinear': False,
-                'z': zs,
-                'k_max': 5
-            },
-            'Hubble': {'z': extra_zs + zs},
-            'angular_diameter_distance': {'z': zs},
-            'fsigma8': {'z': zs},
-            'sigma8_z': {'z': zs},
-            'rdrag': None
-        }
+        if self.provider == "camb":
+            requires = {
+                'Pk_grid': {
+                    'nonlinear': False,
+                    'z': zs,
+                    'k_max': 5,
+                },
+                'Hubble': {'z': extra_zs + zs},
+                'angular_diameter_distance': {'z': zs},
+                'fsigma8': {'z': zs},
+                'sigma8_z': {'z': zs},
+                'rdrag': None,
+            }
+        else:
+            requires = {
+                "Pk_interpolator": {
+                    "nonlinear": False,
+                    "z": zs,
+                    "k_max": 5
+                },
+                "Hubble": {'z': extra_zs + zs},
+                "angular_diameter_distance": {'z': zs},
+                "rdrag": None,
+            }
         eft_params_names = [
             'b1', 'b2', 'b3', 'b4',
             'cct', 'cr1', 'cr2',
