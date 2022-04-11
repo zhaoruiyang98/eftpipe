@@ -69,7 +69,7 @@ class EFTLike(Likelihood):
         if self.can_marg:
             chi2 = -2 * self.marg_obj.calculate(params_values_dict)
         else:
-            theory = self.theory_vector(**params_values_dict)
+            theory = self.theory_vector(params_values_dict)
             res = theory - self.data_obj.data_vector
             chi2 = res @ self.data_obj.invcov @ res
 
@@ -80,7 +80,7 @@ class EFTLike(Likelihood):
             }
         state['logp'] = -0.5 * chi2
 
-    def theory_vector(self, **params_values_dict):
+    def theory_vector(self, params_values_dict):
         return self.theory_obj.theory_vector(params_values_dict)
 
     def get_can_provide_params(self) -> List[str]:

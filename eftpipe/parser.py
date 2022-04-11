@@ -101,7 +101,10 @@ class SingleTracerParser:
         set_value_in_nested_dict(
             self._theory_info, kdata, "config_settings", "binning", "kout")
         theory = EFTTheory(**self._theory_info)
-        return SingleTracerEFT(theory, self._prefix)
+        return SingleTracerEFT(
+            theory, self._prefix,
+            provider=self._theory_info.get("provider", "camb")
+        )
 
     def create_marglike(self, data_obj, vector_theory):
         return MargGaussian(data_obj, vector_theory, self.marg_info)
@@ -122,6 +125,7 @@ class SingleTracerParser:
             },
             "theory": {
                 "prefix": "",
+                "provider": "camb",
                 "z": 0.5,
                 "cache_dir_path": "",
                 "km": 0.7,
@@ -174,6 +178,7 @@ class TwoTracerParser:
             raise ValueError('prefix should be a list with 2 items')
         prefixes = [str(item) for item in prefixes]
         self._prefixes = prefixes
+        self._provider = theory_info.get("provider", "camb")
 
         theory_infos = theory_info['theory_info']
         common = theory_info.pop('common', None)
@@ -200,7 +205,7 @@ class TwoTracerParser:
             EFTTheory(**theory_info)
             for theory_info in self._theory_infos
         ]
-        return TwoTracerEFT(theories, self._prefixes)
+        return TwoTracerEFT(theories, self._prefixes, provider=self._provider)
 
     def create_marglike(self, data_obj, vector_theory):
         return MargGaussian(data_obj, vector_theory, self.marg_info)
@@ -224,6 +229,7 @@ class TwoTracerParser:
             },
             "theory": {
                 "prefix": ["", ""],
+                "provider": "camb",
                 "theory_info": [
                     {
                         "z": 0.7,
@@ -291,6 +297,7 @@ class TwoTracerCrossParser:
             raise ValueError('prefix should be a list with 3 items')
         prefixes = [str(item) for item in prefixes]
         self._prefixes = prefixes
+        self._provider = theory_info.get("provider", "camb")
 
         theory_infos = theory_info['theory_info']
         common = theory_info.pop('common', None)
@@ -319,7 +326,8 @@ class TwoTracerCrossParser:
             EFTTheory(**theory_info)
             for theory_info in self._theory_infos
         ]
-        return TwoTracerCrossEFT(theories, self._prefixes)
+        return TwoTracerCrossEFT(
+            theories, self._prefixes, provider=self._provider)
 
     def create_marglike(self, data_obj, vector_theory):
         return MargGaussian(data_obj, vector_theory, self.marg_info)
@@ -344,6 +352,7 @@ class TwoTracerCrossParser:
             },
             "theory": {
                 "prefix": ["", "", ""],
+                "provider": "camb",
                 "theory_info": [
                     {
                         "z": 0.7,

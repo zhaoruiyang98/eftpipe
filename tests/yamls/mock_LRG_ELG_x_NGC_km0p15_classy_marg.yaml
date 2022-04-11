@@ -1,0 +1,263 @@
+theory:
+  classy:
+    use_renames: True
+    extra_args:
+      N_ncdm: 1
+      N_ur: 2.0328
+likelihood:
+  NGC:
+    class: eftpipe.EFTLike
+    stop_at_error: true
+    label: ''
+    # 3 + 7 + 9 + 2
+    nsampled: 21
+    extra_args:
+      mode: all
+      marg:
+        LRG_NGC_b3:
+          scale: 2
+        LRG_NGC_cct:
+          scale: 2
+        LRG_NGC_cr1:
+          scale: 8
+        LRG_NGC_ce0:
+          scale: 2
+        LRG_NGC_cequad:
+          scale: 2
+        ELG_NGC_b3:
+          scale: 2
+        ELG_NGC_cct:
+          scale: 2
+        ELG_NGC_cr1:
+          scale: 4
+        ELG_NGC_cr2:
+          scale: 4
+        ELG_NGC_ce0:
+          scale: 2
+        ELG_NGC_cemono:
+          scale: 2
+        ELG_NGC_cequad:
+          scale: 2
+        x_NGC_ce0:
+          scale: 2
+        x_NGC_cequad:
+          scale: 2
+      data:
+        pklinfo:
+        - pkl_path: data/mock/LRG_NGC.txt
+        - pkl_path: data/mock/ELG_NGC_Q.txt
+        - pkl_path: data/mock/x_NGC.txt
+        common:
+          ls:
+          - 0
+          - 2
+          kmin: 0.02
+          kmax: 0.20
+        cov_path: data/cov/cov_NGC_L024E024X024_PQP.txt
+        Nreal: 1000
+      theory:
+        provider: classy
+        prefix:
+        - LRG_NGC_
+        - ELG_NGC_
+        - x_NGC_
+        theory_info:
+        - z: 0.7
+          km: 0.7
+          nd: 7.91e-05
+          config_settings:
+            APeffect:
+              z_AP: 0.7
+            window:
+              window_fourier_file: cache/LRG_NGC_GB_interp.npy
+              window_configspace_file: data/window/LRG_NGC_GB_interp.dat
+        - z: 0.845
+          km: 0.45
+          nd: 0.00018518518518518518
+          chained: true
+          config_settings:
+            APeffect:
+              z_AP: 0.845
+            window:
+              window_fourier_file: cache/ELG_NGC_interp.npy
+              window_configspace_file: data/window/ELG_NGC_interp.dat
+        - z: 0.77
+          kmA: 0.7
+          ndA: 7.91e-05
+          kmB: 0.45
+          ndB: 0.00018518518518518518
+          cross: true
+          config_settings:
+            APeffect:
+              z_AP: 0.77
+            window:
+              window_fourier_file: cache/x_NGC_interp.npy
+              window_configspace_file: data/window/x_NGC_interp.dat
+        common:
+          cache_dir_path: cache
+          with_IRresum: true
+          with_APeffect: true
+          with_window: true
+          with_fiber: false
+          with_binning: true
+          config_settings:
+            APeffect:
+              Om_AP: 0.307115
+            binning:
+              binning: true
+params:
+  omegabh2:
+    value: 0.02214
+    latex: \Omega_\mathrm{b} h^2
+  omegach2:
+    prior:
+      min: 0.03
+      max: 0.7
+    proposal: 0.003
+    ref: 0.1189
+    latex: \Omega_\mathrm{c} h^2
+  H0:
+    prior:
+      min: 40.0
+      max: 100.0
+    proposal: 0.3
+    ref: 67.77
+    latex: H_0
+  logA:
+    prior:
+      min: 0.1
+      max: 10
+    proposal: 0.1
+    ref: 3.0
+    latex: \log(10^{10} A_\mathrm{s})
+    drop: true
+  As:
+    value: 'lambda logA: 1e-10*np.exp(logA)'
+    latex: A_\mathrm{s}
+  ns:
+    value: 0.9611
+    latex: n_\mathrm{s}
+  m_ncdm:
+    value: 0.0
+    latex: \sum m_\nu
+  tau:
+    value: 0.0543
+    latex: \tau_\mathrm{reio}
+  sigma8:
+    latex: \sigma_8
+  omegam:
+    latex: \Omega_\mathrm{m}
+  rdrag:
+    latex: r_\mathrm{drag}
+  LRG_NGC_b1:
+    prior:
+      min: 0.0
+      max: 4.0
+    ref: 2.1
+    proposal: 0.01
+    latex: b_1^{\mathrm{LRG}}
+  LRG_NGC_c2:
+    prior:
+      min: -4.0
+      max: 4.0
+    ref: 1.4838078
+    proposal: 0.01
+    latex: c_2^{\mathrm{LRG}}
+    drop: true
+  LRG_NGC_b3:
+    value: 0
+    latex: b_3^{\mathrm{LRG}}
+  LRG_NGC_c4:
+    value: 0.0
+    latex: c_4^{\mathrm{LRG}}
+    drop: true
+  LRG_NGC_b2:
+    value: 'lambda LRG_NGC_c2, LRG_NGC_c4: (LRG_NGC_c2 + LRG_NGC_c4) / np.sqrt(2.)'
+    latex: b_2^{\mathrm{LRG}}
+  LRG_NGC_b4:
+    value: 'lambda LRG_NGC_c2, LRG_NGC_c4: (LRG_NGC_c2 - LRG_NGC_c4) / np.sqrt(2.)'
+    latex: b_4^{\mathrm{LRG}}
+  LRG_NGC_cct:
+    value: 0
+    latex: c_\mathrm{ct}^{\mathrm{LRG}}
+  LRG_NGC_cr1:
+    value: 0
+    latex: c_\mathrm{r,1}^{\mathrm{LRG}}
+  LRG_NGC_cr2:
+    value: 0
+    latex: c_\mathrm{r,2}^{\mathrm{LRG}}
+  LRG_NGC_ce0:
+    value: 0
+    latex: c_{\epsilon,0}^{\mathrm{LRG}}
+  LRG_NGC_cemono:
+    value: 0.0
+    latex: c_{\epsilon,\mathrm{mono}}^{\mathrm{LRG}}
+  LRG_NGC_cequad:
+    value: 0
+    latex: c_{\epsilon,\mathrm{quad}}^{\mathrm{LRG}}
+  ELG_NGC_b1:
+    prior:
+      min: 0.0
+      max: 4.0
+    ref: 1.3
+    proposal: 0.01
+    latex: b_1^{\mathrm{ELG}}
+  ELG_NGC_c2:
+    prior:
+      min: -4.0
+      max: 4.0
+    ref: 1.4838078
+    proposal: 0.01
+    latex: c_2^{\mathrm{ELG}}
+    drop: true
+  ELG_NGC_b3:
+    value: 0
+    latex: b_3^{\mathrm{ELG}}
+  ELG_NGC_c4:
+    value: 0.0
+    latex: c_4^{\mathrm{ELG}}
+    drop: true
+  ELG_NGC_b2:
+    value: 'lambda ELG_NGC_c2, ELG_NGC_c4: (ELG_NGC_c2 + ELG_NGC_c4) / np.sqrt(2.)'
+    latex: b_2^{\mathrm{ELG}}
+  ELG_NGC_b4:
+    value: 'lambda ELG_NGC_c2, ELG_NGC_c4: (ELG_NGC_c2 - ELG_NGC_c4) / np.sqrt(2.)'
+    latex: b_4^{\mathrm{ELG}}
+  ELG_NGC_cct:
+    value: 0
+    latex: c_\mathrm{ct}^{\mathrm{ELG}}
+  ELG_NGC_cr1:
+    value: 0
+    latex: c_\mathrm{r,1}^{\mathrm{ELG}}
+  ELG_NGC_cr2:
+    value: 0
+    latex: c_\mathrm{r,2}^{\mathrm{ELG}}
+  ELG_NGC_ce0:
+    value: 0
+    latex: c_{\epsilon,0}^{\mathrm{ELG}}
+  ELG_NGC_cemono:
+    value: 0.0
+    latex: c_{\epsilon,\mathrm{mono}}^{\mathrm{ELG}}
+  ELG_NGC_cequad:
+    value: 0
+    latex: c_{\epsilon,\mathrm{quad}}^{\mathrm{ELG}}
+  x_NGC_ce0:
+    value: 0
+    latex: c_{\epsilon,0}^{\mathrm{x}}
+  x_NGC_cemono:
+    value: 0.0
+    latex: c_{\epsilon,\mathrm{mono}}^{\mathrm{x}}
+  x_NGC_cequad:
+    value: 0
+    latex: c_{\epsilon,\mathrm{quad}}^{\mathrm{x}}
+  reduced_chi2:
+    latex: \chi^2_{\mathrm{d.o.f.}}
+sampler:
+  mcmc:
+    Rminus1_stop: 0.02
+    max_tries: 100000
+    covmat: covmat/mock_LRG_ELG_x_NGC.covmat
+    learn_every: 10d
+    learn_proposal_Rminus1_max_early: 60.0
+    learn_proposal_Rminus1_max: 60.0
+output: chains/mock_LRG_ELG_x_NGC_km0p15_classy_marg

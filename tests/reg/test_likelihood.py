@@ -1,5 +1,6 @@
 import cobaya
 import pytest
+from collections import defaultdict
 from pathlib import Path
 from eftpipe.tools import PathContext
 from pytest_regressions.ndarrays_regression import NDArraysRegressionFixture
@@ -35,7 +36,7 @@ def test_LRG_NGC_reg(ndarrays_regression: NDArraysRegressionFixture):
         sampled_dict = {key: params_dict[key] for key in sampled_dict}
         logpost = model.logpost(sampled_dict)
 
-        theory_vector = model.likelihood['NGC'].theory_vector(**params_dict)
+        theory_vector = model.likelihood['NGC'].theory_vector(params_dict)
         data_vector = model.likelihood['NGC'].data_obj.data_vector
         invcov = model.likelihood['NGC'].data_obj.invcov
         reduced_chi2 = model.likelihood['NGC'].get_param('reduced_chi2')
@@ -80,7 +81,7 @@ def test_ELG_NGC_reg(ndarrays_regression: NDArraysRegressionFixture):
         sampled_dict = {key: params_dict[key] for key in sampled_dict}
         logpost = model.logpost(sampled_dict)
 
-        theory_vector = model.likelihood['NGC'].theory_vector(**params_dict)
+        theory_vector = model.likelihood['NGC'].theory_vector(params_dict)
         data_vector = model.likelihood['NGC'].data_obj.data_vector
         invcov = model.likelihood['NGC'].data_obj.invcov
         reduced_chi2 = model.likelihood['NGC'].get_param('reduced_chi2')
@@ -140,7 +141,7 @@ def test_LRG_ELG_x_NGC_reg(ndarrays_regression: NDArraysRegressionFixture):
         sampled_dict = {key: params_dict[key] for key in sampled_dict}
         logpost = model.logpost(sampled_dict)
 
-        theory_vector = model.likelihood['NGC'].theory_vector(**params_dict)
+        theory_vector = model.likelihood['NGC'].theory_vector(params_dict)
         data_vector = model.likelihood['NGC'].data_obj.data_vector
         invcov = model.likelihood['NGC'].data_obj.invcov
         reduced_chi2 = model.likelihood['NGC'].get_param('reduced_chi2')
@@ -153,3 +154,33 @@ def test_LRG_ELG_x_NGC_reg(ndarrays_regression: NDArraysRegressionFixture):
         ndarrays_regression.check(
             reg_dct, default_tolerance={'atol': 0, 'rtol': 1e-8}
         )
+
+
+def test_classy_marg_LRG_ELG_x_NGC_reg(
+    ndarrays_regression: NDArraysRegressionFixture):
+    yaml_name = Path('.').resolve() / \
+        'tests/yamls/mock_LRG_ELG_x_NGC_km0p15_classy_marg.yaml'
+    with PathContext('cobaya'):
+        model = cobaya.get_model(yaml_name)
+        sampled_dict = {
+            "omegach2": 0.1189,
+            "H0": 67.77,
+            "logA": 3.0,
+            "LRG_NGC_b1": 2.0,
+            "LRG_NGC_c2": -0.7,
+            "ELG_NGC_b1": 1.1,
+            "ELG_NGC_c2": -0.5,
+        }
+        sampled_dict = defaultdict(lambda: 0, **sampled_dict)
+        logpost = model.logpost(sampled_dict)
+
+        PNG = model.likelihood["NGC"].marg_obj.theory_obj.PNG(sampled_dict)
+        PG = model.likelihood["NGC"].marg_obj.theory_obj.PG(sampled_dict)
+        reduced_chi2 = model.likelihood["NGC"].get_param("reduced_chi2")
+        reg_dct = {
+            "PNG": PNG,
+            "PG": PG,
+            "reduced_chi2": reduced_chi2,
+        }
+        ndarrays_regression.check(
+            reg_dct, default_tolerance={'atol': 0, 'rtol': 1e-8})
