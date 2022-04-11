@@ -33,7 +33,11 @@ class EFTLike(Likelihood):
     def initialize(self) -> None:
         base_path = self.extra_args.get('base', None)
         if base_path is not None:
-            update_path_in_dict(self.extra_args, Path(str(base_path)))
+            # please update extra, if hyperparameter's name changes
+            update_path_in_dict(
+                self.extra_args, Path(str(base_path)),
+                extra=("window_fourier_file", "window_configspace_file"),
+            )
         mode: Literal['single', 'two', 'all', 'cross'] = self.extra_args['mode']
         parser = select_parser(mode)(self.extra_args)
         data_obj = parser.create_gaussian_data()

@@ -6,6 +6,7 @@ from pathlib import Path
 from typing import (
     Any,
     cast,
+    Container,
     Dict,
     Iterable,
     List,
@@ -36,17 +37,21 @@ class SampledParamsMixin:
         def __getattr__(self, __name: str) -> Any: ...
 
 
-def update_path_in_dict(d: SimpleYaml, base: Path) -> None:
+def update_path_in_dict(
+    d: SimpleYaml, base: Path, extra: Container[str] = (),
+) -> None:
     if isinstance(d, dict):
         for key, value in d.items():
             if not isinstance(value, (dict, list)):
                 if 'path' in key:
                     d[key] = str(base / str(d[key]))
+                elif key in extra:
+                    d[key] = str(base / str(d[key]))
             else:
-                update_path_in_dict(value, base)
+                update_path_in_dict(value, base, extra=extra)
     if isinstance(d, list):
         for item in d:
-            update_path_in_dict(item, base)
+            update_path_in_dict(item, base, extra=extra)
 
 
 class _NotFound(Enum):
