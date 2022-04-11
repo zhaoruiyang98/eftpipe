@@ -2291,6 +2291,9 @@ class Binning(HasLogger):
         set it True to perform binning correction, default False
     accboost: int
         accuracy boost, default 1
+    decimals: int
+        compute delta_k by rounding the difference of last two kout.
+        Default is 2 and this works well when delta_k = 0.01
     co: Common
         this class only uses co.k, default pybird.Common
 
@@ -2307,6 +2310,7 @@ class Binning(HasLogger):
         kout,
         binning: bool = False,
         accboost: int = 1,
+        decimals: int = 2,
         co: Common = common
     ) -> None:
         self.set_logger(name='pybird.Binning')
@@ -2314,6 +2318,7 @@ class Binning(HasLogger):
         self.co = co
         self.binning = binning
         self.accboost = accboost
+        self.decimals = decimals
         self.mpi_info("matching theory output with data")
         self.mpi_info(
             "%d points, from %.3f to %.3f",
@@ -2321,7 +2326,7 @@ class Binning(HasLogger):
         )
         self.mpi_info("binning correction: %s", "on" if self.binning else "off")
         if self.binning:
-            kspaces = self.kout[1:] - self.kout[:-1]
+            kspaces = np.around(self.kout[1:] - self.kout[:-1], decimals=decimals)
             kspace_diff = kspaces[1:] - kspaces[:-1]
             if not np.allclose(kspace_diff, 0, rtol=0, atol=1e-6):
                 self.mpi_warning(
@@ -2332,12 +2337,16 @@ class Binning(HasLogger):
                 )
             self.loadBinning(self.kout)
             self.mpi_info("num of kgrids in each bin: %d", self.points[0].size)
+            self.mpi_info(
+                "round the difference of last two kout to %d decimal places",
+                self.decimals,
+            )
 
     def loadBinning(self, setkout):
         """
         Create the bins of the data k's
         """
-        delta_k = np.round(setkout[-1] - setkout[-2], 2)
+        delta_k = np.round(setkout[-1] - setkout[-2], self.decimals)
         kcentral = (setkout[-1] - delta_k * np.arange(len(setkout)))[::-1]
         binmin = kcentral - delta_k / 2
         binmax = kcentral + delta_k / 2
