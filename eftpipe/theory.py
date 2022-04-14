@@ -411,7 +411,6 @@ class SingleTracerEFT(HasLogger):
         if provider not in ("camb", "classy"):
             raise ValueError("only support provider: camb or provider: classy")
         self.mpi_info("using provider %s", self.provider)
-        self._set_required_params()
 
     def set_provider(self, provider: Provider) -> None:
         if self.provider == "camb":
@@ -426,9 +425,6 @@ class SingleTracerEFT(HasLogger):
             CambProvider(z=self.theory.z, **kwargs))
 
     def required_params(self) -> Dict[str, Any]:
-        return self._required_params
-
-    def _set_required_params(self) -> None:
         z = self.theory.z
         extra_zs = [] if z == 0. else [0.]
         if self.provider == "camb":
@@ -465,7 +461,7 @@ class SingleTracerEFT(HasLogger):
             zip(eft_params, [None for _ in range(len(eft_params))])
         )
         requires.update(eft_requires)
-        self._required_params = requires
+        return requires
 
     def theory_vector(self, all_params_dict: Dict[str, Any]) -> NDArray:
         prefix = self.prefix
@@ -539,7 +535,6 @@ class TwoTracerEFT(HasLogger):
         if provider not in ("camb", "classy"):
             raise ValueError("only support provider: camb or provider: classy")
         self.mpi_info("using provider %s", self.provider)
-        self._set_required_params()
 
     def set_provider(self, provider: Provider) -> None:
         for theory in self.theories:
@@ -556,9 +551,6 @@ class TwoTracerEFT(HasLogger):
                 CambProvider(z=theory.z, **kwargs))
 
     def required_params(self) -> Dict[str, Any]:
-        return self._required_params
-
-    def _set_required_params(self) -> None:
         zs = [theory.z for theory in self.theories]
         zs = list(set(zs))
         extra_zs = [] if 0. in zs else [0.]
@@ -598,7 +590,7 @@ class TwoTracerEFT(HasLogger):
             zip(eft_params, [None for _ in range(len(eft_params))])
         )
         requires.update(eft_requires)
-        self._required_params = requires
+        return requires
 
     def theory_vector(self, all_params_dict: Dict[str, Any]) -> NDArray:
         vectors = []
@@ -727,7 +719,6 @@ class TwoTracerCrossEFT(HasLogger):
         if provider not in ("camb", "classy"):
             raise ValueError("only support provider: camb or provider: classy")
         self.mpi_info("using provider %s", self.provider)
-        self._set_required_params()
 
     def set_provider(self, provider: Provider) -> None:
         for theory in self.theories:
@@ -742,9 +733,6 @@ class TwoTracerCrossEFT(HasLogger):
         for theory in self.theories:
             theory.set_boltzmann_provider(
                 CambProvider(z=theory.z, **kwargs))
-
-    def required_params(self) -> Dict[str, Any]:
-        return self._required_params
 
     def _set_index_mapping(self) -> None:
         type_to_index = cast(
@@ -765,7 +753,7 @@ class TwoTracerCrossEFT(HasLogger):
             index_to_type[index] = name
         self._index_to_type = index_to_type
 
-    def _set_required_params(self) -> None:
+    def required_params(self) -> Dict[str, Any]:
         zs = [theory.z for theory in self.theories]
         zs = list(set(zs))
         extra_zs = [] if 0. in zs else [0.]
@@ -809,7 +797,7 @@ class TwoTracerCrossEFT(HasLogger):
             zip(eft_params, [None for _ in range(len(eft_params))])
         )
         requires.update(eft_requires)
-        self._required_params = requires
+        return requires
 
     def theory_vector(self, all_params_dict: Dict[str, Any]) -> NDArray:
         # TODO: stupid implementation, should be improved
