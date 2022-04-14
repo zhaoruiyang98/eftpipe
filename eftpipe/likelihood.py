@@ -34,7 +34,7 @@ class EFTLike(Likelihood):
         base_path = self.extra_args.get('base', None)
         if base_path is not None:
             update_path_in_dict(self.extra_args, Path(str(base_path)))
-        mode: Literal['single', 'two', 'all'] = self.extra_args['mode']
+        mode: Literal['single', 'two', 'all', 'cross'] = self.extra_args['mode']
         parser = select_parser(mode)(self.extra_args)
         data_obj = parser.create_gaussian_data()
         theory_obj = parser.create_vector_theory()

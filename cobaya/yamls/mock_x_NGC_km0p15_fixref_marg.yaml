@@ -1,0 +1,197 @@
+theory:
+  camb:
+    extra_args:
+      nnu: 3.046
+likelihood:
+  NGC:
+    class: eftpipe.EFTLike
+    stop_at_error: true
+    label: ''
+    nsampled: 11
+    extra_args:
+      mode: cross
+      data:
+        pklinfo:
+          ls:
+          - 0
+          - 2
+          kmin: 0.02
+          kmax: 0.15
+          pkl_path: data/mock/x_NGC.txt
+        cov_path: data/cov/cov_NGC_X024.txt
+        Nreal: 1000
+        rescale: 27
+      marg:
+        b3A:
+          scale: 2
+        cctA:
+          scale: 2
+        cr1A:
+          scale: 4
+        b3B:
+          scale: 2
+        cctB:
+          scale: 2
+        cr1B:
+          scale: 4
+        ce0x:
+          scale: 2
+        cequadx:
+          scale: 2
+      theory:
+        prefix: x_NGC_
+        Nl: 2
+        z: 0.77
+        kmA: 0.7
+        ndA: 7.91e-05
+        kmB: 0.45
+        ndB: 0.00018518518518518518
+        cache_dir_path: cache
+        with_IRresum: true
+        with_APeffect: true
+        with_window: true
+        with_fiber: false
+        with_binning: true       
+        config_settings:
+          APeffect:
+            Om_AP: 0.307115
+            z_AP: 0.77
+          window:
+              window_fourier_file: cache/x_NGC_interp.npy
+              window_configspace_file: data/window/x_NGC_interp.dat
+          binning:
+            binning: true
+params:
+  ombh2:
+    value: 0.02214
+    latex: \Omega_\mathrm{b} h^2
+  omch2:
+    prior:
+      min: 0.03
+      max: 0.7
+    proposal: 0.003
+    ref: 0.1189
+    latex: \Omega_\mathrm{c} h^2
+  H0:
+    prior:
+      min: 40.0
+      max: 100.0
+    proposal: 0.3
+    ref: 67.77
+    latex: H_0
+  logA:
+    prior:
+      min: 0.1
+      max: 10
+    proposal: 0.1
+    ref: 3.0
+    latex: \log(10^{10} A_\mathrm{s})
+    drop: true
+  As:
+    value: 'lambda logA: 1e-10*np.exp(logA)'
+    latex: A_\mathrm{s}
+  ns:
+    value: 0.9611
+    latex: n_\mathrm{s}
+  mnu:
+    value: 0.0
+    latex: \sum m_\nu
+  tau:
+    value: 0.0543
+    latex: \tau_\mathrm{reio}
+  sigma8:
+    latex: \sigma_8
+  omegam:
+    latex: \Omega_\mathrm{m}
+  rdrag:
+    latex: r_\mathrm{drag}
+  b1A:
+    prior:
+      min: 0.0
+      max: 4.0
+    ref: 2.1
+    proposal: 0.01
+    latex: b_1^{\mathrm{LRG}}
+  c2A:
+    prior:
+      min: -4.0
+      max: 4.0
+    ref: 1.4838078
+    proposal: 0.01
+    latex: c_2^{\mathrm{LRG}}
+    drop: true
+  b3A:
+    value: 0.0
+    latex: b_3^{\mathrm{LRG}}
+  c4A:
+    value: 0.0
+    latex: c_4^{\mathrm{LRG}}
+    drop: true
+  b2A:
+    value: 'lambda c2A, c4A: (c2A + c4A) / np.sqrt(2.)'
+    latex: b_2^{\mathrm{LRG}}
+  b4A:
+    value: 'lambda c2A, c4A: (c2A - c4A) / np.sqrt(2.)'
+    latex: b_4^{\mathrm{LRG}}
+  cctA:
+    value: 0.0
+    latex: c_\mathrm{ct}^{\mathrm{LRG}}
+  cr1A:
+    value: 0.0
+    latex: c_\mathrm{r,1}^{\mathrm{LRG}}
+  cr2A:
+    value: 0.0
+    latex: c_\mathrm{r,2}^{\mathrm{LRG}}
+  b1B:
+    prior:
+      min: 0.0
+      max: 4.0
+    ref: 1.3
+    proposal: 0.01
+    latex: b_1^{\mathrm{ELG}}
+  c2B:
+    prior:
+      min: -4.0
+      max: 4.0
+    ref: 1.4838078
+    proposal: 0.01
+    latex: c_2^{\mathrm{ELG}}
+    drop: true
+  b3B:
+    value: 0.0
+    latex: b_3^{\mathrm{ELG}}
+  c4B:
+    value: 0.0
+    latex: c_4^{\mathrm{ELG}}
+    drop: true
+  b2B:
+    value: 'lambda c2B, c4B: (c2B + c4B) / np.sqrt(2.)'
+    latex: b_2^{\mathrm{ELG}}
+  b4B:
+    value: 'lambda c2B, c4B: (c2B - c4B) / np.sqrt(2.)'
+    latex: b_4^{\mathrm{ELG}}
+  cctB:
+    value: 0.0
+    latex: c_\mathrm{ct}^{\mathrm{ELG}}
+  cr1B:
+    value: 0.0
+    latex: c_\mathrm{r,1}^{\mathrm{ELG}}
+  cr2B:
+    value: 0.0
+    latex: c_\mathrm{r,2}^{\mathrm{ELG}}
+  ce0x:
+    value: 0.0
+    latex: c_{\epsilon,0}^{\mathrm{x}}
+  cemonox:
+    value: 0.0
+    latex: c_{\epsilon,\mathrm{mono}}^{\mathrm{x}}
+  cequadx:
+    value: 0.0
+    latex: c_{\epsilon,\mathrm{quad}}^{\mathrm{x}}
+  reduced_chi2:
+    latex: \chi^2_{\mathrm{d.o.f.}}
+sampler:
+  mcmc:
+    Rminus1_stop: 0.02
+    max_tries: 100000
+output: chains/mock_x_NGC_km0p15_marg
