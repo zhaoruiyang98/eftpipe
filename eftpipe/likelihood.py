@@ -7,6 +7,7 @@ from typing import (
     List,
 )
 from cobaya.likelihood import Likelihood
+from cobaya.log import LoggedError
 from cobaya.theory import Provider
 if sys.version_info >= (3, 8):
     from typing import Literal
@@ -65,13 +66,25 @@ class EFTLike(Likelihood):
     def get_requirements(self) -> Dict[str, Any]:
         return self.theory_obj.required_params()
 
+    def must_provide(self, **requirements):
+        for k, _ in requirements.items():
+            if k == "margstate":
+                if not self.can_marg:
+                    raise LoggedError(self.log, "cannot provide margstate")
+            elif k == "theory_vector":
+                if self.can_marg:
+                    raise LoggedError(self.log, "cannot provide theory_vector")
+
     def calculate(self, state, want_derived=True, **params_values_dict):
         if self.can_marg:
             chi2 = -2 * self.marg_obj.calculate(params_values_dict)
+            state["margstate"] = self.marg_obj.state[0]
         else:
             theory = self.theory_vector(params_values_dict)
+            state["theory_vector"] = theory
             res = theory - self.data_obj.data_vector
             chi2 = res @ self.data_obj.invcov @ res
+        state["gaussian_data"] = self.data_obj
 
         if want_derived:
             state['derived'] = {
@@ -85,3 +98,12 @@ class EFTLike(Likelihood):
 
     def get_can_provide_params(self) -> List[str]:
         return [self.label + 'reduced_chi2']
+
+    def get_margstate(self):
+        return self.current_state['margstate']
+
+    def get_theory_vector(self):
+        return self.current_state['theory_vector']
+
+    def get_gaussian_data(self):
+        return self.current_state["gaussian_data"]
