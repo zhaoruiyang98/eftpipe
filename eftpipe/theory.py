@@ -347,7 +347,8 @@ class EFTTheory(HasLogger):
             raise IncompleteTheory("theory has not been configured")
         provider = self.boltzmann_provider
 
-        if self.bird is None or provider.cosmo_updated():
+        # cosmo_updated should be called first to record the cosmology
+        if provider.cosmo_updated() or self.bird is None:
             # TODO: test larger kh range
             kh = np.logspace(-4, 0, 200)
             pkh = provider.interp_pkh(kh)
