@@ -849,3 +849,105 @@ class TwoTracerCrossEFT:
 
     def PNG(self, all_params_dict: Dict[str, Any]) -> NDArray:
         return self.theory_vector(all_params_dict)
+
+
+
+class CrossEFT:
+    theory: EFTTheory
+    prefix: str
+
+    def __init__(self, theory: EFTTheory, prefix: str = "") -> None:
+        self.theory = theory
+        self.prefix = prefix
+        self._set_required_params()
+        self.can_marg = True
+
+
+    def set_provider(self, provider: Provider) -> None:
+        self.theory.set_boltzmann_provider(
+            CobayaCambProvider(provider, self.theory.z)
+        )
+
+    def set_camb_provider(self, **kwargs) -> None:
+        self.theory.set_boltzmann_provider(
+            CambProvider(z=self.theory.z, **kwargs))
+
+    def required_params(self) -> Dict[str, Any]:
+        return self._required_params
+
+    def _set_required_params(self) -> None:
+        z = self.theory.z
+        extra_zs = [] if z == 0. else [0.]
+        requires = {
+            'Pk_grid': {
+                'nonlinear': False,
+                'z': [z],
+                'k_max': 5
+            },
+            'Hubble': {'z': extra_zs + [z]},
+            'angular_diameter_distance': {'z': [z]},
+            'fsigma8': {'z': [z]},
+            'sigma8_z': {'z': [z]},
+            'rdrag': None
+        }
+        eft_params = [
+            'b1A', 'b2A', 'b3A', 'b4A',
+            'cctA', 'cr1A', 'cr2A',
+            'b1B', 'b2B', 'b3B', 'b4B',
+            'cctB', 'cr1B', 'cr2B',
+            'ce0x', 'cemonox', 'cequadx'
+        ]
+        eft_requires = dict(
+            zip(eft_params, [None for _ in range(len(eft_params))])
+        )
+        requires.update(eft_requires)
+        self._required_params = requires
+
+    def theory_vector(self, all_params_dict: Dict[str, Any]) -> NDArray:
+        (
+            b1A, b2A, b3A, b4A,
+            cctA, cr1A, cr2A,
+        ) = [all_params_dict[name] for name in (
+            'b1A', 'b2A', 'b3A', 'b4A',
+            'cctA', 'cr1A', 'cr2A'
+        )]
+        (
+            b1B, b2B, b3B, b4B,
+            cctB, cr1B, cr2B,
+        ) = [all_params_dict[name] for name in (
+            'b1B', 'b2B', 'b3B', 'b4B',
+            'cctB', 'cr1B', 'cr2B'
+        )]
+        ce0x, cemonox, cequadx = [all_params_dict[name] for name in (
+            'ce0x', 'cemonox', 'cequadx'
+        )]
+        bsA = [b1A, b2A, b3A, b4A, cctA, cr1A, cr2A]
+        bsB = [b1B, b2B, b3B, b4B, cctB, cr1B, cr2B]
+        esx = [ce0x, cemonox, cequadx]
+        return self.theory.theory_vector(bsA, bsB=bsB, es=esx)
+
+    def can_marg_params(self) -> List[str]:
+        return [
+            'b3A', 
+            'cctA', 'cr1A', 'cr2A',
+            'b3B', 
+            'cctB', 'cr1B', 'cr2B',
+            'ce0x', 'cemonox', 'cequadx'
+        ]
+
+    def set_marg(self, prior: Dict[str, Any]) -> None:
+        self.theory.marg = True
+        all_params = self.can_marg_params()
+        marginds = [all_params.index(name) for name in prior.keys()]
+        #margcoef = np.ones(len(marginds), dtype=np.float64)
+        self.marginds = marginds
+        #self.margcoef = margcoef
+
+
+    def PG(self, all_params_dict: Dict[str, Any]) -> NDArray:
+        out = np.vstack(
+            [self.theory.bird.PG[i, ...].reshape(-1) for i in self.marginds])  # type: ignore
+        return out
+
+    def PNG(self, all_params_dict: Dict[str, Any]) -> NDArray:
+        return self.theory_vector(all_params_dict)

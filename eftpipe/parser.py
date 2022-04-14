@@ -12,8 +12,14 @@ if sys.version_info >= (3, 8):
 else:
     from typing_extensions import Literal
 # local
-from eftpipe.lssdata import FullShapeData
-from eftpipe.lssdata import FullShapeDataDict
+from eftpipe.lssdata import FullShapeData, FullShapeDataDict
+from eftpipe.theory import (
+    CrossEFT,
+    EFTTheory,
+    SingleTracerEFT,
+    TwoTracerEFT,
+    TwoTracerCrossEFT,
+)
 from eftpipe.marginal import MargGaussian
 from eftpipe.theory import EFTTheory
 from eftpipe.theory import SingleTracerEFT
@@ -395,6 +401,91 @@ class TwoTracerCrossParser:
             }
         }
 
+class CrossParser:
+    """a factory to create SingleTracerEFT object
+
+    Parameters
+    ----------
+    dct: dict[str, Any]
+        a dictionary which contains all the information to create SingleTracerEFT
+    logfunc: Callable[[str], None]
+        function used for logging, default print
+
+    Methods
+    -------
+    helper_dict(cls):
+        a dict template
+    create_gaussian_data(self):
+        create a FullShapeData object
+    create_vector_theory(self):
+        create a SingleTracerEFT object
+    """
+
+    def __init__(self, dct: Dict[str, Any]) -> None:
+        self._data_parser = FullShapeDataParser(dct['data'])
+        theory_info = deepcopy(dct['theory'])
+        prefix = str(theory_info.pop('prefix', ""))
+        self._prefix = prefix
+        self._theory_info = theory_info
+        self.marg_info = deepcopy(dct.get('marg', {}))
+
+    def create_gaussian_data(self, quiet=False) -> FullShapeData:
+        out = self._data_parser.create_gaussian_data(quiet=quiet)
+        if len(out.pkldatas) != 1:
+            raise ValueError('CrossParser only accept one data')
+        return out
+
+    def create_vector_theory(self) -> CrossEFT:
+        data_obj = self.create_gaussian_data(quiet=True)
+        kdata = data_obj.pkldatas[0].kdata
+        if "config_settings" in self._theory_info.keys():
+            if "binning" in self._theory_info["config_settings"].keys():
+                self._theory_info["config_settings"]["binning"]["kout"] = kdata
+        theory = EFTTheory(**self._theory_info)
+        return CrossEFT(theory, self._prefix)
+
+    def create_marglike(self, data_obj, vector_theory):
+        return MargGaussian(data_obj, vector_theory, self.marg_info)
+
+    @classmethod
+    def helper_dict(cls):
+        return {
+            "data": {
+                "cov_path": "",
+                "Nreal": 1000,
+                "rescale": 1.0,
+                "pklinfo": {
+                    "ls": [0, 2],
+                    "kmin": 0.02,
+                    "kmax": 0.2,
+                    "pkl_path": "",
+                }
+            },
+            "theory": {
+                "prefix": "",
+                "z": 0.5,
+                "cache_dir_path": "",
+                "kmA": 0.7,
+                "ndA": 7.91e-05,
+                "kmB": 0.7,
+                "ndB": 7.91e-05,
+                "Nl": 2,
+                "optiresum": False,
+                "chained": False,
+                "with_IRresum": True,
+                "with_APeffect": True,
+                "with_window": True,
+                "with_fiber": False,
+                "with_binning": True,
+                "config_settings": {
+                    "APeffect": {},
+                    "window": {},
+                    "fiber": {},
+                    "binning": {},
+                }
+            }
+        }
+
 
 @overload
 def select_parser(mode: Literal['single']) -> Type[SingleTracerParser]: ...
@@ -402,7 +493,8 @@ def select_parser(mode: Literal['single']) -> Type[SingleTracerParser]: ...
 def select_parser(mode: Literal['two']) -> Type[TwoTracerParser]: ...
 @overload
 def select_parser(mode: Literal['all']) -> Type[TwoTracerCrossParser]: ...
-
+@overload
+def select_parser(mode: Literal['cross']) -> Type[CrossParser]: ...
 
 def select_parser(mode: str):
     if mode == 'single':
@@ -411,5 +503,7 @@ def select_parser(mode: str):
         return TwoTracerParser
     elif mode == 'all':
         return TwoTracerCrossParser
+    elif mode == 'cross':
+        return CrossParser
     else:
         raise ValueError(f"unexpected mode {mode}")
