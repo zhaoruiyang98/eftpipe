@@ -1,4 +1,5 @@
 import numpy as np
+from collections import deque
 from typing import (
     Dict,
     Tuple,
@@ -33,6 +34,7 @@ class MargGaussian(HasLogger):
             self.mpi_info(f"  scale: {dct['scale']}")
         self.theory_obj.set_marg(valid_prior)
         self.mu_G, self.sigma_inv = self._calc_prior(valid_prior)
+        self.state = deque(maxlen=1)
 
     def _update_prior(self, prior: Dict[str, Any]) -> Dict[str, Any]:
         can_marg_params = self.theory_obj.can_marg_params()
@@ -121,6 +123,14 @@ class MargGaussian(HasLogger):
         F1i = self.calc_F1i(PG, PNG)
         F0 = self.calc_F0(PNG)
         det = np.linalg.det(F2ij / (2 * np.pi))
+        self.state.append({
+            "PNG": PNG,
+            "PG": PG,
+            "F2ij": F2ij,
+            "F1i": F1i,
+            "F0": F0,
+            "det": det,
+        })
         if det < 0:
             raise ValueError(f"det of F2ij < 0")
         chi2 = (
