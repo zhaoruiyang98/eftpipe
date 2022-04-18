@@ -1,8 +1,10 @@
 theory:
-  classy:
+  classynu:
+    class: eftpipe.classynu
     extra_args:
       N_ncdm: 1
       N_ur: 2.0328
+      neutrino_hierarchy: 'degenerate'
 likelihood:
   one:
 params:
@@ -17,7 +19,7 @@ params:
     proposal: 0.001
     latex: \log(10^{10} A_\mathrm{s})
     drop: true
-  A_s:
+  As:
     value: 'lambda logA: 1e-10*np.exp(logA)'
     latex: A_\mathrm{s}
   n_s:
@@ -51,7 +53,7 @@ params:
   omegamh2:
     derived: 'lambda Omega_m, H0: Omega_m*(H0/100)**2'
     latex: \Omega_\mathrm{m} h^2
-  m_ncdm:
+  mnu:
     value: 0.06
   Omega_Lambda:
     latex: \Omega_\Lambda
