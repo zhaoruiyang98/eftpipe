@@ -194,6 +194,13 @@ class CobayaClassyProvider:
     """
 
     def __init__(self, provider: Provider, z: float) -> None:
+        self.name = None
+        for k in provider.model.theory.keys():
+            if 'classy' in k:
+                self.name = k
+                break
+        if self.name is None:
+            raise ValueError("classy or classynu not in theory")
         self.provider = provider
         self.z = z
         self.cosmo_params_dct = {}
@@ -214,7 +221,7 @@ class CobayaClassyProvider:
             * (self.get_h0() * 100) / 299792.458
 
     def get_f(self, z: float) -> float:
-        return self.provider.model.theory['classy'].classy.scale_independent_growth_factor_f(z)
+        return self.provider.model.theory[self.name].classy.scale_independent_growth_factor_f(z)
 
     def get_h0(self) -> float:
         return float(self.provider.get_Hubble(0.)) / 100.
@@ -230,7 +237,7 @@ class CobayaClassyProvider:
 
     def cosmo_updated(self) -> bool:
         flag = True
-        classy = self.provider.model.theory['classy']
+        classy = self.provider.model.theory[self.name]
         if len(classy._states) != 0:
             cosmo_params_dct = deepcopy(classy._states[0]['params'])
             if cosmo_params_dct == self.cosmo_params_dct:
