@@ -18,7 +18,6 @@ install_requires = [
     "numpy>=1.20",
     "scipy>=1.6",
     "cobaya>=3.1.1",
-    "camb>=1.3.2",
 ]
 install_requires += extra_install
 
