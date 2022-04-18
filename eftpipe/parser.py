@@ -87,6 +87,7 @@ class SingleTracerParser:
         prefix = str(theory_info.pop('prefix', ""))
         self._prefix = prefix
         self._theory_info = theory_info
+        self._provider = self._theory_info.pop('provider', 'camb')
         self.marg_info = deepcopy(dct.get('marg', {}))
 
     def create_gaussian_data(self, quiet=False) -> FullShapeData:
@@ -101,10 +102,7 @@ class SingleTracerParser:
         set_value_in_nested_dict(
             self._theory_info, kdata, "config_settings", "binning", "kout")
         theory = EFTTheory(**self._theory_info)
-        return SingleTracerEFT(
-            theory, self._prefix,
-            provider=self._theory_info.get("provider", "camb")
-        )
+        return SingleTracerEFT(theory, self._prefix, provider=self._provider)
 
     def create_marglike(self, data_obj, vector_theory):
         return MargGaussian(data_obj, vector_theory, self.marg_info)
