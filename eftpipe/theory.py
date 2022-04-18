@@ -303,10 +303,11 @@ class EFTTheory(HasLogger):
         if with_APeffect:
             self.operators["APeffect"] = Operator(
                 pybird.APeffect, pybird.APeffect.AP, co=self.co)
+            self.mpi_info("APeffect enabled")
         if with_window:
             self.operators["window"] = Operator(
                 pybird.Window, pybird.Window.Window, co=self.co)
-            self.mpi_info("APeffect enabled")
+            self.mpi_info("window enabled")
         if with_fiber:
             self.operators["fiber"] = Operator(
                 pybird.FiberCollision, pybird.FiberCollision.fibcolWindow,
