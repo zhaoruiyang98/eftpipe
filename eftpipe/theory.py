@@ -396,12 +396,16 @@ class SingleTracerEFT(HasLogger):
         prefix of EFT parameters, by default ""
     provider: "camb" or "classy"
         use cobaya's camb or cobaya's classy, by default "camb"
+    use_cb: bool
+        compute the linear power spectrum of cdm + baryon,
+        by default False and compute the total matter power spectrum
     """
 
     def __init__(
         self,
         theory: EFTTheory, prefix: str = "",
         provider: Literal["camb", "classy"] = "camb",
+        use_cb: bool = False,
     ) -> None:
         self.set_logger(name="eftpipe.SingleTracerEFT")
 
@@ -412,6 +416,10 @@ class SingleTracerEFT(HasLogger):
         if provider not in ("camb", "classy"):
             raise ValueError("only support provider: camb or provider: classy")
         self.mpi_info("using provider %s", self.provider)
+        vars_pairs = [2 * ["delta_nonu"]] if use_cb else [2 * ["delta_tot"]]
+        self._vars_pairs = vars_pairs
+        self.mpi_info("linear power spectrum: %s",
+                      'delta_nonu' if use_cb else 'delta_tot')
 
     def set_provider(self, provider: Provider) -> None:
         if self.provider == "camb":
@@ -434,6 +442,7 @@ class SingleTracerEFT(HasLogger):
                     'nonlinear': False,
                     'z': [z],
                     'k_max': 5,
+                    'vars_pairs': self._vars_pairs,
                 },
                 'Hubble': {'z': extra_zs + [z]},
                 'angular_diameter_distance': {'z': [z]},
@@ -447,6 +456,7 @@ class SingleTracerEFT(HasLogger):
                     'nonlinear': False,
                     'z': [z],
                     'k_max': 5,
+                    'vars_pairs': self._vars_pairs,
                 },
                 'Hubble': {'z': extra_zs + [z]},
                 'angular_diameter_distance': {'z': [z]},
@@ -518,12 +528,16 @@ class TwoTracerEFT(HasLogger):
         EFT parameters' prefixes list
     provider: "camb" or "classy"
         use cobaya's camb or cobaya's classy, default is "camb"
+    use_cb: bool
+        compute the linear power spectrum of cdm + baryon,
+        by default False and compute the total matter power spectrum
     """
 
     def __init__(
         self,
         theories: List[EFTTheory], prefixes: List[str],
         provider: Literal["camb", "classy"] = "camb",
+        use_cb: bool = False,
     ) -> None:
         self.set_logger(name="eftpipe.TwoTracerEFT")
 
@@ -536,6 +550,10 @@ class TwoTracerEFT(HasLogger):
         if provider not in ("camb", "classy"):
             raise ValueError("only support provider: camb or provider: classy")
         self.mpi_info("using provider %s", self.provider)
+        vars_pairs = [2 * ["delta_nonu"]] if use_cb else [2 * ["delta_tot"]]
+        self._vars_pairs = vars_pairs
+        self.mpi_info("linear power spectrum: %s",
+                      'delta_nonu' if use_cb else 'delta_tot')
 
     def set_provider(self, provider: Provider) -> None:
         for theory in self.theories:
@@ -560,7 +578,8 @@ class TwoTracerEFT(HasLogger):
                 'Pk_grid': {
                     'nonlinear': False,
                     'z': zs,
-                    'k_max': 5
+                    'k_max': 5,
+                    'vars_pairs': self._vars_pairs,
                 },
                 'Hubble': {'z': extra_zs + zs},
                 'angular_diameter_distance': {'z': zs},
@@ -574,6 +593,7 @@ class TwoTracerEFT(HasLogger):
                     "nonlinear": False,
                     "z": zs,
                     "k_max": 5,
+                    'vars_pairs': self._vars_pairs,
                 },
                 "Hubble": {"z": extra_zs + zs},
                 "angular_diameter_distance": {"z": zs},
@@ -689,12 +709,16 @@ class TwoTracerCrossEFT(HasLogger):
         EFT parameters' prefixes list
     provider: "camb" or "classy"
         use cobaya's camb or cobaya's classy, default is "camb"
+    use_cb: bool
+        compute the linear power spectrum of cdm + baryon,
+        by default False and compute the total matter power spectrum
     """
 
     def __init__(
         self,
         theories: List[EFTTheory], prefixes: List[str],
         provider: Literal["camb", "classy"] = "camb",
+        use_cb: bool = False,
     ) -> None:
         self.set_logger(name="eftpipe.TwoTracerCrossEFT")
 
@@ -720,6 +744,10 @@ class TwoTracerCrossEFT(HasLogger):
         if provider not in ("camb", "classy"):
             raise ValueError("only support provider: camb or provider: classy")
         self.mpi_info("using provider %s", self.provider)
+        vars_pairs = [2 * ["delta_nonu"]] if use_cb else [2 * ["delta_tot"]]
+        self._vars_pairs = vars_pairs
+        self.mpi_info("linear power spectrum: %s",
+                      'delta_nonu' if use_cb else 'delta_tot')
 
     def set_provider(self, provider: Provider) -> None:
         for theory in self.theories:
@@ -764,6 +792,7 @@ class TwoTracerCrossEFT(HasLogger):
                     'nonlinear': False,
                     'z': zs,
                     'k_max': 5,
+                    'vars_pairs': self._vars_pairs,
                 },
                 'Hubble': {'z': extra_zs + zs},
                 'angular_diameter_distance': {'z': zs},
@@ -776,7 +805,8 @@ class TwoTracerCrossEFT(HasLogger):
                 "Pk_interpolator": {
                     "nonlinear": False,
                     "z": zs,
-                    "k_max": 5
+                    "k_max": 5,
+                    'vars_pairs': self._vars_pairs,
                 },
                 "Hubble": {'z': extra_zs + zs},
                 "angular_diameter_distance": {'z': zs},
