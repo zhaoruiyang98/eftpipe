@@ -73,10 +73,10 @@ def test_compare_hierarchy_normal_and_degenerate(
     # uncomment the following line to study the mass split effect on the linear power spectrum
     # info["theory"]["classynu"]["extra_args"] = {"N_ncdm": 3, "N_ur": 0.00641}
     info["theory"]["classynu"]["extra_args"]["neutrino_hierarchy"] = "degenerate"
-    degenerate_model = cobaya.get_model(info)
+    degenerate_model = cobaya.get_model(info) # type: ignore
     # normal
     info["theory"]["classynu"]["extra_args"]["neutrino_hierarchy"] = "normal"
-    normal_model = cobaya.get_model(info)
+    normal_model = cobaya.get_model(info) # type: ignore
 
     z = 0.5
     requires = {
