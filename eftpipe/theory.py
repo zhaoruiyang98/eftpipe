@@ -862,7 +862,6 @@ class CrossEFT:
         self._set_required_params()
         self.can_marg = True
 
-
     def set_provider(self, provider: Provider) -> None:
         self.theory.set_boltzmann_provider(
             CobayaCambProvider(provider, self.theory.z)
@@ -890,12 +889,14 @@ class CrossEFT:
             'sigma8_z': {'z': [z]},
             'rdrag': None
         }
+        
         eft_params = [
-            'b1A', 'b2A', 'b3A', 'b4A',
-            'cctA', 'cr1A', 'cr2A',
-            'b1B', 'b2B', 'b3B', 'b4B',
-            'cctB', 'cr1B', 'cr2B',
-            'ce0x', 'cemonox', 'cequadx'
+            self.prefix + name for name in
+            ('b1A', 'b2A', 'b3A', 'b4A',
+             'cctA', 'cr1A', 'cr2A',
+             'b1B', 'b2B', 'b3B', 'b4B',
+             'cctB', 'cr1B', 'cr2B',
+             'ce0x', 'cemonox', 'cequadx')
         ]
         eft_requires = dict(
             zip(eft_params, [None for _ in range(len(eft_params))])
@@ -904,22 +905,19 @@ class CrossEFT:
         self._required_params = requires
 
     def theory_vector(self, all_params_dict: Dict[str, Any]) -> NDArray:
+        prefix = self.prefix
         (
             b1A, b2A, b3A, b4A,
             cctA, cr1A, cr2A,
-        ) = [all_params_dict[name] for name in (
-            'b1A', 'b2A', 'b3A', 'b4A',
-            'cctA', 'cr1A', 'cr2A'
-        )]
-        (
             b1B, b2B, b3B, b4B,
             cctB, cr1B, cr2B,
-        ) = [all_params_dict[name] for name in (
+            ce0x, cemonox, cequadx,
+        ) = [all_params_dict[prefix + name] for name in (
+            'b1A', 'b2A', 'b3A', 'b4A',
+            'cctA', 'cr1A', 'cr2A',
             'b1B', 'b2B', 'b3B', 'b4B',
-            'cctB', 'cr1B', 'cr2B'
-        )]
-        ce0x, cemonox, cequadx = [all_params_dict[name] for name in (
-            'ce0x', 'cemonox', 'cequadx'
+            'cctB', 'cr1B', 'cr2B',
+            'ce0x', 'cemonox', 'cequadx',
         )]
         bsA = [b1A, b2A, b3A, b4A, cctA, cr1A, cr2A]
         bsB = [b1B, b2B, b3B, b4B, cctB, cr1B, cr2B]
@@ -928,20 +926,15 @@ class CrossEFT:
 
     def can_marg_params(self) -> List[str]:
         return [
-            'b3A', 
-            'cctA', 'cr1A', 'cr2A',
-            'b3B', 
-            'cctB', 'cr1B', 'cr2B',
-            'ce0x', 'cemonox', 'cequadx'
+            self.prefix + x
+            for x in ('b3A', 'cctA', 'cr1A', 'cr2A', 'b3B', 'cctB', 'cr1B', 'cr2B','ce0x', 'cemonox', 'cequadx')
         ]
 
     def set_marg(self, prior: Dict[str, Any]) -> None:
         self.theory.marg = True
         all_params = self.can_marg_params()
         marginds = [all_params.index(name) for name in prior.keys()]
-        #margcoef = np.ones(len(marginds), dtype=np.float64)
         self.marginds = marginds
-        #self.margcoef = margcoef
 
 
     def PG(self, all_params_dict: Dict[str, Any]) -> NDArray:
