@@ -12,15 +12,10 @@ if sys.version_info >= (3, 8):
 else:
     from typing_extensions import Literal
 # local
-from eftpipe.lssdata import FullShapeData, FullShapeDataDict
-from eftpipe.theory import (
-    CrossEFT,
-    EFTTheory,
-    SingleTracerEFT,
-    TwoTracerEFT,
-    TwoTracerCrossEFT,
-)
+from eftpipe.lssdata import FullShapeData
+from eftpipe.lssdata import FullShapeDataDict
 from eftpipe.marginal import MargGaussian
+from eftpipe.theory import CrossEFT
 from eftpipe.theory import EFTTheory
 from eftpipe.theory import SingleTracerEFT
 from eftpipe.theory import TwoTracerCrossEFT
@@ -402,14 +397,12 @@ class TwoTracerCrossParser:
         }
 
 class CrossParser:
-    """a factory to create SingleTracerEFT object
+    """a factory to create CrossEFT object
 
     Parameters
     ----------
     dct: dict[str, Any]
-        a dictionary which contains all the information to create SingleTracerEFT
-    logfunc: Callable[[str], None]
-        function used for logging, default print
+        a dictionary which contains all the information to create CrossEFT
 
     Methods
     -------
@@ -418,7 +411,7 @@ class CrossParser:
     create_gaussian_data(self):
         create a FullShapeData object
     create_vector_theory(self):
-        create a SingleTracerEFT object
+        create a CrossEFT object
     """
 
     def __init__(self, dct: Dict[str, Any]) -> None:
@@ -462,7 +455,7 @@ class CrossParser:
                 }
             },
             "theory": {
-                "prefix": ["", "", ""],
+                "prefix": "",
                 "z": 0.77,
                 "cache_dir_path": "",
                 "kmA": 0.7,
@@ -470,6 +463,7 @@ class CrossParser:
                 "kmB": 0.45,
                 "ndB": 0.00018518518518518518,
                 "Nl": 2,
+                "cross": True,
                 "optiresum": False,
                 "chained": False,
                 "with_IRresum": True,
