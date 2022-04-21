@@ -462,13 +462,13 @@ class CrossParser:
                 }
             },
             "theory": {
-                "prefix": "",
-                "z": 0.5,
+                "prefix": ["", "", ""],
+                "z": 0.77,
                 "cache_dir_path": "",
                 "kmA": 0.7,
                 "ndA": 7.91e-05,
-                "kmB": 0.7,
-                "ndB": 7.91e-05,
+                "kmB": 0.45,
+                "ndB": 0.00018518518518518518,
                 "Nl": 2,
                 "optiresum": False,
                 "chained": False,
@@ -477,6 +477,7 @@ class CrossParser:
                 "with_window": True,
                 "with_fiber": False,
                 "with_binning": True,
+                "cross": True,
                 "config_settings": {
                     "APeffect": {},
                     "window": {},

@@ -7,7 +7,7 @@ likelihood:
     class: eftpipe.EFTLike
     stop_at_error: true
     label: ''
-    nsampled: 11
+    nsampled: 21
     extra_args:
       mode: cross
       data:
@@ -20,32 +20,33 @@ likelihood:
           pkl_path: data/mock/x_NGC.txt
         cov_path: data/cov/cov_NGC_X024.txt
         Nreal: 1000
-        rescale: 27
+        rescale: 1
       marg:
-        b3A:
+        NGC_b3A:
           scale: 2
-        cctA:
+        NGC_cctA:
           scale: 2
-        cr1A:
+        NGC_cr1A:
           scale: 4
-        b3B:
+        NGC_b3B:
           scale: 2
-        cctB:
+        NGC_cctB:
           scale: 2
-        cr1B:
+        NGC_cr1B:
           scale: 4
-        ce0x:
+        NGC_ce0x:
           scale: 2
-        cequadx:
+        NGC_cequadx:
           scale: 2
       theory:
-        prefix: x_NGC_
+        prefix: NGC_
         Nl: 2
         z: 0.77
         kmA: 0.7
         ndA: 7.91e-05
         kmB: 0.45
         ndB: 0.00018518518518518518
+        cross: true
         cache_dir_path: cache
         with_IRresum: true
         with_APeffect: true
@@ -69,14 +70,14 @@ params:
     prior:
       min: 0.03
       max: 0.7
-    proposal: 0.003
+    proposal: 0.001
     ref: 0.1189
     latex: \Omega_\mathrm{c} h^2
   H0:
     prior:
       min: 40.0
       max: 100.0
-    proposal: 0.3
+    proposal: 0.1
     ref: 67.77
     latex: H_0
   logA:
@@ -105,14 +106,14 @@ params:
     latex: \Omega_\mathrm{m}
   rdrag:
     latex: r_\mathrm{drag}
-  b1A:
+  NGC_b1A:
     prior:
       min: 0.0
       max: 4.0
     ref: 2.1
     proposal: 0.01
     latex: b_1^{\mathrm{LRG}}
-  c2A:
+  NGC_c2A:
     prior:
       min: -4.0
       max: 4.0
@@ -120,36 +121,36 @@ params:
     proposal: 0.01
     latex: c_2^{\mathrm{LRG}}
     drop: true
-  b3A:
+  NGC_b3A:
     value: 0.0
     latex: b_3^{\mathrm{LRG}}
-  c4A:
+  NGC_c4A:
     value: 0.0
     latex: c_4^{\mathrm{LRG}}
     drop: true
-  b2A:
-    value: 'lambda c2A, c4A: (c2A + c4A) / np.sqrt(2.)'
+  NGC_b2A:
+    value: 'lambda NGC_c2A, NGC_c4A: (NGC_c2A + NGC_c4A) / np.sqrt(2.)'
     latex: b_2^{\mathrm{LRG}}
-  b4A:
-    value: 'lambda c2A, c4A: (c2A - c4A) / np.sqrt(2.)'
+  NGC_b4A:
+    value: 'lambda NGC_c2A, NGC_c4A: (NGC_c2A - NGC_c4A) / np.sqrt(2.)'
     latex: b_4^{\mathrm{LRG}}
-  cctA:
+  NGC_cctA:
     value: 0.0
     latex: c_\mathrm{ct}^{\mathrm{LRG}}
-  cr1A:
+  NGC_cr1A:
     value: 0.0
     latex: c_\mathrm{r,1}^{\mathrm{LRG}}
-  cr2A:
+  NGC_cr2A:
     value: 0.0
     latex: c_\mathrm{r,2}^{\mathrm{LRG}}
-  b1B:
+  NGC_b1B:
     prior:
       min: 0.0
       max: 4.0
     ref: 1.3
     proposal: 0.01
     latex: b_1^{\mathrm{ELG}}
-  c2B:
+  NGC_c2B:
     prior:
       min: -4.0
       max: 4.0
@@ -157,35 +158,35 @@ params:
     proposal: 0.01
     latex: c_2^{\mathrm{ELG}}
     drop: true
-  b3B:
+  NGC_b3B:
     value: 0.0
     latex: b_3^{\mathrm{ELG}}
-  c4B:
+  NGC_c4B:
     value: 0.0
     latex: c_4^{\mathrm{ELG}}
     drop: true
-  b2B:
-    value: 'lambda c2B, c4B: (c2B + c4B) / np.sqrt(2.)'
+  NGC_b2B:
+    value: 'lambda NGC_c2B, NGC_c4B: (NGC_c2B + NGC_c4B) / np.sqrt(2.)'
     latex: b_2^{\mathrm{ELG}}
-  b4B:
-    value: 'lambda c2B, c4B: (c2B - c4B) / np.sqrt(2.)'
+  NGC_b4B:
+    value: 'lambda NGC_c2B, NGC_c4B: (NGC_c2B - NGC_c4B)  / np.sqrt(2.)'
     latex: b_4^{\mathrm{ELG}}
-  cctB:
+  NGC_cctB:
     value: 0.0
     latex: c_\mathrm{ct}^{\mathrm{ELG}}
-  cr1B:
+  NGC_cr1B:
     value: 0.0
     latex: c_\mathrm{r,1}^{\mathrm{ELG}}
-  cr2B:
+  NGC_cr2B:
     value: 0.0
     latex: c_\mathrm{r,2}^{\mathrm{ELG}}
-  ce0x:
+  NGC_ce0x:
     value: 0.0
     latex: c_{\epsilon,0}^{\mathrm{x}}
-  cemonox:
+  NGC_cemonox:
     value: 0.0
     latex: c_{\epsilon,\mathrm{mono}}^{\mathrm{x}}
-  cequadx:
+  NGC_cequadx:
     value: 0.0
     latex: c_{\epsilon,\mathrm{quad}}^{\mathrm{x}}
   reduced_chi2:
@@ -194,4 +195,4 @@ sampler:
   mcmc:
     Rminus1_stop: 0.02
     max_tries: 100000
-output: chains/mock_x_NGC_km0p15_marg
+output: chains/remock_x_NGC_km0p15_marg
