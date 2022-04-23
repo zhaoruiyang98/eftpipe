@@ -365,6 +365,8 @@ class PklDataDict(TypedDict, total=False):
     ls: List[int]
     kmin: float
     kmax: float
+    header: List[str]
+    skip: List[str]
 
 
 class FullShapeDataDict(TypedDict, total=False):
@@ -382,7 +384,7 @@ class FullShapeData(Sequence[PklData], HasLogger):
     Parameters
     ----------
     pkldatas: PklData | Iterable[Pkldata]
-    cov: ndarray, 1d
+    cov: ndarray, 2d
         covariance matrix for pkldatas, multipoles should be sorted in ascending order
     Nreal: int
         realizations, for Hartlap correction
@@ -479,7 +481,10 @@ class FullShapeData(Sequence[PklData], HasLogger):
             default = cast(Dict[str, Any], deepcopy(common))
             for k, v in info.items():
                 default[k] = v
-            item = PklData.loadtxt(default['pkl_path'], log=log)
+            item = PklData.loadtxt(
+                default['pkl_path'],
+                header=default.get('header'), skip=default.get('skip'), log=log,
+            )
             item.set_mask(
                 ls=default.get('ls'),
                 kmin=default.get('kmin'),
