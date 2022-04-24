@@ -31,6 +31,9 @@ class CambProvider:
         optical depth, default 0.0543
     z: float
         redshift, default 0
+    use_cb: bool
+        compute the linear power spectrum of cdm + baryon,
+        by default False and compute the total matter power spectrum
 
     Notes
     -----
@@ -50,7 +53,8 @@ class CambProvider:
         ns: float = 0.97,
         mnu: float = 0.06,
         tau: float = 0.0543,
-        z: float = 0.0
+        z: float = 0.0,
+        use_cb: bool = False,
     ) -> None:
         import camb
         from camb import CAMBparams
@@ -69,8 +73,9 @@ class CambProvider:
             mypars.set_matter_power(redshifts=(z,), nonlinear=False)
             results = camb.get_results(mypars)
         self.results = results
+        var = 'delta_nonu' if use_cb else 'delta_tot'
         kinterp, zs, pkhinterp = self.results.get_linear_matter_power_spectrum(
-            nonlinear=False)
+            var1=var, var2=var, nonlinear=False)
         index = list(zs).index(self.z)
         pkhinterp = pkhinterp[index, :]
         self._interp_pkh = interp1d(kinterp, pkhinterp, kind='cubic')
@@ -120,15 +125,20 @@ class CobayaCambProvider:
         cobaya's camb provider
     z: float
         redshift
+    use_cb: bool
+        compute the linear power spectrum of cdm + baryon,
+        by default False and compute the total matter power spectrum
     """
 
-    def __init__(self, provider: Provider, z: float) -> None:
+    def __init__(self, provider: Provider, z: float, use_cb: bool = False) -> None:
         self.provider = provider
         self.z = z
+        self.var_pair = ('delta_nonu', 'delta_nonu') if use_cb else ('delta_tot', 'delta_tot')
         self.cosmo_params_dct = {}
 
     def interp_pkh(self, kh: NDArray) -> NDArray:
-        kinterp, zs, pkinterp = self.provider.get_Pk_grid(nonlinear=False)
+        kinterp, zs, pkinterp = self.provider.get_Pk_grid(
+            var_pair=self.var_pair, nonlinear=False)
         h = float(self.get_h0())
         khinterp = kinterp / h
         index = list(zs).index(self.z)
@@ -191,9 +201,12 @@ class CobayaClassyProvider:
         cobaya's classy provider
     z: float
         redshift
+    use_cb: bool
+        compute the linear power spectrum of cdm + baryon,
+        by default False and compute the total matter power spectrum
     """
 
-    def __init__(self, provider: Provider, z: float) -> None:
+    def __init__(self, provider: Provider, z: float, use_cb: bool = False) -> None:
         self.name = None
         for k in provider.model.theory.keys():
             if 'classy' in k:
@@ -203,11 +216,13 @@ class CobayaClassyProvider:
             raise ValueError("classy or classynu not in theory")
         self.provider = provider
         self.z = z
+        self.var_pair = ('delta_nonu', 'delta_nonu') if use_cb else ('delta_tot', 'delta_tot')
         self.cosmo_params_dct = {}
 
     def interp_pkh(self, kh: NDArray) -> NDArray:
         # TODO: extrap_kmin not yet supported in cobaya 3.1.1, should update in the future
-        interpolator = self.provider.get_Pk_interpolator(nonlinear=False)
+        interpolator = self.provider.get_Pk_interpolator(
+            var_pair=self.var_pair, nonlinear=False)
         h = float(self.get_h0())
         pkh = interpolator.P(self.z, kh * h)
         pkh *= h**3

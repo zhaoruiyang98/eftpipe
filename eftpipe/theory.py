@@ -416,6 +416,7 @@ class SingleTracerEFT(HasLogger):
         if provider not in ("camb", "classy"):
             raise ValueError("only support provider: camb or provider: classy")
         self.mpi_info("using provider %s", self.provider)
+        self.use_cb = use_cb
         vars_pairs = [2 * ["delta_nonu"]] if use_cb else [2 * ["delta_tot"]]
         self._vars_pairs = vars_pairs
         self.mpi_info("linear power spectrum: %s",
@@ -424,14 +425,14 @@ class SingleTracerEFT(HasLogger):
     def set_provider(self, provider: Provider) -> None:
         if self.provider == "camb":
             self.theory.set_boltzmann_provider(
-                CobayaCambProvider(provider, self.theory.z))
+                CobayaCambProvider(provider, self.theory.z, use_cb=self.use_cb))
         elif self.provider == "classy":
             self.theory.set_boltzmann_provider(
-                CobayaClassyProvider(provider, self.theory.z))
+                CobayaClassyProvider(provider, self.theory.z, use_cb=self.use_cb))
 
     def set_camb_provider(self, **kwargs) -> None:
         self.theory.set_boltzmann_provider(
-            CambProvider(z=self.theory.z, **kwargs))
+            CambProvider(z=self.theory.z, use_cb=self.use_cb, **kwargs))
 
     def required_params(self) -> Dict[str, Any]:
         z = self.theory.z
@@ -550,6 +551,7 @@ class TwoTracerEFT(HasLogger):
         if provider not in ("camb", "classy"):
             raise ValueError("only support provider: camb or provider: classy")
         self.mpi_info("using provider %s", self.provider)
+        self.use_cb = use_cb
         vars_pairs = [2 * ["delta_nonu"]] if use_cb else [2 * ["delta_tot"]]
         self._vars_pairs = vars_pairs
         self.mpi_info("linear power spectrum: %s",
@@ -559,15 +561,15 @@ class TwoTracerEFT(HasLogger):
         for theory in self.theories:
             if self.provider == "camb":
                 theory.set_boltzmann_provider(
-                    CobayaCambProvider(provider, theory.z))
+                    CobayaCambProvider(provider, theory.z, use_cb=self.use_cb))
             elif self.provider == "classy":
                 theory.set_boltzmann_provider(
-                    CobayaClassyProvider(provider, theory.z))
+                    CobayaClassyProvider(provider, theory.z, use_cb=self.use_cb))
 
     def set_camb_provider(self, **kwargs) -> None:
         for theory in self.theories:
             theory.set_boltzmann_provider(
-                CambProvider(z=theory.z, **kwargs))
+                CambProvider(z=theory.z, use_cb=self.use_cb, **kwargs))
 
     def required_params(self) -> Dict[str, Any]:
         zs = [theory.z for theory in self.theories]
@@ -744,6 +746,7 @@ class TwoTracerCrossEFT(HasLogger):
         if provider not in ("camb", "classy"):
             raise ValueError("only support provider: camb or provider: classy")
         self.mpi_info("using provider %s", self.provider)
+        self.use_cb = use_cb
         vars_pairs = [2 * ["delta_nonu"]] if use_cb else [2 * ["delta_tot"]]
         self._vars_pairs = vars_pairs
         self.mpi_info("linear power spectrum: %s",
@@ -753,15 +756,15 @@ class TwoTracerCrossEFT(HasLogger):
         for theory in self.theories:
             if self.provider == "camb":
                 theory.set_boltzmann_provider(
-                    CobayaCambProvider(provider, theory.z))
+                    CobayaCambProvider(provider, theory.z, use_cb=self.use_cb))
             elif self.provider == "classy":
                 theory.set_boltzmann_provider(
-                    CobayaClassyProvider(provider, theory.z))
+                    CobayaClassyProvider(provider, theory.z, use_cb=self.use_cb))
 
     def set_camb_provider(self, **kwargs) -> None:
         for theory in self.theories:
             theory.set_boltzmann_provider(
-                CambProvider(z=theory.z, **kwargs))
+                CambProvider(z=theory.z, use_cb=self.use_cb, **kwargs))
 
     def _set_index_mapping(self) -> None:
         type_to_index = cast(
