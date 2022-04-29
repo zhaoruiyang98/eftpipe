@@ -48,6 +48,7 @@ setup(
     name='eftpipe',
     version='0.0.1',
     description='EFTofLSS analysis pipeline for cross power spectrum',
+    long_description=read_long_description(),
     url='https://github.com/zhaoruiyang98/eftpipe',
     project_urls={
         'Source': 'https://github.com/zhaoruiyang98/eftpipe',
