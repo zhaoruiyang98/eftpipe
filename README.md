@@ -6,8 +6,8 @@ Developed by [Ruiyang Zhao](mailto:zhaoruiyang19@mails.ucas.edu.cn) and [Xiaoyon
 
 # Dependencies
 - `numpy` and `scipy` for numerical computing
-- `cobaya` likelihood
-- `camb` boltzamnn code
+- `cobaya` for likelihood and logging
+- `camb` or `classy` boltzamnn code (not necessary if you only want to run `eftpipe.pybird`)
 # Installation
 ## Installing all packages for analysis using Anaconda
 EFTPipe provides the likelihood for bayesian analysis of large-scale structure data. Typically people need extra packages for plotting and monte-carlo sampling, such as [getdist](https://getdist.readthedocs.io/en/latest/) and [cobaya](https://cobaya.readthedocs.io/en/latest/).
