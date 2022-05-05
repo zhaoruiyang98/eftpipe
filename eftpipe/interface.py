@@ -31,6 +31,8 @@ class CambProvider:
         optical depth, default 0.0543
     z: float
         redshift, default 0
+    kmax: float
+        maximum wavenumber, by default 1.2
     use_cb: bool
         compute the linear power spectrum of cdm + baryon,
         by default False and compute the total matter power spectrum
@@ -54,6 +56,7 @@ class CambProvider:
         mnu: float = 0.06,
         tau: float = 0.0543,
         z: float = 0.0,
+        kmax: float = 1.2,
         use_cb: bool = False,
     ) -> None:
         import camb
@@ -70,7 +73,7 @@ class CambProvider:
             )
             mypars.InitPower.set_params(
                 ns=ns, As=1e-10 * np.exp(logA))  # type: ignore
-            mypars.set_matter_power(redshifts=(z,), nonlinear=False)
+            mypars.set_matter_power(redshifts=(z,), nonlinear=False, kmax=kmax)
             results = camb.get_results(mypars)
         self.results = results
         var = 'delta_nonu' if use_cb else 'delta_tot'
