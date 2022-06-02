@@ -1,6 +1,6 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/zhaoruiyang98/eftpipe/blob/main/LICENSE)
 # EFTPipe
-EFTofLSS analysis pipeline for cross power spectrum
+EFTofLSS analysis pipeline
 
 Developed by [Ruiyang Zhao](mailto:zhaoruiyang19@mails.ucas.edu.cn) and [Xiaoyong Mu](mailto:mouxiaoyong15@mails.ucas.edu.cn)
 
@@ -16,19 +16,20 @@ Here we provide codes to install all packages you may need when performing data 
 
 ```bash
 # create a new environment
-conda create -n eftpipe python=3.7
+conda create -n eftpipe python=3.8
 conda activate eftpipe
 # install getdist first
-conda install -c conda-forge matplotlib PySide2
-conda install "numpy>=1.20" "scipy>=1.6" pandas portalocker
+conda install -c conda-forge "numpy>=1.21" "scipy>=1.6" pandas portalocker matplotlib PySide2 tqdm
 pip install getdist
 # test if getdist is working
 python -m unittest getdist.tests.getdist_test
+# test if getdist-gui is working
+# getdist-gui
 # install cobaya
-python -m pip install cobaya --upgrade
+python -m pip install "cobaya>=3.2.1" --upgrade
 # install cosmological codes and data
-cobaya-install cosmo -p /path/to/packages
-# install camb equipped with cobaya
+cobaya-install cosmo -p /path/to/packages --upgrade
+# install camb equipped with cobaya (ensure latest)
 cd /path/to/packages/code/CAMB
 pip install .
 ```
