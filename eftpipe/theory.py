@@ -51,7 +51,7 @@ def chain_coeff(l: int) -> float:
 
 
 class BirdPlus(pybird.Bird):
-    """enhanced version of pybird.Bird, support multi-tracer, hook and hook
+    """enhanced version of pybird.Bird, support multi-tracer, hook and snapshot
     """
 
     _hooks: list[BirdHook]
@@ -1162,7 +1162,7 @@ class EFTLSSChild(HelperTheory):
             state["derived"][self.prefix + "fsigma8_z"] = boltzmann.fsigma8_z
             # TODO: fsigma8_cb_z
         end = time.perf_counter()
-        self.mpi_debug("time used: %s", end - start)
+        self.mpi_debug("calculate: time used: %s", end - start)
 
     def get_can_provide(self):
         return [self.name + "_results"]
