@@ -1,37 +1,39 @@
+from __future__ import annotations
+
 # global
-import inspect
-import sys
+import itertools
+import time
 import numpy as np
+from collections import defaultdict
+from copy import deepcopy
+from functools import cached_property
 from pathlib import Path
-from typing import (
-    Any,
-    cast,
-    Dict,
-    Iterable,
-    List,
-    Optional,
-)
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
-from numpy import ndarray as NDArray
+from typing import Any, cast, Iterable, NamedTuple, TypedDict, TYPE_CHECKING
+from scipy.integrate import quad
+from scipy.interpolate import interp1d
 from scipy.special import legendre
 from cobaya.log import HasLogger
-from cobaya.theory import Provider
+from cobaya.log import LoggedError
+from cobaya.theory import HelperTheory
+from cobaya.theory import Theory
+
+if TYPE_CHECKING:
+    from numpy.typing import ArrayLike, NDArray
+    from cobaya.theory import Provider
+
 # local
-from eftpipe.interface import CambProvider
-from eftpipe.interface import CobayaCambProvider
-from eftpipe.interface import CobayaClassyProvider
-from eftpipe.pybird import pybird
-from eftpipe.typing import (
-    BoltzmannProvider,
-    Location,
-)
+from .interface import CobayaCambInterface
+from .interface import CobayaClassyInterface
+from .pybird import pybird
+from .tools import bool_or_list
+from .tools import group_lists
+from .tools import int_or_list
+from .tools import Initializer
+from .tools import recursively_update_dict
 
 
 def chain_coeff(l: int) -> float:
-    r"""compute A_\ell coeff for chained power spectrum
+    r"""compute ``A_\ell`` coeff for chained power spectrum
 
     Parameters
     ----------
@@ -43,21 +45,53 @@ def chain_coeff(l: int) -> float:
 
     Notes
     -----
-        .. math::
-            \frac{(2\ell+1)\mathcal{L}_{\ell}(0)}{(2\ell+5)\mathcal{L}_{\ell+2}(0)}
+    .. math:: \frac{(2\ell+1)\mathcal{L}_{\ell}(0)}{(2\ell+5)\mathcal{L}_{\ell+2}(0)}
     """
     return ((2 * l + 1) * legendre(l)(0)) / ((2 * l + 5) * legendre(l + 2)(0))
 
 
 class BirdPlus(pybird.Bird):
+    """enhanced version of pybird.Bird, support multi-tracer, hook and hook
+    """
+
+    _hooks: list[BirdHook]
+    b1A: float
+    b1B: float
+    b11AB: NDArray[np.float64]
+    bctAB: NDArray[np.float64]
+    bloopAB: NDArray[np.float64]
+    bstAB: NDArray[np.float64]
+    fullPs: NDArray[np.float64]
+    PG: dict[str, NDArray[np.float64]]
+
+    # override
+    def initialize(self) -> None:
+        self._hooks: list[BirdHook] = []
+        self.snapshots: dict[str, BirdSnapshot] = {}
+
+    def attach_hook(self, *args: BirdHook) -> None:
+        self._hooks.extend(args)
+
+    def clear_hook(self) -> None:
+        self._hooks = []
+
+    def create_snapshot(self, name: str) -> None:
+        """
+        Notes
+        -----
+        be careful with the name, because name confliction not checked
+        """
+        # XXX: name confliction not checked
+        snapshot = BirdSnapshot(self)
+        self.snapshots[name] = snapshot
+        self.attach_hook(snapshot)
+
     # override
     def setreducePslb(
         self,
         bsA: Iterable[float],
-        bsB: Optional[Iterable[float]] = None,
-        es: Iterable[float] = (0., 0., 0.),
-        marg: bool = False,
-        chained: bool = False,
+        bsB: Iterable[float] | None = None,
+        es: Iterable[float] = (0.0, 0.0, 0.0),
     ) -> None:
         """apply counter terms and bind fullPs to self
 
@@ -65,9 +99,9 @@ class BirdPlus(pybird.Bird):
         ----------
         bsA : Iterable[float]
             b_1, b_2, b_3, b_4, c_{ct}, c_{r,1}, c{r,2}
-        bsB : Optional[Iterable[float]], optional
-            the same as bsA, but for tracer A, by default None
-            leave it default will compute auto power spectrum
+        bsB : Iterable[float], optional
+            the same as bsA, but for tracer B, by default None,
+            and will compute auto power spectrum
         es : Iterable[float], optional
             c_{e,0}, c_{mono}, c_{quad}, by default zeros
         """
@@ -81,992 +115,1065 @@ class BirdPlus(pybird.Bird):
 
         # cct -> cct / km**2, cr1 -> cr1 / km**2, cr2 -> cr2 / km**2
         # ce0 -> ce0 / nd, cemono -> cemono / nd / km**2, cequad -> cequad / nd / km**2
-        b11AB = np.array([b1A * b1B, (b1A + b1B) * f, f**2])
-        bctAB = np.array([
-            b1A * cctB / kmB**2 + b1B * cctA / kmA**2,
-            b1B * cr1A / kmA**2 + b1A * cr1B / kmB**2,
-            b1B * cr2A / kmA**2 + b1A * cr2B / kmB**2,
-            (cctA / kmA**2 + cctB / kmB**2) * f,
-            (cr1A / kmA**2 + cr1B / kmB**2) * f,
-            (cr2A / kmA**2 + cr2B / kmB**2) * f,
-        ])
-        bloopAB = np.array([
-            1.,
-            1. / 2. * (b1A + b1B),
-            1. / 2. * (b2A + b2B),
-            1. / 2. * (b3A + b3B),
-            1. / 2. * (b4A + b4B),
-            b1A * b1B,
-            1. / 2. * (b1A * b2B + b1B * b2A),
-            1. / 2. * (b1A * b3B + b1B * b3A),
-            1. / 2. * (b1A * b4B + b1B * b4A),
-            b2A * b2B,
-            1. / 2. * (b2A * b4B + b2B * b4A),
-            b4A * b4B
-        ])
+        b11AB = np.array([b1A * b1B, (b1A + b1B) * f, f ** 2])
+        bctAB = np.array(
+            [
+                b1A * cctB / kmB ** 2 + b1B * cctA / kmA ** 2,
+                b1B * cr1A / kmA ** 2 + b1A * cr1B / kmB ** 2,
+                b1B * cr2A / kmA ** 2 + b1A * cr2B / kmB ** 2,
+                (cctA / kmA ** 2 + cctB / kmB ** 2) * f,
+                (cr1A / kmA ** 2 + cr1B / kmB ** 2) * f,
+                (cr2A / kmA ** 2 + cr2B / kmB ** 2) * f,
+            ]
+        )
+        bloopAB = np.array(
+            [
+                1.0,
+                1.0 / 2.0 * (b1A + b1B),
+                1.0 / 2.0 * (b2A + b2B),
+                1.0 / 2.0 * (b3A + b3B),
+                1.0 / 2.0 * (b4A + b4B),
+                b1A * b1B,
+                1.0 / 2.0 * (b1A * b2B + b1B * b2A),
+                1.0 / 2.0 * (b1A * b3B + b1B * b3A),
+                1.0 / 2.0 * (b1A * b4B + b1B * b4A),
+                b2A * b2B,
+                1.0 / 2.0 * (b2A * b4B + b2B * b4A),
+                b4A * b4B,
+            ]
+        )
         xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
-        xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
-        bstAB = np.array(
-            [ce0 * xfactor1, cemono * xfactor2, cequad * xfactor2])
-        Ps0 = np.einsum('b,lbx->lx', b11AB, self.P11l)
-        Ps1 = (np.einsum('b,lbx->lx', bloopAB, self.Ploopl)
-               + np.einsum('b,lbx->lx', bctAB, self.Pctl))
-        Ps2 = np.einsum('b,lbx->lx', bstAB, self.Pstl)
-        self.fullPs = Ps0 + Ps1 + Ps2
+        xfactor2 = 0.5 * (1.0 / ndA / kmA ** 2 + 1.0 / ndB / kmB ** 2)
+        bstAB = np.array([ce0 * xfactor1, cemono * xfactor2, cequad * xfactor2])
 
-        if marg:
-            self.setPG(b1A, b1B, chained=chained)
+        self.b11AB = b11AB
+        self.bctAB = bctAB
+        self.bloopAB = bloopAB
+        self.bstAB = bstAB
+        self.fullPs = self.reducePslb(
+            b11AB=b11AB,
+            bloopAB=bloopAB,
+            bctAB=bctAB,
+            bstAB=bstAB,
+            P11l=self.P11l,
+            Ploopl=self.Ploopl,
+            Pctl=self.Pctl,
+            Pstl=self.Pstl,
+        )
+        for viewer in self._hooks:
+            viewer.setreducePslb(self)
 
-    def setPG(self, b1A, b1B, chained=False):
+    def reducePslb(
+        self, *, b11AB, bloopAB, bctAB, bstAB, P11l, Ploopl, Pctl, Pstl
+    ) -> NDArray:
+        Ps0 = np.einsum("b,lbx->lx", b11AB, P11l)
+        Ps1 = np.einsum("b,lbx->lx", bloopAB, Ploopl) + np.einsum(
+            "b,lbx->lx", bctAB, Pctl
+        )
+        Ps2 = np.einsum("b,lbx->lx", bstAB, Pstl)
+        return Ps0 + Ps1 + Ps2
+
+    def setreducePG(self, b1A: float, b1B: float) -> None:
+
+        self.b1A = b1A
+        self.b1B = b1B
+
+        self.PG = self.reducePG(
+            b1A=b1A, b1B=b1B, Ploopl=self.Ploopl, Pctl=self.Pctl, Pstl=self.Pstl
+        )
+
+        for viewer in self._hooks:
+            viewer.setreducePG(self)
+
+    def reducePG(
+        self, b1A: float, b1B: float, Ploopl: NDArray, Pctl: NDArray, Pstl: NDArray
+    ) -> dict[str, NDArray]:
         f = self.f
         kmA, ndA, kmB, ndB = self.co.kmA, self.co.ndA, self.co.kmB, self.co.ndB
-        # b3A, cctA, cr1A, cr2A, b3B, cctB, cr1B, cr2B, ce0, cemono, cequad
-        Nmarg = 4 * 2 + 3
-        Nl = self.P11l.shape[0]
-        Nk = self.P11l.shape[-1]
-        PG = np.empty((Nmarg, Nl, Nk), dtype=np.float64)
-        # b3A
-        PG[0, :, :] = (
-            1 / 2 * self.Ploopl[:, 3, :]
-            + 1 / 2 * b1B * self.Ploopl[:, 7, :])
-        # cctA
-        PG[1, :, :] = (
-            b1B / kmA**2 * self.Pctl[:, 0, :]
-            + f / kmA**2 * self.Pctl[:, 3, :])
-        # cr1A
-        PG[2, :, :] = (
-            b1B / kmA**2 * self.Pctl[:, 1, :]
-            + f / kmA**2 * self.Pctl[:, 4, :])
-        # cr2A
-        PG[3, :, :] = (
-            b1B / kmA**2 * self.Pctl[:, 2, :]
-            + f / kmA**2 * self.Pctl[:, 5, :])
-        # b3B
-        PG[4, :, :] = (
-            1 / 2 * self.Ploopl[:, 3, :]
-            + 1 / 2 * b1A * self.Ploopl[:, 7, :])
-        # cctB
-        PG[5, :, :] = (
-            b1A / kmB**2 * self.Pctl[:, 0, :]
-            + f / kmB**2 * self.Pctl[:, 3, :])
-        # cr1B
-        PG[6, :, :] = (
-            b1A / kmB**2 * self.Pctl[:, 1, :]
-            + f / kmB**2 * self.Pctl[:, 4, :])
-        # cr2B
-        PG[7, :, :] = (
-            b1A / kmB**2 * self.Pctl[:, 2, :]
-            + f / kmB**2 * self.Pctl[:, 5, :])
+        PG: dict[str, Any] = {}
+        PG["b3A"] = 1 / 2 * Ploopl[:, 3, :] + 1 / 2 * b1B * Ploopl[:, 7, :]
+        PG["cctA"] = b1B / kmA ** 2 * Pctl[:, 0, :] + f / kmA ** 2 * Pctl[:, 3, :]
+        PG["cr1A"] = b1B / kmA ** 2 * Pctl[:, 1, :] + f / kmA ** 2 * Pctl[:, 4, :]
+        PG["cr2A"] = b1B / kmA ** 2 * Pctl[:, 2, :] + f / kmA ** 2 * Pctl[:, 5, :]
+        PG["b3B"] = 1 / 2 * Ploopl[:, 3, :] + 1 / 2 * b1A * Ploopl[:, 7, :]
+        PG["cctB"] = b1A / kmB ** 2 * Pctl[:, 0, :] + f / kmB ** 2 * Pctl[:, 3, :]
+        PG["cr1B"] = b1A / kmB ** 2 * Pctl[:, 1, :] + f / kmB ** 2 * Pctl[:, 4, :]
+        PG["cr2B"] = b1A / kmB ** 2 * Pctl[:, 2, :] + f / kmB ** 2 * Pctl[:, 5, :]
         xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
-        xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
-        # ce0
-        PG[8, :, :] = self.Pstl[:, 0, :] * xfactor1
-        # cemono
-        PG[9, :, :] = self.Pstl[:, 1, :] * xfactor2
-        # cequad
-        PG[10, :, :] = self.Pstl[:, 2, :] * xfactor2
-        self.PG = PG
-        if chained:
-            PG = self.PG
-            newPG = np.empty_like(PG)
-            for i in range(self.co.Nl - 1):
-                newPG[:, i, :] = \
-                    PG[:, i, :] - chain_coeff(2 * i) * PG[:, i + 1, :]
-            self.PG = newPG[:, :-1, :]
+        xfactor2 = 0.5 * (1.0 / ndA / kmA ** 2 + 1.0 / ndB / kmB ** 2)
+        PG["ce0"] = Pstl[:, 0, :] * xfactor1
+        PG["cemono"] = Pstl[:, 1, :] * xfactor2
+        PG["cequad"] = Pstl[:, 2, :] * xfactor2
+        return PG
 
 
-class ConfigTwice(Exception):
-    pass
+class BirdHook:
+    """accept a BirdPlus object, and then do postprocessing
+    """
+
+    def setreducePslb(self, bird: BirdPlus) -> None:
+        """automatically invoked when BirdPlus.setreducePslb is called
+        """
+        pass
+
+    def setreducePG(self, bird: BirdPlus) -> None:
+        """automatically invoked when BirdPlus.setreducePG is called
+        """
+        pass
 
 
-class InvalidConfig(Exception):
-    pass
+class BirdSnapshot(BirdHook):
+    """
+    created by BridPlus.create_snapshot, do not use this class directly
+    """
 
+    def __init__(self, bird: BirdPlus) -> None:
+        self.k = bird.co.k.copy()
+        self.ls = [2 * i for i in range(bird.co.Nl)]
+        self.P11l = bird.P11l.copy()
+        self.Ploopl = bird.Ploopl.copy()
+        self.Pctl = bird.Pctl.copy()
+        self.Pstl = bird.Pstl.copy()
 
-class Operator:
-    def __init__(self, setfunc, apply, **override) -> None:
-        if not inspect.isclass(setfunc):
-            raise NotImplementedError
-        self.setfunc = setfunc
-        if apply.__name__ not in dir(setfunc):
-            raise NotImplementedError
-        self.apply_name = apply.__name__
-
-        args: List[str] = []
-        kwargs: Dict[str, Any] = {}
-        for k, v in inspect.signature(setfunc).parameters.items():
-            if v.kind is v.VAR_KEYWORD:
-                continue
-            if v.kind is v.VAR_POSITIONAL:
-                raise NotImplementedError(
-                    f"{self.__class__.__name__} does not support *args")
-            default = v.default
-            if default is v.empty:
-                args.append(k)
-            else:
-                kwargs[k] = default
-        for k, v in override.items():
-            if k in args:
-                args.remove(k)
-            kwargs[k] = v
-        self.args = args
-        self.kwargs = kwargs
-        self.obj = None
-
-    def config(self, dct: Dict[str, Any]) -> None:
-        dct = dct if dct else {}
-        if self.obj is not None:
-            raise ConfigTwice(
-                f"{self.__class__.__name__} cannot be configured twice")
-        self.kwargs.update(dct)
-        for k in self.args:
-            if k not in self.kwargs.keys():
-                raise InvalidConfig(f"missing positional argument {k}")
-
-        self.obj = self.setfunc(**self.kwargs)
-
-    def apply(self, x):
-        return getattr(self.obj, self.apply_name)(x)
-
-
-class IncompleteTheory(Exception):
-    pass
-
-
-class EFTTheory(HasLogger):
-    def __init__(
-        self,
-        z: float,
-        cache_dir_path: Optional[Location] = None,
-        km: Optional[float] = None,
-        nd: Optional[float] = None,
-        kmA: Optional[float] = None,
-        ndA: Optional[float] = None,
-        kmB: Optional[float] = None,
-        ndB: Optional[float] = None,
-        cross: bool = False,
-        Nl: int = 2,
-        optiresum: bool = False,
-        chained: bool = False,
-        with_IRresum: bool = True,
-        with_APeffect: bool = False,
-        with_window: bool = False,
-        with_fiber: bool = False,
-        with_binning: bool = True,
-        boltzmann_provider: Optional[BoltzmannProvider] = None,
-        config_settings: Dict[str, Any] = None, # type: ignore
-    ) -> None:
-        self.set_logger(name="eftpipe.EFTTheory")
-
-        self.z = z
-        self.mpi_info("effective redshift: %.3f", self.z)
-
-        if (km is None or nd is None) and (kmA is None or ndA is None):
-            raise ValueError("expect parameters pair (km, nd) or (kmA, ndA)")
-        if km and nd and kmA and ndA:
-            raise ValueError(
-                "cannot pass both parameters pair (km, nd) and (kmdA, ndA)")
-        kmA = kmA if kmA else km
-        ndA = ndA if ndA else nd
-        if cross and (kmB is None or ndB is None):
-            raise ValueError("missing parameters pair (kmB, ndB)")
-        self.cross = cross
-        if cross:
-            self.mpi_info("compute cross power spectrum")
-        self.chained = chained
-        if chained:
-            self.mpi_info("compute chained power spectrum up to %d", Nl)
-            Nl = Nl + 1
-        ls = [2 * i for i in range(Nl)]
-        self.mpi_info("compute power spectrum multipoles ls = %s", ls)
-        self.co = pybird.Common(
-            Nl=Nl, optiresum=optiresum, kmA=kmA, ndA=ndA, kmB=kmB, ndB=ndB)
-        self.bird: Optional[BirdPlus] = None
-
-        if cache_dir_path is None:
-            cache_dir_path = Path.cwd() / 'cache'
-        self.nonlinear = pybird.NonLinear(
-            load=True, save=True, co=self.co,
-            path=str(Path(cache_dir_path).resolve())
+    def setreducePslb(self, bird: BirdPlus) -> None:
+        self.fullPs = bird.reducePslb(
+            b11AB=bird.b11AB,
+            bloopAB=bird.bloopAB,
+            bctAB=bird.bctAB,
+            bstAB=bird.bstAB,
+            P11l=self.P11l,
+            Ploopl=self.Ploopl,
+            Pctl=self.Pctl,
+            Pstl=self.Pstl,
         )
 
-        self.boltzmann_provider = boltzmann_provider
-        self.operators: Dict[str, Operator] = {}
-        self.configured: bool = False
-        self.marg = False # default False but may be modified by other classes
-        # order is important
-        if with_IRresum:
-            self.operators["IRresum"] = Operator(
-                pybird.Resum, pybird.Resum.Ps, co=self.co)
-            self.mpi_info(
-                "IRresum enabled: %s", "optimized" if optiresum else "full")
-        if with_APeffect:
-            self.operators["APeffect"] = Operator(
-                pybird.APeffect, pybird.APeffect.AP, co=self.co)
-            self.mpi_info("APeffect enabled")
-        if with_window:
-            self.operators["window"] = Operator(
-                pybird.Window, pybird.Window.Window, co=self.co)
-            self.mpi_info("window enabled")
-        if with_fiber:
-            self.operators["fiber"] = Operator(
-                pybird.FiberCollision, pybird.FiberCollision.fibcolWindow,
-                co=self.co
-            )
-            self.mpi_info("fiber enabled")
-        if with_binning:
-            self.operators["binning"] = Operator(
-                pybird.Binning, pybird.Binning.match, co=self.co)
-            self.mpi_info("binning enabled")
-        if config_settings:
-            self.set_config(config_settings)
 
-    def set_boltzmann_provider(self, provider: BoltzmannProvider):
-        self.boltzmann_provider = provider
+class Binning(BirdHook, HasLogger):
+    """Match the theoretical output to data, doing binning
 
-    def set_config(self, dct):
-        diff = set(dct.keys()).difference(self.operators.keys())
-        if diff:
+    Parameters
+    ----------
+    kout: ArrayLike, 1d
+        k of data
+    accboost: int
+        accuracy boost, default 1, do integration using 100 points per bin
+    decimals: int
+        compute delta_k by rounding the difference of last two kout.
+        Default is 2 and this works well when delta_k = 0.01
+    co: Common
+        this class only uses co.k, default pybird.Common
+    name: str
+        logger name, by default 'pybird.binning'
+
+    Methods
+    -------
+    kbinning(bird: BirdPlus): apply binning
+
+    Notes
+    -----
+    kbins will be constructed using kout[-1] - kout[-2]
+    """
+
+    def __init__(
+        self,
+        kout,
+        accboost: int = 1,
+        decimals: int = 2,
+        co: pybird.Common = pybird.common,
+        name: str = "pybird.binning",
+    ) -> None:
+        self.set_logger(name=name)
+        self.kout = np.array(kout)
+        self.co = co
+        self.accboost = accboost
+        self.decimals = decimals
+        self.mpi_info("binning correction: on")
+        self.mpi_info(
+            "%d data points, from %.3f to %.3f",
+            self.kout.size,
+            self.kout[0],
+            self.kout[-1],
+        )
+        kspaces = np.around(self.kout[1:] - self.kout[:-1], decimals=decimals)  # type: ignore
+        kspace_diff = kspaces[1:] - kspaces[:-1]
+        if not np.allclose(kspace_diff, 0, rtol=0, atol=1e-6):
             self.mpi_warning(
-                "configuration contains %s, "
-                "but the corresponding operators are not loaded or not exist",
-                diff,
+                "binning correction on, "
+                "but given kout seems not linearly spaced, "
+                "be careful because the constructed kbins may be wrong, "
+                "especially when 'kmax' is small",
             )
-        for k, op in self.operators.items():
-            op.config(dct.get(k, {}))
-        self.configured = True
-
-    def theory_vector(
-        self,
-        bsA: Iterable[float], *,
-        bsB: Optional[Iterable[float]] = None,
-        es: Iterable[float] = (0., 0., 0.),
-    ) -> NDArray:
-        if self.boltzmann_provider is None:
-            raise IncompleteTheory("missing boltzmann_provider")
-        if not self.configured:
-            raise IncompleteTheory("theory has not been configured")
-        provider = self.boltzmann_provider
-
-        # cosmo_updated should be called first to record the cosmology
-        if provider.cosmo_updated() or self.bird is None:
-            # TODO: test larger kh range
-            kh = np.logspace(-4, 0, 200)
-            pkh = provider.interp_pkh(kh)
-
-            H, DA, f = (
-                provider.get_H(self.z),
-                provider.get_DA(self.z),
-                provider.get_f(self.z)
-            )
-            bird = BirdPlus(
-                kh, pkh, f, DA, H, self.z, which='all', co=self.co)
-            self.nonlinear.PsCf(bird)
-            bird.setPsCfl()
-            for op in self.operators.values():
-                op.apply(bird)
-            bird.setreducePslb(
-                bsA, bsB, es=es, marg=self.marg, chained=self.chained)
-            self.bird = bird
-        else:
-            self.bird.setreducePslb(
-                bsA, bsB, es=es, marg=self.marg, chained=self.chained)
-
-        out: NDArray = self.bird.fullPs.copy()
-
-        if self.chained:
-            newout = np.empty_like(out)
-            for i in range(self.co.Nl - 1):
-                newout[i, :] = out[i, :] - chain_coeff(2 * i) * out[i + 1, :]
-            out = newout[:-1, :]
-        return out.reshape(-1)
-
-
-# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~vector theory~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-
-class SingleTracerEFT(HasLogger):
-    """A wrapped theory class to interact with cobaya
-
-    Parameters
-    ----------
-    theory: EFTTheory
-        basic theory
-    prefix: str
-        prefix of EFT parameters, by default ""
-    provider: "camb" or "classy"
-        use cobaya's camb or cobaya's classy, by default "camb"
-    use_cb: bool
-        compute the linear power spectrum of cdm + baryon,
-        by default False and compute the total matter power spectrum
-    """
-
-    def __init__(
-        self,
-        theory: EFTTheory, prefix: str = "",
-        provider: Literal["camb", "classy"] = "camb",
-        use_cb: bool = False,
-    ) -> None:
-        self.set_logger(name="eftpipe.SingleTracerEFT")
-
-        self.theory = theory
-        self.prefix = prefix
-        self.can_marg = True
-        self.provider = provider
-        if provider not in ("camb", "classy"):
-            raise ValueError("only support provider: camb or provider: classy")
-        self.mpi_info("using provider %s", self.provider)
-        self.use_cb = use_cb
-        vars_pairs = [2 * ["delta_nonu"]] if use_cb else [2 * ["delta_tot"]]
-        self._vars_pairs = vars_pairs
-        self.mpi_info("linear power spectrum: %s",
-                      'delta_nonu' if use_cb else 'delta_tot')
-
-    def set_provider(self, provider: Provider) -> None:
-        if self.provider == "camb":
-            self.theory.set_boltzmann_provider(
-                CobayaCambProvider(provider, self.theory.z, use_cb=self.use_cb))
-        elif self.provider == "classy":
-            self.theory.set_boltzmann_provider(
-                CobayaClassyProvider(provider, self.theory.z, use_cb=self.use_cb))
-
-    def set_camb_provider(self, **kwargs) -> None:
-        self.theory.set_boltzmann_provider(
-            CambProvider(z=self.theory.z, use_cb=self.use_cb, **kwargs))
-
-    def required_params(self) -> Dict[str, Any]:
-        z = self.theory.z
-        extra_zs = [] if z == 0. else [0.]
-        if self.provider == "camb":
-            requires = {
-                'Pk_grid': {
-                    'nonlinear': False,
-                    'z': [z],
-                    'k_max': 5,
-                    'vars_pairs': self._vars_pairs,
-                },
-                'Hubble': {'z': extra_zs + [z]},
-                'angular_diameter_distance': {'z': [z]},
-                'fsigma8': {'z': [z]},
-                'sigma8_z': {'z': [z]},
-                'rdrag': None,
-            }
-        else:
-            requires = {
-                'Pk_interpolator': {
-                    'nonlinear': False,
-                    'z': [z],
-                    'k_max': 5,
-                    'vars_pairs': self._vars_pairs,
-                },
-                'Hubble': {'z': extra_zs + [z]},
-                'angular_diameter_distance': {'z': [z]},
-                'rdrag': None,
-            }
-        eft_params = [
-            self.prefix + name for name in
-            ('b1', 'b2', 'b3', 'b4',
-             'cct', 'cr1', 'cr2',
-             'ce0', 'cemono', 'cequad')
-        ]
-        eft_requires = dict(
-            zip(eft_params, [None for _ in range(len(eft_params))])
+        self.loadBinning(self.kout)
+        self.mpi_info("num of kgrids in each bin: %d", self.points[0].size)
+        self.mpi_info(
+            "round the difference of last two kout to %d decimal places", self.decimals,
         )
-        requires.update(eft_requires)
-        return requires
 
-    def theory_vector(self, all_params_dict: Dict[str, Any]) -> NDArray:
-        prefix = self.prefix
-        (
-            b1, b2, b3, b4,
-            cct, cr1, cr2,
-            ce0, cemono, cequad,
-        ) = [all_params_dict[prefix + name] for name in (
-            'b1', 'b2', 'b3', 'b4',
-            'cct', 'cr1', 'cr2',
-            'ce0', 'cemono', 'cequad',
-        )]
-        bs = [b1, b2, b3, b4, cct, cr1, cr2]
-        es = [ce0, cemono, cequad]
-        return self.theory.theory_vector(bs, es=es)
-
-    def can_marg_params(self) -> List[str]:
-        return [
-            self.prefix + x
-            for x in ('b3', 'cct', 'cr1', 'cr2', 'ce0', 'cemono', 'cequad')
-        ]
-
-    def set_marg(self, prior: Dict[str, Any]) -> None:
-        self.theory.marg = True
-        all_params = self.can_marg_params()
-        marginds = [all_params.index(name) for name in prior.keys()]
-        margcoef = np.ones(len(marginds), dtype=np.float64)
-        for i, index in enumerate(marginds):
-            if index < 4:
-                margcoef[i] = 2
-            else:
-                marginds[i] += 4
-        self.marginds = marginds
-        self.margcoef = margcoef
-
-    def PG(self, all_params_dict: Dict[str, Any]) -> NDArray:
-        out = np.vstack(
-            [self.theory.bird.PG[i, ...].reshape(-1) for i in self.marginds])  # type: ignore
-        return out * self.margcoef[:, None]
-
-    def PNG(self, all_params_dict: Dict[str, Any]) -> NDArray:
-        return self.theory_vector(all_params_dict)
-
-
-class TwoTracerEFT(HasLogger):
-    """A wrapped theory class to interact with cobaya
-
-    Parameters
-    ----------
-    theories: list[EFTTheory]
-        basic theories list
-    prefixes: list[str]
-        EFT parameters' prefixes list
-    provider: "camb" or "classy"
-        use cobaya's camb or cobaya's classy, default is "camb"
-    use_cb: bool
-        compute the linear power spectrum of cdm + baryon,
-        by default False and compute the total matter power spectrum
-    """
-
-    def __init__(
-        self,
-        theories: List[EFTTheory], prefixes: List[str],
-        provider: Literal["camb", "classy"] = "camb",
-        use_cb: bool = False,
-    ) -> None:
-        self.set_logger(name="eftpipe.TwoTracerEFT")
-
-        self.theories = theories
-        if len(set(prefixes)) != 2:
-            raise ValueError('TwoTracerEFT needs two different prefixes')
-        self.prefixes = prefixes
-        self.can_marg = True
-        self.provider = provider
-        if provider not in ("camb", "classy"):
-            raise ValueError("only support provider: camb or provider: classy")
-        self.mpi_info("using provider %s", self.provider)
-        self.use_cb = use_cb
-        vars_pairs = [2 * ["delta_nonu"]] if use_cb else [2 * ["delta_tot"]]
-        self._vars_pairs = vars_pairs
-        self.mpi_info("linear power spectrum: %s",
-                      'delta_nonu' if use_cb else 'delta_tot')
-
-    def set_provider(self, provider: Provider) -> None:
-        for theory in self.theories:
-            if self.provider == "camb":
-                theory.set_boltzmann_provider(
-                    CobayaCambProvider(provider, theory.z, use_cb=self.use_cb))
-            elif self.provider == "classy":
-                theory.set_boltzmann_provider(
-                    CobayaClassyProvider(provider, theory.z, use_cb=self.use_cb))
-
-    def set_camb_provider(self, **kwargs) -> None:
-        for theory in self.theories:
-            theory.set_boltzmann_provider(
-                CambProvider(z=theory.z, use_cb=self.use_cb, **kwargs))
-
-    def required_params(self) -> Dict[str, Any]:
-        zs = [theory.z for theory in self.theories]
-        zs = list(set(zs))
-        extra_zs = [] if 0. in zs else [0.]
-        if self.provider == "camb":
-            requires = {
-                'Pk_grid': {
-                    'nonlinear': False,
-                    'z': zs,
-                    'k_max': 5,
-                    'vars_pairs': self._vars_pairs,
-                },
-                'Hubble': {'z': extra_zs + zs},
-                'angular_diameter_distance': {'z': zs},
-                'fsigma8': {'z': zs},
-                'sigma8_z': {'z': zs},
-                'rdrag': None
-            }
-        else:
-            requires = {
-                "Pk_interpolator": {
-                    "nonlinear": False,
-                    "z": zs,
-                    "k_max": 5,
-                    'vars_pairs': self._vars_pairs,
-                },
-                "Hubble": {"z": extra_zs + zs},
-                "angular_diameter_distance": {"z": zs},
-                "rdrag": None,
-            }
-        eft_params_names = [
-            'b1', 'b2', 'b3', 'b4',
-            'cct', 'cr1', 'cr2',
-            'ce0', 'cemono', 'cequad',
-        ]
-        eft_params = []
-        for prefix in self.prefixes:
-            eft_params += [prefix + name for name in eft_params_names]
-        eft_requires = dict(
-            zip(eft_params, [None for _ in range(len(eft_params))])
-        )
-        requires.update(eft_requires)
-        return requires
-
-    def theory_vector(self, all_params_dict: Dict[str, Any]) -> NDArray:
-        vectors = []
-        for (prefix, theory) in zip(self.prefixes, self.theories):
-            (
-                b1, b2, b3, b4,
-                cct, cr1, cr2,
-                ce0, cemono, cequad,
-            ) = [all_params_dict[prefix + name] for name in (
-                'b1', 'b2', 'b3', 'b4',
-                'cct', 'cr1', 'cr2',
-                'ce0', 'cemono', 'cequad',
-            )]
-            bs = [b1, b2, b3, b4, cct, cr1, cr2]
-            es = [ce0, cemono, cequad]
-            vectors.append(theory.theory_vector(bs, es=es))
-        return np.hstack(vectors)
-
-    def can_marg_params(self) -> List[str]:
-        return [
-            prefix + x
-            for prefix in self.prefixes
-            for x in ('b3', 'cct', 'cr1', 'cr2', 'ce0', 'cemono', 'cequad')
-        ]
-
-    def set_marg(self, prior: Dict[str, Any]) -> None:
-        all_paramsA = [
-            self.prefixes[0] + x
-            for x in ('b3', 'cct', 'cr1', 'cr2', 'ce0', 'cemono', 'cequad')
-        ]
-        all_paramsB = [
-            self.prefixes[1] + x
-            for x in ('b3', 'cct', 'cr1', 'cr2', 'ce0', 'cemono', 'cequad')
-        ]
-        margindsA = [
-            all_paramsA.index(name)
-            for name in prior.keys()
-            if name in all_paramsA]
-        margindsB = [
-            all_paramsB.index(name)
-            for name in prior.keys()
-            if name in all_paramsB]
-        margcoefA = np.ones(len(margindsA), dtype=np.float64)
-        margcoefB = np.ones(len(margindsB), dtype=np.float64)
-        for theory, inds in zip(self.theories, (margindsA, margindsB)):
-            if len(inds) != 0:
-                theory.marg = True
-        for marginds, margcoef in zip(
-                (margindsA, margindsB), (margcoefA, margcoefB)):
-            for i, index in enumerate(marginds):
-                if index < 4:
-                    margcoef[i] = 2
-                else:
-                    marginds[i] += 4
-        self.margindsA = margindsA
-        self.marfcoefA = margcoefA
-        self.margindsB = margindsB
-        self.margcoefB = margcoefB
-
-    def PG(self, all_params_dict: Dict[str, Any]) -> NDArray:
-        nvec = [np.prod(theory.bird.PG.shape[1:])  # type: ignore
-                for theory in self.theories]
-        pad_widths = [
-            ((0, 0), (0, nvec[1])),
-            ((0, 0), (nvec[0], 0)),
-        ]
-        if not self.margindsA:
-            pad_widths = [pad_widths[1]]
-        if not self.margindsB:
-            pad_widths = [pad_widths[0]]
-        out = [
-            np.vstack([theory.bird.PG[i, ...].reshape(-1)  # type: ignore
-                      for i in inds])
-            for theory, inds in zip(
-                self.theories, (self.margindsA, self.margindsB))
-            if inds
-        ]
-        out = np.vstack([
-            np.pad(x, pad) for x, pad in zip(out, pad_widths)
-        ])
-        return out * np.hstack([self.marfcoefA, self.margcoefB])[:, None]
-
-    def PNG(self, all_params_dict: Dict[str, Any]) -> NDArray:
-        return self.theory_vector(all_params_dict)
-
-
-class TwoTracerCrossEFT(HasLogger):
-    """A wrapped theory class to interact with cobaya
-
-    Parameters
-    ----------
-    theories: list[EFTTheory]
-        basic theories list
-    prefixes: list[str]
-        EFT parameters' prefixes list
-    provider: "camb" or "classy"
-        use cobaya's camb or cobaya's classy, default is "camb"
-    use_cb: bool
-        compute the linear power spectrum of cdm + baryon,
-        by default False and compute the total matter power spectrum
-    """
-
-    def __init__(
-        self,
-        theories: List[EFTTheory], prefixes: List[str],
-        provider: Literal["camb", "classy"] = "camb",
-        use_cb: bool = False,
-    ) -> None:
-        self.set_logger(name="eftpipe.TwoTracerCrossEFT")
-
-        if len(theories) != 3:
-            raise ValueError('TwoTracerCrossEFT needs three EFTTheory objects')
-        ncross = 0
-        for theory in theories:
-            if theory.cross:
-                ncross += 1
-        if ncross != 1:
-            raise ValueError(
-                'TwoTracerCrossEFT needs exactly one cross EFTTheory object')
-        self.theories = theories
-        if len(set(prefixes)) != 3:
-            raise ValueError(
-                'TwoTracerCrossEFT needs three different prefixes')
-        self.prefixes = prefixes
-        self._type_to_index: Dict[str, int]
-        self._index_to_type: Dict[int, str]
-        self._set_index_mapping()
-        self.can_marg = True
-        self.provider = provider
-        if provider not in ("camb", "classy"):
-            raise ValueError("only support provider: camb or provider: classy")
-        self.mpi_info("using provider %s", self.provider)
-        self.use_cb = use_cb
-        vars_pairs = [2 * ["delta_nonu"]] if use_cb else [2 * ["delta_tot"]]
-        self._vars_pairs = vars_pairs
-        self.mpi_info("linear power spectrum: %s",
-                      'delta_nonu' if use_cb else 'delta_tot')
-
-    def set_provider(self, provider: Provider) -> None:
-        for theory in self.theories:
-            if self.provider == "camb":
-                theory.set_boltzmann_provider(
-                    CobayaCambProvider(provider, theory.z, use_cb=self.use_cb))
-            elif self.provider == "classy":
-                theory.set_boltzmann_provider(
-                    CobayaClassyProvider(provider, theory.z, use_cb=self.use_cb))
-
-    def set_camb_provider(self, **kwargs) -> None:
-        for theory in self.theories:
-            theory.set_boltzmann_provider(
-                CambProvider(z=theory.z, use_cb=self.use_cb, **kwargs))
-
-    def _set_index_mapping(self) -> None:
-        type_to_index = cast(
-            Dict[Literal['A', 'B', 'x'], int],
-            {'A': None, 'B': None, 'x': None})
-        for i, theory in enumerate(self.theories):
-            if not theory.cross:
-                if type_to_index['A'] is None:
-                    type_to_index['A'] = i
-                else:
-                    type_to_index['B'] = i
-            else:
-                type_to_index['x'] = i
-        self._type_to_index = type_to_index
-
-        index_to_type = {}
-        for name, index in type_to_index.items():
-            index_to_type[index] = name
-        self._index_to_type = index_to_type
-
-    def required_params(self) -> Dict[str, Any]:
-        zs = [theory.z for theory in self.theories]
-        zs = list(set(zs))
-        extra_zs = [] if 0. in zs else [0.]
-        if self.provider == "camb":
-            requires = {
-                'Pk_grid': {
-                    'nonlinear': False,
-                    'z': zs,
-                    'k_max': 5,
-                    'vars_pairs': self._vars_pairs,
-                },
-                'Hubble': {'z': extra_zs + zs},
-                'angular_diameter_distance': {'z': zs},
-                'fsigma8': {'z': zs},
-                'sigma8_z': {'z': zs},
-                'rdrag': None,
-            }
-        else:
-            requires = {
-                "Pk_interpolator": {
-                    "nonlinear": False,
-                    "z": zs,
-                    "k_max": 5,
-                    'vars_pairs': self._vars_pairs,
-                },
-                "Hubble": {'z': extra_zs + zs},
-                "angular_diameter_distance": {'z': zs},
-                "rdrag": None,
-            }
-        eft_params_names = [
-            'b1', 'b2', 'b3', 'b4',
-            'cct', 'cr1', 'cr2',
-            'ce0', 'cemono', 'cequad',
-        ]
-        cross_params_names = ['ce0', 'cemono', 'cequad']
-        eft_params = []
-        for prefix, theory in zip(self.prefixes, self.theories):
-            params_list = eft_params_names
-            if theory.cross:
-                params_list = cross_params_names
-            eft_params += [prefix + name for name in params_list]
-        eft_requires = dict(
-            zip(eft_params, [None for _ in range(len(eft_params))])
-        )
-        requires.update(eft_requires)
-        return requires
-
-    def theory_vector(self, all_params_dict: Dict[str, Any]) -> NDArray:
-        # TODO: stupid implementation, should be improved
-        eft_params_names = [
-            'b1', 'b2', 'b3', 'b4',
-            'cct', 'cr1', 'cr2',
-            'ce0', 'cemono', 'cequad',
-        ]
-        cross_params_names = ['ce0', 'cemono', 'cequad']
-        Aindex, Bindex, xindex = [
-            self._type_to_index[key] for key in ('A', 'B', 'x')
-        ]
-        prefixA = self.prefixes[Aindex]
-        prefixB = self.prefixes[Bindex]
-        prefixx = self.prefixes[xindex]
-        (
-            b1A, b2A, b3A, b4A,
-            cctA, cr1A, cr2A,
-            ce0A, cemonoA, cequadA,
-        ) = [all_params_dict[prefixA + name] for name in eft_params_names]
-        bsA = [b1A, b2A, b3A, b4A, cctA, cr1A, cr2A]
-        esA = [ce0A, cemonoA, cequadA]
-        (
-            b1B, b2B, b3B, b4B,
-            cctB, cr1B, cr2B,
-            ce0B, cemonoB, cequadB,
-        ) = [all_params_dict[prefixB + name] for name in eft_params_names]
-        bsB = [b1B, b2B, b3B, b4B, cctB, cr1B, cr2B]
-        esB = [ce0B, cemonoB, cequadB]
-        ce0x, cemonox, cequadx = [
-            all_params_dict[prefixx + name] for name in cross_params_names]
-        esx = [ce0x, cemonox, cequadx]
-
-        theory_vectorA = self.theories[Aindex].theory_vector(bsA, es=esA)
-        theory_vectorB = self.theories[Bindex].theory_vector(bsB, es=esB)
-        theory_vectorx = self.theories[xindex].theory_vector(
-            bsA, bsB=bsB, es=esx)
-        vectors = cast(List[NDArray], [None, None, None])
-        vectors[Aindex] = theory_vectorA
-        vectors[Bindex] = theory_vectorB
-        vectors[xindex] = theory_vectorx
-        return np.hstack(vectors)
-
-    def can_marg_params(self) -> List[str]:
-        out = []
-        for i, prefix in enumerate(self.prefixes):
-            if self._index_to_type[i] == 'x':
-                margnames = ('ce0', 'cemono', 'cequad')
-            else:
-                margnames = (
-                    'b3', 'cct', 'cr1', 'cr2', 'ce0', 'cemono', 'cequad')
-            out += [prefix + name for name in margnames]
-        return out
-
-    def set_marg(self, prior: Dict[str, Any]) -> None:
-        marginds_list, margcoef_list = [], []
-        margnames = ('b3', 'cct', 'cr1', 'cr2', 'ce0', 'cemono', 'cequad')
-        margnames_nost = ('b3', 'cct', 'cr1', 'cr2')
-        xmargnames = ('ce0', 'cemono', 'cequad')
-        prefixes = self.prefixes
-        indexA, indexB, indexx = [
-            self._type_to_index[t] for t in ('A', 'B', 'x')]
-        for i, prefix in enumerate(prefixes):
-            if self._index_to_type[i] == 'x':
-                all_params = [
-                    prefixes[indexA] + name for name in margnames_nost]
-                all_params += [
-                    prefixes[indexB] + name for name in margnames_nost]
-                all_params += [prefixes[indexx] + name for name in xmargnames]
-            else:
-                all_params = [prefix + name for name in margnames]
-            marginds = [
-                all_params.index(name)
-                for name in prior.keys()
-                if name in all_params
+    def loadBinning(self, setkout) -> None:
+        """
+        Create the bins of the data k's
+        """
+        delta_k = np.round(setkout[-1] - setkout[-2], self.decimals)
+        kcentral = (setkout[-1] - delta_k * np.arange(len(setkout)))[::-1]
+        binmin = kcentral - delta_k / 2
+        binmax = kcentral + delta_k / 2
+        self.binvol = np.array(
+            [
+                quad(lambda k: k ** 2, kbinmin, kbinmax)[0]
+                for (kbinmin, kbinmax) in zip(binmin, binmax)
             ]
-            margcoef = np.ones(len(marginds), dtype=np.float64)
-            if len(marginds) != 0:
-                self.theories[i].marg = True
-            if self._index_to_type[i] != 'x':
-                for i, index in enumerate(marginds):
-                    if index < 4:
-                        margcoef[i] = 2
-                    else:
-                        marginds[i] += 4
-            marginds_list.append(marginds)
-            margcoef_list.append(margcoef)
-        self.marginds_list = marginds_list
-        self.margcoef_list = margcoef_list
-        bias_marginds_A = [ind for ind in marginds_list[indexA] if ind < 4]
-        bias_marginds_A = np.argsort(bias_marginds_A)
-        bias_marginds_B = [ind for ind in marginds_list[indexB] if ind < 4]
-        bias_marginds_B = np.argsort(bias_marginds_B)
-        left_marginds_x = [ind for ind in marginds_list[indexx] if ind >= 8]
-        left_marginds_x = np.argsort(left_marginds_x)
-        self.move = {
-            'A': {'from': bias_marginds_A, 'to': bias_marginds_A},
-            'B': {
-                'from': bias_marginds_B + len(bias_marginds_A),
-                'to': bias_marginds_B
-            },
-            'x': left_marginds_x + len(bias_marginds_A) + len(bias_marginds_B),
-        }
-        self.ng = len(prior)
-        # TODO: support one or two components are not marginalized
-        if not all(self.marginds_list):
-            raise ValueError(
-                f"each component should have at least one marginalized paramter"
+        )
+        self.keff = np.array(
+            [
+                quad(lambda k: k * k ** 2, kbinmin, kbinmax)[0]
+                for (kbinmin, kbinmax) in zip(binmin, binmax)
+            ]
+        )
+        self.keff = self.keff / self.binvol
+        points = [
+            np.linspace(kbinmin, kbinmax, 100 * self.accboost)
+            for (kbinmin, kbinmax) in zip(binmin, binmax)
+        ]
+        self.points = np.array(points)
+
+    def integrBinning(self, P: NDArray) -> NDArray:
+        """
+        Integrate over each bin of the data k's
+        """
+        Pkint = interp1d(
+            self.co.k,
+            P,
+            axis=-1,
+            kind="cubic",
+            bounds_error=False,
+            fill_value="extrapolate",
+        )
+        res = np.trapz(Pkint(self.points) * self.points ** 2, x=self.points, axis=-1)
+        return res / self.binvol
+
+    def kbinning(self, bird: BirdPlus) -> None:
+        """
+        Apply binning in k-space for linear-spaced data k-array
+        """
+        self.P11l = self.integrBinning(bird.P11l)
+        self.Pctl = self.integrBinning(bird.Pctl)
+        self.Ploopl = self.integrBinning(bird.Ploopl)
+        self.Pstl = self.integrBinning(bird.Pstl)
+
+    # override
+    def setreducePslb(self, bird: BirdPlus) -> None:
+        self.fullPs = bird.reducePslb(
+            b11AB=bird.b11AB,
+            bloopAB=bird.bloopAB,
+            bctAB=bird.bctAB,
+            bstAB=bird.bstAB,
+            P11l=self.P11l,
+            Ploopl=self.Ploopl,
+            Pctl=self.Pctl,
+            Pstl=self.Pstl,
+        )
+
+    # override
+    def setreducePG(self, bird: BirdPlus) -> None:
+        self.PG = bird.reducePG(
+            b1A=bird.b1A,
+            b1B=bird.b1B,
+            Ploopl=self.Ploopl,
+            Pctl=self.Pctl,
+            Pstl=self.Pstl,
+        )
+
+
+class EFTLSS(Theory):
+    """
+    Effective field theory of Large-scale Structures
+    """
+
+    file_base_name = "eftlss"
+
+    cache_dir_path: Path
+    tracers: dict[str, dict[str, Any]]
+
+    names: list[str]
+
+    def initialize(self) -> None:
+        super().initialize()
+        self.cache_dir_path = Path(self.cache_dir_path)
+        # XXX: self.tracers seems not completely copied by cobaya
+        self.tracers = deepcopy(self.tracers)
+        if "common" in self.tracers.keys():
+            self.mpi_info("'common' field is used as default settings")
+            common = self.tracers.pop("common")
+            for k, v in self.tracers.items():
+                ref = deepcopy(common)
+                recursively_update_dict(ref, v)
+                self.tracers[k] = ref
+        self.names = list(self.tracers.keys())
+        if not self.names:
+            raise LoggedError(self.log, "No tracer specified")
+
+        # check cross
+        for name, v in self.tracers.items():
+            cross = v.get("cross", [])
+            if cross and (not isinstance(cross, list) or len(cross) != 2):
+                raise LoggedError(
+                    self.log,
+                    "tracer %s: expect a list of 2 elements, but given cross=%r",
+                    name,
+                    cross,
+                )
+            diff = set(cross).difference(self.names)
+            if diff:
+                raise LoggedError(
+                    self.log,
+                    "tracer %s: cross=%r contains unknown tracer names: %r",
+                    name,
+                    cross,
+                    diff,
+                )
+
+        # check boltzmann provider
+        providers = set(v.get("provider", "classy") for v in self.tracers.values())
+        if len(providers) != 1:
+            raise LoggedError(self.log, "All tracers should share the same provider")
+        supported_providers = ["camb", "classy", "classynu"]
+        if providers.pop() not in supported_providers:
+            raise LoggedError(self.log, "supported providers: %s", supported_providers)
+
+        # {requirement: tracers' names}
+        self._must_provide: dict[str, set[str]] = defaultdict(set)
+
+    def get_requirements(self) -> dict[str, dict]:
+        """
+        make it possible to use eftlss with likelihood one, otherwise eftlss may not depend on anything
+        """
+        return {name + "_results": {} for name in self.names}
+
+    def must_provide(
+        self, **requirements: dict[str, dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        """redirect requirements to EFTLSSChild
+
+        For example, ``nonlinear_Plk_grid={{'LRG': {...}, 'ELG': {...}}}`` will 
+        be packed like ``{'LRG_results': {'nonlinear_Plk_grid': {...}}, 'ELG_results': {'nonlinear_Plk_grid': {...}}}``
+
+        all requirements support ``common`` field
+
+        detailed requirement form can be found in ``EFTLSSChild.must_provide``
+        """
+        super().must_provide(**requirements)
+        reqs = defaultdict(dict)
+        for req, v in requirements.items():
+            self._must_provide[req] = self._must_provide[req].union(v.keys())
+            if req == "snapshots":
+                # no settings required for snapshots
+                continue
+            for name, settings in v.items():
+                reqs[name][req] = settings
+        reqs_ = {}
+        common = reqs.pop("common", {})
+        for name, v in reqs.items():
+            reqs_[name + "_results"] = deepcopy(v)
+        if common:
+            for k, v in reqs_.items():
+                ref = deepcopy(common)
+                recursively_update_dict(ref, v)
+                reqs_[k] = ref
+        return reqs_
+
+    def calculate(self, state, want_derived=True, **params_values_dict):
+        pass
+
+    def _get_tracer_products(self, tracer: str, item: str):
+        if tracer not in self._must_provide[item]:
+            raise LoggedError(
+                self.log, "No nonlinear_Plk_grid requested for %s", tracer
+            )
+        return self.provider.get_result(tracer + "_results")[item]
+
+    def get_nonlinear_Plk_grid(
+        self, tracer: str, chained: bool = False, binned: bool = False
+    ) -> tuple[list[int], NDArray, NDArray]:
+        results = self._get_tracer_products(tracer, "nonlinear_Plk_grid")
+        key = PlkKey(chained=chained, binned=binned)
+        try:
+            return results[key]
+        except KeyError:
+            raise LoggedError(
+                self.log,
+                "No nonlinear_Plk_grid products for %s with chained=%s, binned=%s",
+                tracer,
+                chained,
+                binned,
             )
 
-    def PG(self, all_params_dict: Dict[str, Any]) -> NDArray:
-        # TODO: this implementation is ugly, should be improved
-        nvec = [
-            np.prod(theory.bird.PG.shape[1:]) for theory in self.theories]  # type: ignore
-        pad_widths = [
-            ((0, 0), (0, nvec[1] + nvec[2])),
-            ((0, 0), (nvec[0], nvec[2])),
-            ((0, 0), (nvec[0] + nvec[1], 0))
-        ]
-        tmp = [
-            np.vstack([theory.bird.PG[i, ...].reshape(-1)  # type: ignore
-                      for i in inds])
-            for theory, inds in zip(self.theories, self.marginds_list)
-        ]
-        tmp = [
-            np.pad(x, pad) * coef[:, None]
-            for x, pad, coef in zip(tmp, pad_widths, self.margcoef_list)
-        ]
-        indexA, indexB, indexx = [
-            self._type_to_index[t] for t in ('A', 'B', 'x')]
-        move = self.move
-        arrA, arrB, arrx = tmp[indexA], tmp[indexB], tmp[indexx]
-        arrA[move['A']['to'], :] += arrx[move['A']['from'], :]
-        arrB[move['B']['to'], :] += arrx[move['B']['from'], :]
-        arrx = arrx[move['x']]
-        out: List[Any] = [None, None, None]
-        out[indexA] = arrA
-        out[indexB] = arrB
-        out[indexx] = arrx
-        return np.vstack(out)
+    def get_nonlinear_Plk_gaussian_grid(
+        self, tracer: str, chained: bool = False, binned: bool = False
+    ) -> tuple[list[int], NDArray, dict[str, NDArray]]:
+        results = self._get_tracer_products(tracer, "nonlinear_Plk_gaussian_grid")
+        key = PlkKey(chained=chained, binned=binned)
+        try:
+            return results[key]
+        except KeyError:
+            raise LoggedError(
+                self.log,
+                "No nonlinear_Plk_gaussian_grid products for %s with chained=%s, binned=%s",
+                tracer,
+                chained,
+                binned,
+            )
 
-    def PNG(self, all_params_dict: Dict[str, Any]) -> NDArray:
-        return self.theory_vector(all_params_dict)
+    def get_nonlinear_Plk_interpolator(
+        self, tracer: str, chained: bool = False
+    ) -> PlkInterpolator:
+        results = self._get_tracer_products(tracer, "nonlinear_Plk_interpolator")
+        key = PlkKey(chained=chained, binned=False)
+        try:
+            return results[key]
+        except KeyError:
+            raise LoggedError(
+                self.log,
+                "No nonlinear_Plk_interpolator products for %s with chained=%s",
+                tracer,
+                chained,
+            )
 
+    def get_snapshots(self, tracer: str) -> dict[str, BirdSnapshot]:
+        return self._get_tracer_products(tracer, "snapshots")
 
-
-class CrossEFT:
-    theory: EFTTheory
-    prefix: str
-
-    def __init__(self, theory: EFTTheory, prefix: str = "") -> None:
-        self.theory = theory
-        self.prefix = prefix
-        self._set_required_params()
-        self.can_marg = True
-
-    def set_provider(self, provider: Provider) -> None:
-        self.theory.set_boltzmann_provider(
-            CobayaCambProvider(provider, self.theory.z)
-        )
-
-    def set_camb_provider(self, **kwargs) -> None:
-        self.theory.set_boltzmann_provider(
-            CambProvider(z=self.theory.z, **kwargs))
-
-    def required_params(self) -> Dict[str, Any]:
-        return self._required_params
-
-    def _set_required_params(self) -> None:
-        z = self.theory.z
-        extra_zs = [] if z == 0. else [0.]
-        requires = {
-            'Pk_grid': {
-                'nonlinear': False,
-                'z': [z],
-                'k_max': 5
-            },
-            'Hubble': {'z': extra_zs + [z]},
-            'angular_diameter_distance': {'z': [z]},
-            'fsigma8': {'z': [z]},
-            'sigma8_z': {'z': [z]},
-            'rdrag': None
-        }
-        
-        eft_params = [
-            self.prefix + name for name in
-            ('b1A', 'b2A', 'b3A', 'b4A',
-             'cctA', 'cr1A', 'cr2A',
-             'b1B', 'b2B', 'b3B', 'b4B',
-             'cctB', 'cr1B', 'cr2B',
-             'ce0x', 'cemonox', 'cequadx')
-        ]
-        eft_requires = dict(
-            zip(eft_params, [None for _ in range(len(eft_params))])
-        )
-        requires.update(eft_requires)
-        self._required_params = requires
-
-    def theory_vector(self, all_params_dict: Dict[str, Any]) -> NDArray:
-        prefix = self.prefix
-        (
-            b1A, b2A, b3A, b4A,
-            cctA, cr1A, cr2A,
-            b1B, b2B, b3B, b4B,
-            cctB, cr1B, cr2B,
-            ce0x, cemonox, cequadx,
-        ) = [all_params_dict[prefix + name] for name in (
-            'b1A', 'b2A', 'b3A', 'b4A',
-            'cctA', 'cr1A', 'cr2A',
-            'b1B', 'b2B', 'b3B', 'b4B',
-            'cctB', 'cr1B', 'cr2B',
-            'ce0x', 'cemonox', 'cequadx',
-        )]
-        bsA = [b1A, b2A, b3A, b4A, cctA, cr1A, cr2A]
-        bsB = [b1B, b2B, b3B, b4B, cctB, cr1B, cr2B]
-        esx = [ce0x, cemonox, cequadx]
-        return self.theory.theory_vector(bsA, bsB=bsB, es=esx)
-
-    def can_marg_params(self) -> List[str]:
-        return [
-            self.prefix + x
-            for x in ('b3A', 'cctA', 'cr1A', 'cr2A', 'b3B', 'cctB', 'cr1B', 'cr2B','ce0x', 'cemonox', 'cequadx')
-        ]
-
-    def set_marg(self, prior: Dict[str, Any]) -> None:
-        self.theory.marg = True
-        all_params = self.can_marg_params()
-        marginds = [all_params.index(name) for name in prior.keys()]
-        self.marginds = marginds
-
-
-    def PG(self, all_params_dict: Dict[str, Any]) -> NDArray:
-        out = np.vstack(
-            [self.theory.bird.PG[i, ...].reshape(-1) for i in self.marginds])  # type: ignore
+    def get_helper_theories(self) -> dict[str, Theory]:
+        out = {}
+        for name in self.names:
+            out[name] = EFTLSSChild(
+                self, name, dict(stop_at_error=self.stop_at_error), timing=self.timer
+            )
+        # Pk_interpolator requires at least 4 redshift
+        if len(out) < 4:
+            first: EFTLSSChild = out[self.names[0]]
+            first._zcomp = [first.zeff + i * 0.1 for i in range(1, 5 - len(out))]
         return out
 
-    def PNG(self, all_params_dict: Dict[str, Any]) -> NDArray:
-        return self.theory_vector(all_params_dict)
+
+class PluginsDict(TypedDict):
+    IRresum: pybird.Resum
+    APeffect: pybird.APeffect
+    window: pybird.Window
+    fiber: pybird.FiberCollision
+
+
+class PlkKey(NamedTuple):
+    chained: bool
+    binned: bool
+
+
+def to_chained(ls_tot: list[int], fullPs: NDArray) -> NDArray:
+    out = np.empty_like(fullPs)
+    for i, l in enumerate(ls_tot[:-1]):
+        out[i, :] = fullPs[i, :] - chain_coeff(l) * fullPs[i + 1, :]
+    return out[:-1, :]
+
+
+class PlkInterpolator:
+    def __init__(self, ls: list[int], kgrid: NDArray, Plk: NDArray):
+        self.ls = ls.copy()
+        # XXX: not sure if inserting zero is a good idea
+        kgrid = np.hstack(([0], kgrid))
+        Plk = np.insert(Plk, 0, 0, axis=-1)
+        tmp = interp1d(
+            kgrid, kgrid * Plk, axis=-1, kind="cubic", fill_value="extrapolate"
+        )
+        fn = lambda k: tmp(k) / k
+        self.fn = fn
+
+    def __call__(self, l: int | Iterable[int], k: ArrayLike) -> NDArray:
+        l = int_or_list(l)
+        try:
+            idx = [self.ls.index(ll) for ll in l]
+        except ValueError:
+            raise ValueError(f"l={l} not in {self.ls}")
+        return self.fn(k)[idx]
+
+
+class EFTLSSChild(HelperTheory):
+    def __init__(self, eftlss: EFTLSS, name: str, info, timing=None) -> None:
+        # append extra redshifts if using classy (classy's bug)
+        self._zcomp: list[float] = []
+        self.name = name
+        self.eftlss = eftlss
+        # EFTLSSChild always initialized after EFTLSS, safe to use config
+        self.config = self.eftlss.tracers[name]
+        super().__init__(info, self.eftlss.get_name() + "." + name, timing=timing)
+
+    def initialize(self) -> None:
+        super().initialize()
+        self._not_reported = defaultdict(lambda: True)
+        prefix = self.config.get("prefix", None)
+        if prefix is None:
+            prefix = self.name + "_"
+        self.prefix: str = prefix
+        try:
+            self.zeff: float = self.config["z"]
+        except KeyError:
+            raise LoggedError(self.log, "must specify effective redshift z")
+        # provider_name, use_cb and optiresum should be determined at initialization
+        self.provider_name: str = self.config.get("provider", "classy")
+        self.use_cb: bool = self.config.get("use_cb", False)
+        self.optiresum: bool = self.config.get("IRresum", {}).pop("optiresum", False)
+        # delayed initialization in initialize_with_provider,
+        # so that all dependencies can be quickly checked
+        # check config
+        self.plugins: dict[str, Any] = {}
+        self.with_IRresum: bool = self.config.get("with_IRresum", True)
+        if self.with_IRresum:
+            self.plugins["_IRresum"] = Initializer(
+                pybird.Resum, self.config.get("IRresum", {}), self.log
+            )
+        self.with_APeffect: bool = self.config.get("with_APeffect", False)
+        if self.with_APeffect:
+            self.plugins["_APeffect"] = Initializer(
+                pybird.APeffect, self.config.get("APeffect", {}), self.log
+            )
+        self.with_window: bool = self.config.get("with_window", False)
+        if self.with_window:
+            self.plugins["_window"] = Initializer(
+                pybird.Window, self.config.get("window", {}), self.log
+            )
+        self.with_fiber: bool = self.config.get("with_fiber", False)
+        if self.with_window:
+            self.plugins["_fiber"] = Initializer(
+                pybird.FiberCollision, self.config.get("fiber", {}), self.log
+            )
+        self.binning: Binning | None = None
+        self._must_provide: dict[str, dict[str, Any]] = defaultdict(dict)
+
+    def initialize_with_provider(self, provider: Provider):
+        super().initialize_with_provider(provider)
+
+        use_cb = self.use_cb
+        if self.provider_name == "camb":
+            self.boltzmann = CobayaCambInterface(
+                provider=provider, z=self.zeff, use_cb=use_cb
+            )
+        elif self.provider_name in ("classy", "classynu"):
+            self.boltzmann = CobayaClassyInterface(
+                provider=provider, z=self.zeff, use_cb=use_cb
+            )
+        else:
+            raise LoggedError(
+                self.log, "This should not happen, please contact the authors"
+            )
+
+        cross = self.config.get("cross", [])
+        if not cross:
+            try:
+                kmA, ndA = self.config["km"], self.config["nd"]
+                kmB, ndB = kmA, ndA
+            except KeyError:
+                raise LoggedError(self.log, "must specify km and nd")
+        else:
+            try:
+                tracerA, tracerB = (self.eftlss.tracers[_] for _ in cross)
+                kmA, ndA = tracerA["km"], tracerA["nd"]
+                kmB, ndB = tracerB["km"], tracerB["nd"]
+            except KeyError:
+                raise LoggedError(self.log, "missing km or nd for tracer %s", cross)
+
+        # do not initialize if no power spectrum requested
+        if not self.need_power:
+            return
+        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+        self.mpi_info("effective redshift: %.3f", self.zeff)
+        if cross:
+            self.mpi_info(
+                "computing cross power spectrum between %s and %s", cross[0], cross[1]
+            )
+        # TODO: set Nl according to plugins, e.g. window
+        ls_group = []
+        for name in (
+            "nonlinear_Plk_grid",
+            "nonlinear_Plk_interpolator",
+            "nonlinear_Plk_gaussian_grid",
+        ):
+            if name not in self._must_provide:
+                continue
+            ls_group.append(self._must_provide[name]["ls"])
+        # XXX: pybird actually does not support computing, e.g. P4 only
+        ls = group_lists(*ls_group)
+        lmax = max(ls)
+        ls = list(range(0, lmax + 2, 2))
+        Nl = len(ls)
+        self.mpi_info("compute power spectrum multipoles (internal): %s", ls)
+
+        self.co = pybird.Common(
+            Nl=Nl, optiresum=self.optiresum, kmA=kmA, ndA=ndA, kmB=kmB, ndB=ndB
+        )
+        self.bird: BirdPlus | None = None
+        self.nonlinear = pybird.NonLinear(
+            load=True, save=True, co=self.co, path=str(self.eftlss.cache_dir_path)
+        )
+
+        if use_cb:
+            self.mpi_info("using P_cb as input linear power spectrum")
+        else:
+            self.mpi_info("using P_m as input linear power spectrum")
+
+        msg_pool = []
+        if self.with_IRresum:
+            self.plugins["IRresum"] = self.plugins["_IRresum"].initialize(co=self.co)
+            msg_pool.append(
+                ("IRresum enabled: %s", "optimized" if self.optiresum else "full")
+            )
+        if self.with_APeffect:
+            self.plugins["APeffect"] = self.plugins["_APeffect"].initialize(
+                co=self.co, name=self.get_name() + ".APeffect"
+            )
+            msg_pool.append(("APeffect enabled",))
+        if self.with_window:
+            self.plugins["window"] = self.plugins["_window"].initialize(
+                co=self.co, name=self.get_name() + ".window"
+            )
+            msg_pool.append(("window enabled",))
+        if self.with_fiber:
+            self.plugins["fiber"] = self.plugins["_fiber"].initialize(
+                co=self.co, name=self.get_name() + ".fiber"
+            )
+            msg_pool.append(("fiber enabled",))
+        for msg in msg_pool:
+            self.mpi_info(*msg)
+
+        if self.need_binning:
+            self.binning = Binning(
+                **self._must_provide["nonlinear_Plk_grid"]["binning"],
+                co=self.co,
+                name=self.get_name() + ".binning",
+            )
+
+    def get_requirements(self) -> dict[str, Any]:
+        # requirements should be known after initialization especially EFT parameters
+        # XXX: dependency on cosmology may be dynamically updated
+        z = self.zeff
+        extra_zs = [] if z == 0.0 else [0.0]
+        vars_pairs = [2 * ["delta_nonu"]] if self.use_cb else [2 * ["delta_tot"]]
+        if self.provider_name == "camb":
+            requires = {
+                "Pk_interpolator": {
+                    "nonlinear": False,
+                    "z": [z] + self._zcomp,
+                    "k_max": 5,
+                    "vars_pairs": vars_pairs,
+                },
+                "Hubble": {"z": extra_zs + [z]},
+                "angular_diameter_distance": {"z": [z]},
+                "fsigma8": {"z": [z]},
+                "sigma8_z": {"z": [z]},
+                "rdrag": None,
+            }
+        else:
+            # sometimes classy does not reach the requested maximum redshift
+            try:
+                import classy
+
+                if classy.__version__ == "v3.2.0":  # type: ignore
+                    extra_zs += [self.zeff + 0.5]
+            except ImportError:
+                extra_zs += [self.zeff + 0.5]
+            requires = {
+                "Pk_interpolator": {
+                    "nonlinear": False,
+                    "z": [z] + extra_zs,
+                    "k_max": 5,
+                    "vars_pairs": vars_pairs,
+                },
+                "Hubble": {"z": extra_zs + [z]},
+                "angular_diameter_distance": {"z": [z]},
+                "fsigma8": {"z": [z]},
+                "rdrag": None,
+            }
+
+        # TODO: some parameters can be moved to get_can_support_params
+        # the following lines are reused by ``_params_reader``, possible to combine?
+        stnames = ("ce0", "cemono", "cequad")
+        names = ("b1", "b2", "b3", "b4", "cct", "cr1", "cr2")
+        cross = self.config.get("cross", [])
+        if cross:
+            eft_params = [self.prefix + name for name in stnames]
+            cross_prefix = [self.eftlss.tracers[_]["prefix"] for _ in cross]
+            for prefix in cross_prefix:
+                eft_params += [prefix + name for name in names]
+        else:
+            eft_params = [self.prefix + name for name in names]
+            eft_params += [self.prefix + name for name in stnames]
+        eft_requires = {param: None for param in eft_params}
+        requires.update(eft_requires)
+        return requires
+
+    def _config_ls(
+        self,
+        k: str,
+        v: dict[str, Any],
+        chained: list[bool] = [False],
+        base: str | None = None,
+    ) -> None:
+        """
+        Parameters
+        ----------
+        k : str
+            key name
+        v : dict[str, Any]
+            requires
+        chained : list[bool]
+            chained or not, used for ls reinterpretation
+        base : str | None
+            update associated base
+
+        Notes
+        -----
+        saved ls always denote the internal ls and are always sorted in ascending order
+        """
+        stored = self._must_provide[k]
+        ls: list[int] = stored.get("ls", [])
+        try:
+            ls_get = int_or_list(v.pop("ls"))
+        except KeyError:
+            raise LoggedError(self.log, "missing ls")
+        # reinterpret ls if chained
+        if True in chained:
+            if len(chained) == 1:
+                # e.g. [2] -> [0, 2, 4]
+                tmp = [2 * _ for _ in range(min(ls_get) // 2 + 1)]
+                ls_get = group_lists(tmp, [_ + 2 for _ in ls_get])
+            else:
+                # e.g. [2, 4] -> [0, 2, 4]
+                tmp = [2 * _ for _ in range(min(ls_get) // 2)]
+                ls_get = group_lists(tmp, ls_get)
+        for l in ls_get:
+            if l not in (0, 2, 4):
+                raise LoggedError(
+                    self.log,
+                    "internal ls should be 0, 2 or 4, but requires %s",
+                    ls_get,
+                )
+        combined_ls = group_lists(ls, ls_get)
+        stored["ls"] = combined_ls
+        if base:
+            base_stored = self._must_provide[base]
+            ls: list[int] = base_stored.get("ls", [])
+            combined_ls = group_lists(ls, combined_ls)
+            base_stored["ls"] = combined_ls
+
+    def _config_binned(self, k: str, v: dict[str, Any]) -> None:
+        stored = self._must_provide[k]
+        binned: list[bool] = stored.get("binned", [])
+        binning: dict[str, Any] = stored.setdefault("binning", {})  # default {}
+        binned_get = bool_or_list(v.pop("binned", False))  # default False
+        if True in binned_get:
+            # XXX: this part depends on the concrete implementation of Binning, not a good idea
+            try:
+                binning_get = v.pop("binning")
+            except KeyError:
+                raise LoggedError(self.log, "binned=True, but missing binning")
+            # different binning settings are not allowed
+            if binning:
+                kout = binning.pop("kout")
+                try:
+                    kout_ = binning_get.pop("kout")
+                except KeyError:
+                    raise LoggedError(self.log, "missing kout")
+                if not (np.array_equal(kout, kout_) and binning == binning_get):
+                    raise LoggedError(
+                        self.log,
+                        "does not support multiple different binning requirements",
+                    )
+                binning["kout"] = kout
+            else:
+                if "kout" not in binning_get:
+                    raise LoggedError(self.log, "missing kout")
+                binning = binning_get
+        stored["binned"] = group_lists(binned, binned_get)
+        stored["binning"] = binning
+
+    def must_provide(self, **requirements):
+        """
+        ``nonlinear_Plk_grid={...}``: nonlinear power spectrum (Hubble unit) on grid, returns ``(ls, kgrid, Plk)``,
+        ``ls`` is sorted in ascending order, but not necessarily match the one from requirements.
+        Takes ``"ls": [list of evaluated multipoles]``; ``"chained": [False | True]`` compute chained power spectrum or not,
+        by default False, if True, ``ls`` represents multipoles of chained power spectrum, if ``[False, True]``,
+        ``ls`` represents multipoles of power spectrum; ``"binned": [False | True]``
+        compute binned power spectrum or not, by default False, if True, extra
+        ``"binning": {"kout": ndarray, ...}`` is required and returned ``kgrid``
+        is effective k
+
+        ``nonlinear_Plk_interpolator={...}``: similar to ``nonlinear_Plk_grid``,
+        but returns a cubic spline interpolator ``PlkInterpolator`` on ``kgrid``, does not support ``binned``
+
+        ``nonlinear_Plk_gaussian_grid={...}``: similar to ``nonlinear_Plk_grid``,
+        but returns the gaussian part of the power spectrum ``(ls, kgrid, PG_table)``
+        where ``PG_table`` is a `dict[str, NDArray]` like dictionary, keys are gaussian parameters,
+        values are Plk on grid.
+
+        ``snapshots``: no settings required
+        """
+
+        def check_unsupported(k, v) -> None:
+            if v:
+                raise LoggedError(self.log, "unsupported requirements in %s: %s", k, v)
+
+        super().must_provide(**requirements)
+        reqs: dict[str, dict[str, Any]] = requirements.get(self.name + "_results", {})
+        # TODO: support dynamical plugin settings
+        for k, v in reqs.items():
+            # nonlinear_Plk_interpolator based on nonlinear_Plk_grid
+            if k in ("nonlinear_Plk_grid", "nonlinear_Plk_interpolator"):
+                stored = self._must_provide[k]
+                chained: list[bool] = stored.get("chained", [])
+                chained_get = bool_or_list(v.pop("chained", False))  # default False
+                stored["chained"] = group_lists(chained, chained_get)
+                if k == "nonlinear_Plk_grid":
+                    self._config_ls(k, v, chained=chained_get)
+                else:
+                    self._config_ls(
+                        k, v, chained=chained_get, base="nonlinear_Plk_grid",
+                    )
+                    # request nonlinear_Plk_interpolator, but no nonlinear_Plk_grid requirements
+                    base = self._must_provide["nonlinear_Plk_grid"]
+                    chained_base: list[bool] = base.get("chained", [False])
+                    base["chained"] = group_lists(chained_base, chained_get)
+                    # require binned
+                    binned_base: list[bool] = base.get("binned", [False])
+                    base["binned"] = group_lists(binned_base, [False])
+                    base.setdefault("binning", {})
+
+                # nonlinear_Plk_interpolator does not support binned
+                if k == "nonlinear_Plk_grid":
+                    self._config_binned(k, v)
+
+                check_unsupported(k, v)
+            elif k == "nonlinear_Plk_gaussian_grid":
+                stored = self._must_provide[k]
+                chained: list[bool] = stored.get("chained", [])
+                chained_get = bool_or_list(v.pop("chained", False))  # default False
+                stored["chained"] = group_lists(chained, chained_get)
+                self._config_ls(k, v, chained=chained_get)
+                # I think different binning settings are rarely used
+                self._config_binned("nonlinear_Plk_grid", v)
+                check_unsupported(k, v)
+            else:
+                raise LoggedError(
+                    self.log,
+                    "Unexpected requirement %s, this should not happen, "
+                    "please contact the developers",
+                    k,
+                )
+        self.mpi_debug("updated must_provide: %s", self._must_provide)
+
+    @cached_property
+    def _params_reader(self):
+        cross = self.config.get("cross", [])
+        stnames = ("ce0", "cemono", "cequad")
+        names = ("b1", "b2", "b3", "b4", "cct", "cr1", "cr2")
+        if cross:
+            A, B = (self.eftlss.tracers[name]["prefix"] for name in cross)
+
+            def reader(params: dict[str, float]):
+                es = [params[self.prefix + name] for name in stnames]
+                bsA = [params[A + name] for name in names]
+                bsB = [params[B + name] for name in names]
+                b1A, b1B = bsA[0], bsB[0]
+                return bsA, bsB, es, b1A, b1B
+
+        else:
+
+            def reader(params: dict[str, float]):
+                es = [params[self.prefix + name] for name in stnames]
+                bsA = [params[self.prefix + name] for name in names]
+                bsB = bsA.copy()
+                b1A, b1B = bsA[0], bsB[0]
+                return bsA, bsB, es, b1A, b1B
+
+        return reader
+
+    @cached_property
+    def _build_PG_table(self):
+        """depending on BirdPlus.reducePG
+        """
+        prefix = self.prefix
+        names = ("b3", "cct", "cr1", "cr2")
+        stnames = ("ce0", "cemono", "cequad")
+        alias = {prefix + k: k for k in stnames}
+        cross = self.config.get("cross", [])
+        if cross:
+            A, B = (self.eftlss.tracers[name]["prefix"] for name in cross)
+            for name in names:
+                alias[A + name] = name + "A"
+                alias[B + name] = name + "B"
+
+            def builder(PG: dict[str, NDArray]) -> dict[str, NDArray]:
+                out = {k: PG[v] for k, v in alias.items()}
+                return {**PG, **out}
+
+        else:
+
+            def builder(PG: dict[str, NDArray]) -> dict[str, NDArray]:
+                out = {k: PG[v] for k, v in alias.items()}
+                for name in names:
+                    out[prefix + name] = 2 * PG[name + "A"]
+                return {**PG, **out}
+
+        return builder
+
+    @property
+    def need_power(self):
+        return any(
+            item in self._must_provide
+            for item in ("nonlinear_Plk_grid", "nonlinear_Plk_gaussian_grid")
+        )
+
+    @property
+    def need_marg(self):
+        return "nonlinear_Plk_gaussian_grid" in self._must_provide
+
+    @property
+    def need_binning(self):
+        return True in self._must_provide.get("nonlinear_Plk_grid", {}).get(
+            "binned", [False]
+        )
+
+    def calculate(self, state, want_derived=True, **params_values_dict: float):
+        start = time.perf_counter()
+        boltzmann = self.boltzmann
+        # the main computation pipeline
+        if self.need_power:
+            bsA, bsB, es, b1A, b1B = self._params_reader(params_values_dict)
+            if boltzmann.updated() or self.bird is None:
+                # TODO: make kmin, kmax configurable
+                kh = np.logspace(-5, 0, 200)
+                pkh = boltzmann.Pkh(kh)
+                H, DA, f = boltzmann.H, boltzmann.DA, boltzmann.f
+                bird = BirdPlus(kh, pkh, f, DA, H, self.zeff, which="all", co=self.co)
+                self.nonlinear.PsCf(bird)
+                bird.setPsCfl()
+                plugins = cast(PluginsDict, self.plugins)
+                if self.with_IRresum:
+                    plugins["IRresum"].Ps(bird)
+                if self.with_APeffect:
+                    plugins["APeffect"].AP(bird)
+                if self.with_window:
+                    plugins["window"].Window(bird)
+                if self.with_fiber:
+                    plugins["fiber"].fibcolWindow(bird)
+                if self.binning:
+                    self.binning.kbinning(bird)
+                    bird.attach_hook(self.binning)
+                bird.setreducePslb(bsA=bsA, bsB=bsB, es=es)
+                if self.need_marg:
+                    bird.setreducePG(b1A, b1B)
+                self.bird = bird
+            else:
+                self.bird.setreducePslb(bsA=bsA, bsB=bsB, es=es)
+                if self.need_marg:
+                    self.bird.setreducePG(b1A, b1B)
+
+        products: dict[str, Any] = {}
+        if self.need_power:
+            products["snapshots"] = self.bird.snapshots  # type: ignore
+        # collect results
+        # be careful about possible k, v name conflicts
+        for k, v in self._must_provide.items():
+            ls_tot = [2 * i for i in range(self.co.Nl)]
+            kgrid = self.co.k
+            if k == "nonlinear_Plk_grid":
+                # XXX: necessary to perform the l cut?
+                ls = v["ls"]
+                idx = [ls_tot.index(l) for l in ls]
+                assert self.bird is not None
+                results: dict[PlkKey, tuple[list[int], NDArray, NDArray]] = {}
+                for chained, binned in itertools.product(v["chained"], v["binned"]):
+                    if binned:
+                        assert self.binning
+                        plk = self.binning.fullPs
+                        kreturn = self.binning.keff.copy()
+                    else:
+                        plk = self.bird.fullPs
+                        kreturn = kgrid.copy()
+                    if chained:
+                        plk = to_chained(ls_tot, plk)
+                        tup = (ls[:-1], kreturn, plk[idx[:-1]].copy())
+                    else:
+                        tup = (ls.copy(), kreturn, plk[idx].copy())
+                    key = PlkKey(chained=chained, binned=binned)
+                    results[key] = tup
+                products[k] = results
+                if "nonlinear_Plk_interpolator" in self._must_provide.keys():
+                    reqs = self._must_provide["nonlinear_Plk_interpolator"]
+                    results_interp: dict[PlkKey, PlkInterpolator] = {}
+                    for chained in reqs["chained"]:
+                        key = PlkKey(chained=chained, binned=False)
+                        tup = products["nonlinear_Plk_grid"][key]
+                        results_interp[key] = PlkInterpolator(*tup)
+                    products["nonlinear_Plk_interpolator"] = results_interp
+
+            elif k == "nonlinear_Plk_gaussian_grid":
+                assert self.bird is not None
+                out: dict[PlkKey, tuple[list[int], NDArray, dict[str, NDArray]]] = {}
+                for chained, binned in itertools.product(
+                    v["chained"], self._must_provide["nonlinear_Plk_grid"]["binned"],
+                ):
+                    if binned:
+                        assert self.binning
+                        PG = self.binning.PG
+                        kreturn = self.binning.keff.copy()
+                    else:
+                        PG = self.bird.PG
+                        kreturn = kgrid.copy()
+                    PG = PG.copy()
+                    if chained:
+                        for kk, vv in PG.items():
+                            PG[kk] = to_chained(ls_tot, vv)
+                        PG_table = self._build_PG_table(PG)
+                        tup = (ls_tot[:-1], kreturn, PG_table)
+                    else:
+                        PG_table = self._build_PG_table(PG)
+                        tup = (ls_tot.copy(), kreturn, PG_table)
+                    key = PlkKey(chained=chained, binned=binned)
+                    out[key] = tup
+                products[k] = out
+
+        state[self.name + "_results"] = products
+
+        if want_derived:
+            plugins = cast(PluginsDict, self.plugins)
+            if self.with_APeffect:
+                # FIXME: return alperp, alpara
+                try:
+                    qperp, qpara = plugins["APeffect"].get_AP_param(self.bird)
+                except KeyError:
+                    if self.not_reported("no AP plugin"):
+                        self.mpi_warning(
+                            "APeffect not initialized, possiblely due to no power requested",
+                        )
+                else:
+                    state["derived"][self.prefix + "alperp"] = qperp
+                    state["derived"][self.prefix + "alpara"] = qpara
+            else:
+                state["derived"][self.prefix + "alperp"] = 1
+                state["derived"][self.prefix + "alpara"] = 1
+            state["derived"][self.prefix + "fz"] = boltzmann.f
+            state["derived"][self.prefix + "fsigma8_z"] = boltzmann.fsigma8_z
+            # TODO: fsigma8_cb_z
+        end = time.perf_counter()
+        self.mpi_debug("time used: %s", end - start)
+
+    def get_can_provide(self):
+        return [self.name + "_results"]
+
+    def get_can_provide_params(self) -> list[str]:
+        return [
+            self.prefix + item
+            for item in ("fz", "fsigma8_z", "fsigma8_cb_z", "alperp", "alpara")
+        ]
+
+    def not_reported(self, key: str) -> bool:
+        flag = self._not_reported[key]
+        self._not_reported[key] = False
+        return flag

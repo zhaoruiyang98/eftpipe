@@ -61,6 +61,7 @@ git clone https://github.com/zhaoruiyang98/eftpipe.git
 cd eftpipe
 pip install -e .
 # or `pip install -e .[test]` for test
+# or `pip install -e .[dev]` for development
 ```
 # Compare to upstream PyBird
 Since EFTPipe is developed based on PyBird, it is quite important to keep the modified version agree to upstream PyBird repository.

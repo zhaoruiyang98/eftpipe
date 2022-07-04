@@ -1,6 +1,6 @@
+from __future__ import annotations
 import math
 import os
-from typing import List
 from scipy.optimize import fsolve
 from cobaya.log import LoggedError
 from cobaya.theories.classy import classy
@@ -11,10 +11,12 @@ def get_masses(delta_m, sum_masses, hierarchy):
         delta_m21_square = delta_m["delta_m21_square"]
         delta_m31_square = delta_m["delta_m31_square"]
         func = lambda x: (
-            -sum_masses + x + math.sqrt(delta_m21_square + x ** 2)
+            -sum_masses
+            + x
+            + math.sqrt(delta_m21_square + x ** 2)
             + math.sqrt(delta_m31_square + x ** 2)
         )
-        m0, _, success, _ = fsolve(func, 0., full_output=True)
+        m0, _, success, _ = fsolve(func, 0.0, full_output=True)
         m0 = m0[0]
         out = [
             m0,
@@ -25,10 +27,12 @@ def get_masses(delta_m, sum_masses, hierarchy):
         delta_m21_square = delta_m["delta_m21_square"]
         delta_m32_square = math.fabs(delta_m["delta_m32_square"])
         func = lambda x: (
-            -sum_masses + x + math.sqrt(delta_m32_square + x ** 2)
+            -sum_masses
+            + x
+            + math.sqrt(delta_m32_square + x ** 2)
             + math.sqrt(delta_m32_square - delta_m21_square + x ** 2)
         )
-        m0, _, success, _ = fsolve(func, 0., full_output=True)
+        m0, _, success, _ = fsolve(func, 0.0, full_output=True)
         m0 = m0[0]
         out = [
             m0,
@@ -51,10 +55,10 @@ def get_delta_m(extra_args, hierarchy):
     else:
         default = [-2.512e-3, 7.39e-5, -1 * (-2.512e-3 + 7.39e-5)]
 
-    inputs: List[float] = [None, None, None]  # type: ignore
-    inputs[0] = extra_args.pop('delta_m32_square', None)
-    inputs[1] = extra_args.pop('delta_m21_square', None)
-    x = extra_args.pop('delta_m31_square', None)
+    inputs: list[float] = [None, None, None]  # type: ignore
+    inputs[0] = extra_args.pop("delta_m32_square", None)
+    inputs[1] = extra_args.pop("delta_m21_square", None)
+    x = extra_args.pop("delta_m31_square", None)
     inputs[2] = x if x is None else -x
 
     flag = sum(0 if x is None else 1 for x in inputs)
@@ -86,16 +90,15 @@ class classynu(classy):
 
     def initialize(self):
         super().initialize()
-        hierarchy = self.extra_args.pop('neutrino_hierarchy', 'degenerate')
-        if hierarchy not in ('degenerate', 'normal', 'inverted'):
+        hierarchy = self.extra_args.pop("neutrino_hierarchy", "degenerate")
+        if hierarchy not in ("degenerate", "normal", "inverted"):
             raise LoggedError(
                 self.log,
-                "neutrino hierarchy must be "
-                "'degenerate', 'normal' or 'inverted'"
+                "neutrino hierarchy must be 'degenerate', 'normal' or 'inverted'",
             )
         self._hieararchy = hierarchy
-        N_ur = self.extra_args.pop('N_ur', None)
-        N_ncdm = self.extra_args.pop('N_ncdm', None)
+        N_ur = self.extra_args.pop("N_ur", None)
+        N_ncdm = self.extra_args.pop("N_ncdm", None)
         # if you want to use N_ur to get N_eff equal to 3.046 in the early universe,
         # then you should pass here respectively 2.0328,1.0196,0.00641
         # Thus the following only works for N_eff=3.046
@@ -124,12 +127,12 @@ class classynu(classy):
     def initialize_with_params(self):
         super().initialize_with_params()
         input_params = self.input_params
-        if 'mnu' in input_params and 'm_ncdm' in input_params:
+        if "mnu" in input_params and "m_ncdm" in input_params:
+            raise LoggedError(self.log, "mnu and m_ncdm cannot appear at the same time")
+        if self._hieararchy != "degenerate" and "m_ncdm" in input_params:
             raise LoggedError(
-                self.log, "mnu and m_ncdm cannot appear at the same time")
-        if self._hieararchy != 'degenerate' and 'm_ncdm' in input_params:
-            raise LoggedError(
-                self.log, "m_ncdm is only supported for degenerate hierarchy")
+                self.log, "m_ncdm is only supported for degenerate hierarchy"
+            )
 
     # override
     def set(self, params_values_dict):
@@ -140,12 +143,11 @@ class classynu(classy):
             for k in ["non linear"]:
                 self.extra_args.pop(k, None)
         # Prepare parameters to be passed: this-iteration + extra
-        args = {self.translate_param(
-            p): v for p, v in params_values_dict.items()}
+        args = {self.translate_param(p): v for p, v in params_values_dict.items()}
         args.update(self.extra_args)
         self._update_args_dict_with_neutrino(args)
         # Generate and save
-        self.log.debug("Setting parameters: %r", args)
+        self.mpi_debug("Setting parameters: %r", args)
         self.classy.set(**args)
 
     def _update_args_dict_with_neutrino(self, args_dict):
@@ -159,19 +161,17 @@ class classynu(classy):
         args_dict["N_ur"] = self._N_ur
         args_dict["N_ncdm"] = self._N_ncdm
         if self._hieararchy == "degenerate":
-            mnu = args_dict.pop('mnu', None)
+            mnu = args_dict.pop("mnu", None)
             if mnu is not None:
                 m_ncdm = [mnu / self._N_ncdm for _ in range(self._N_ncdm)]
-                args_dict["m_ncdm"] = ','.join(map(str, m_ncdm))
+                args_dict["m_ncdm"] = ",".join(map(str, m_ncdm))
         else:
-            mnu = args_dict['mnu']
-            args_dict.pop('mnu')
-            (m1, m2, m3), success = get_masses(
-                self._delta_m, mnu, self._hieararchy)
+            mnu = args_dict["mnu"]
+            args_dict.pop("mnu")
+            (m1, m2, m3), success = get_masses(self._delta_m, mnu, self._hieararchy)
             if not success:
                 raise LoggedError(self.log, "failed to solve m_ncdm")
-            args_dict["m_ncdm"] = ','.join(map(str, [m1, m2, m3]))
-
+            args_dict["m_ncdm"] = ",".join(map(str, [m1, m2, m3]))
 
     # override: import classy instead of classynu
     @classmethod
