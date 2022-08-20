@@ -4,7 +4,8 @@ import numpy as np
 from typing import Any, TYPE_CHECKING
 from cobaya.log import HasLogger
 from cobaya.log import LoggedError
-from numpy.typing import NDArray
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 
 
 class Marginalizable(HasLogger if TYPE_CHECKING else object):
@@ -70,7 +71,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         """setup self.valid_prior, self.mu_G and self.sigma_inv
         """
         self.valid_prior = self._update_prior(prior)
-        self.mu_G, self.sigma_inv = self._calc_prior(prior)
+        self.mu_G, self.sigma_inv = self._calc_prior(self.valid_prior)
 
     def report_marginalized(self) -> None:
         self.mpi_info("the following parameters are marginalized with gaussian prior:")
