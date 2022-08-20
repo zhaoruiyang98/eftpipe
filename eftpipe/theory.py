@@ -891,6 +891,10 @@ class EFTLSSChild(HelperTheory):
         values are Plk on grid.
 
         ``snapshots``: no settings required
+
+        Notes
+        -----
+        all products should be treated as read-only, otherwise the cache may not work
         """
 
         def check_unsupported(k, v) -> None:

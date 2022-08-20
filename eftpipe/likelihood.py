@@ -1,109 +1,105 @@
-# global
-import sys
-from pathlib import Path
-from typing import (
-    Any,
-    Dict,
-    List,
-)
+from __future__ import annotations
+import numpy as np
+from typing import Any
 from cobaya.likelihood import Likelihood
-from cobaya.log import LoggedError
-from cobaya.theory import Provider
-if sys.version_info >= (3, 8):
-    from typing import Literal
-else:
-    from typing_extensions import Literal
-# local
-from eftpipe.parser import select_parser
-from eftpipe.tools import update_path_in_dict
-from eftpipe.typing import (
-    GaussianData,
-    VectorTheory,
-)
+from .lssdata import LSSData
+from .marginal import Marginalizable
 
 
-class EFTLike(Likelihood):
-    label: str
-    nsampled: int
-    extra_args: Dict[str, Any]
-    # intermediate products
-    input_params: Dict[str, Any]
-    data_obj: GaussianData
-    theory_obj: VectorTheory
+def flatten(ls, ls_tot, array):
+    idx = [ls_tot.index(ell) for ell in ls]
+    return array[idx, :].reshape(-1)
+
+
+class EFTLikeSingle(Likelihood, Marginalizable):
+    """EFT likelihood for single tracer
+    """
+
+    file_base_name = "eftlike_s"
+
+    tracer: str
+    prefix: str
+    lssdata: LSSData
+    chained: bool
+    with_binning: bool
+    binning: dict[str, Any]
+    marg: dict[str, dict[str, Any]]
 
     def initialize(self) -> None:
-        base_path = self.extra_args.get('base', None)
-        if base_path is not None:
-            # please update extra, if hyperparameter's name changes
-            update_path_in_dict(
-                self.extra_args, Path(str(base_path)),
-                extra=("window_fourier_file", "window_configspace_file"),
+        super().initialize()
+        self.lssdata = LSSData.from_dict(self.lssdata)  # type: ignore
+        # assume all masked ks are the same
+        self.kout = self.lssdata.fullshape[0][0].x
+        self.binning = self.binning or {}
+        self.binning = {"kout": self.kout, **self.binning}
+        self.ls = self.lssdata.fullshape[0].ls
+        if self.marg:
+            self.setup_prior(self.marg)
+
+    def get_requirements(self):
+        reqs = {}
+        if self.with_binning:
+            reqs["nonlinear_Plk_grid"] = {
+                self.tracer: {
+                    "ls": self.ls,
+                    "chained": self.chained,
+                    "binned": self.with_binning,
+                    "binning": self.binning,
+                }
+            }
+        else:
+            reqs["nonlinear_Plk_interpolator"] = {
+                self.tracer: {"ls": self.ls, "chained": self.chained,}
+            }
+        if self.marg:
+            reqs["nonlinear_Plk_gaussian_grid"] = {
+                self.tracer: {
+                    "ls": self.ls,
+                    "chained": self.chained,
+                    "binned": self.with_binning,
+                    **({"binning": self.binning} if self.with_binning else {}),
+                }
+            }
+        return reqs
+
+    # override
+    def marginalizable_params(self) -> list[str]:
+        return [
+            self.prefix + name
+            for name in ("b3", "cct", "cr1", "cr2", "ce0", "cemono", "cequad")
+        ]
+
+    # override
+    def PG(self):
+        ls_tot, _, table = self.provider.get_nonlinear_Plk_gaussian_grid(
+            self.tracer, chained=self.chained, binned=self.with_binning
+        )
+        out = []
+        for bG in self.valid_prior.keys():
+            out.append(flatten(self.ls, ls_tot, table[bG]))
+        return np.vstack(out)
+
+    # override
+    def PNG(self):
+        if self.with_binning:
+            ls_tot, _, plk = self.provider.get_nonlinear_Plk_grid(
+                self.tracer, chained=self.chained, binned=self.with_binning
             )
-        mode: Literal['single', 'two', 'all', 'cross'] = self.extra_args['mode']
-        parser = select_parser(mode)(self.extra_args)
-        data_obj = parser.create_gaussian_data()
-        theory_obj = parser.create_vector_theory()
-        self.data_obj = data_obj
-        self.theory_obj = theory_obj
-        marginfo = self.extra_args.get('marg', None)
-        self.can_marg = False
-        if marginfo is not None and theory_obj.can_marg:
-            self.can_marg = True
-            self.marg_obj = parser.create_marglike(
-                self.data_obj, self.theory_obj
+            out = flatten(self.ls, ls_tot, plk)
+        else:
+            fn = self.provider.get_nonlinear_Plk_interpolator(
+                self.tracer, chained=self.chained
             )
-        if self.nsampled is None:
-            raise ValueError(
-                f"please specify the number of sampled parameters")
-        if self.label is None:
-            raise ValueError(f"please specify the label of likelihood")
-        self.label = str(self.label)
-
-    def initialize_with_provider(self, provider: 'Provider'):
-        super().initialize_with_provider(provider)
-        self.theory_obj.set_provider(self.provider)
-
-    def get_requirements(self) -> Dict[str, Any]:
-        return self.theory_obj.required_params()
-
-    def must_provide(self, **requirements):
-        for k, _ in requirements.items():
-            if k == "margstate":
-                if not self.can_marg:
-                    raise LoggedError(self.log, "cannot provide margstate")
-            elif k == "theory_vector":
-                if self.can_marg:
-                    raise LoggedError(self.log, "cannot provide theory_vector")
+            out = fn(self.ls, self.kout).reshape(-1)
+        return out
 
     def calculate(self, state, want_derived=True, **params_values_dict):
-        if self.can_marg:
-            chi2 = -2 * self.marg_obj.calculate(params_values_dict)
-            state["margstate"] = self.marg_obj.state[0]
+        if self.marg:
+            state["logp"] = self.marginalized_logp(
+                self.lssdata.data_vector, self.lssdata.invcov
+            )
         else:
-            theory = self.theory_vector(params_values_dict)
-            state["theory_vector"] = theory
-            res = theory - self.data_obj.data_vector
-            chi2 = res @ self.data_obj.invcov @ res
-        state["gaussian_data"] = self.data_obj
+            res = self.lssdata.data_vector - self.PNG()
+            chi2 = res @ self.lssdata.invcov @ res
+            state["logp"] = -0.5 * chi2
 
-        if want_derived:
-            state['derived'] = {
-                self.label + 'reduced_chi2':
-                chi2 / (self.data_obj.ndata - self.nsampled)
-            }
-        state['logp'] = -0.5 * chi2
-
-    def theory_vector(self, params_values_dict):
-        return self.theory_obj.theory_vector(params_values_dict)
-
-    def get_can_provide_params(self) -> List[str]:
-        return [self.label + 'reduced_chi2']
-
-    def get_margstate(self):
-        return self.current_state['margstate']
-
-    def get_theory_vector(self):
-        return self.current_state['theory_vector']
-
-    def get_gaussian_data(self):
-        return self.current_state["gaussian_data"]

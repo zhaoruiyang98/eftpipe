@@ -1,0 +1,7 @@
+tracer:
+prefix: ''
+lssdata:
+chained: false
+with_binning: false
+binning:
+marg:
