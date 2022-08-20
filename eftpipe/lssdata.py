@@ -1,29 +1,24 @@
+from __future__ import annotations
 import re
-import sys
 import numpy as np
+from collections.abc import Mapping
 from copy import deepcopy
-from functools import total_ordering
+from dataclasses import dataclass
+from functools import cached_property
 from pathlib import Path
 from typing import (
     Any,
-    cast,
-    Callable,
+    ClassVar,
     Container,
-    Dict,
     Iterable,
-    List,
-    NamedTuple,
-    Optional,
-    Sequence,
+    Iterator,
+    Pattern,
     TypeVar,
-    Union,
 )
-if sys.version_info >= (3, 8):
-    from typing import TypedDict
-else:
-    from typing_extensions import TypedDict
+from typing_extensions import Self
 from numpy import ndarray as NDArray
 from cobaya.log import HasLogger
+from cobaya.log import LoggedError
 
 _T = TypeVar("_T")
 
@@ -32,369 +27,426 @@ class ObsNameError(ValueError):
     pass
 
 
-@total_ordering
+@dataclass(order=True, frozen=True)
 class ObsName:
-    _pattern = re.compile(r"^([A-Za-z]+)(\d+)$")
-
-    def __init__(
-        self, symbol: str, value: int, latexfmt: Optional[str] = None
-    ) -> None:
-        self.symbol = symbol
-        self.value = value
-        self._latex = latexfmt
+    symbol: str
+    value: int
+    latexfmt: str | None = None
+    _pattern: ClassVar[Pattern] = re.compile(r"^([A-Za-z]+)(\d+)$")
 
     @property
     def latex(self) -> str:
         return (
-            self._latex.format(symbol=self.symbol, value=self.value)
-            if self._latex
-            else f"{self.symbol}_{self.value}"
+            self.latexfmt.format(symbol=self.symbol, value=self.value)
+            if self.latexfmt
+            else f"${self.symbol}_{self.value}$"
         )
 
     @classmethod
-    def from_str(cls, s: str) -> "ObsName":
+    def from_str(cls, s: str) -> Self:
         match = cls._pattern.match(s)
-        if match:
-            symbol, value = match.groups()
-        else:
-            raise ObsNameError(f"{s} is invalid ObsName")
+        if not match:
+            raise ObsNameError(f"{s} is not a valid ObsName")
+        symbol, value = match.groups()
         return cls(symbol, int(value))
+
+    @classmethod
+    def is_valid(cls, s: str) -> bool:
+        return True if cls._pattern.match(s) else False
 
     def clone(
         self,
-        symbol: Optional[str] = None,
-        value: Optional[int] = None,
-        latexfmt: Optional[str] = None
-    ) -> "ObsName":
+        symbol: str | None = None,
+        value: int | None = None,
+        latexfmt: str | None = None,
+    ) -> Self:
         sym = self.symbol if symbol is None else symbol
         val = self.value if value is None else value
-        return self.__class__(sym, val, latexfmt)
+        fmt = self.latexfmt if latexfmt is None else latexfmt
+        return type(self)(sym, val, fmt)
 
-    @classmethod
-    def validq(cls, s: str) -> bool:
-        return True if cls._pattern.match(s) else False
+
+@dataclass
+class Statistics:
+    x: NDArray
+    y: NDArray
+    yerr: NDArray | None
+    name: ObsName
 
     def __repr__(self) -> str:
+        template = "ndarray<{}, {}>([{}, ..., {}])"
+
+        def helper(x):
+            try:
+                min, max = x[0], x[-1]
+            except IndexError as ex:
+                min, max = None, None
+            return template.format(x.shape, x.dtype, min, max)
+
         return (
             f"{self.__class__.__name__}("
-            f"symbol={self.symbol}, "
-            f"value={self.value}"
-            f")"
+            f"x={helper(self.x)}, "
+            f"y={helper(self.y)}, "
+            f"yerr={None if self.yerr is None else helper(self.yerr)}, "
+            f"name={self.name})"
         )
 
-    def __str__(self) -> str:
-        return self.symbol + str(self.value)
 
-    def __hash__(self) -> int:
-        return hash((self.symbol, self.value, self._latex))
-
-    def __lt__(self, other) -> bool:
-        return str(self) < str(other)
-
-    def __eq__(self, other) -> bool:
-        return str(self) == str(other)
-
-
-class DistinctError(ValueError):
-    pass
-
-
-class Same:
-    def __init__(self, obj: object, key: Callable) -> None:
-        self.obj = obj
-        self.base = key(obj)
-        self.key = key
-
-    def validate(self, obj: _T) -> _T:
-        try:
-            v = self.key(obj)
-            if self.base == v:
-                return obj
-        except Exception as e:
-            raise DistinctError(f"cannot apply {self.key!r} to {obj!r}") from e
-        else:
-            raise DistinctError(f"distinct result from {self.obj!r}")
-
-
-class MaskTuple(NamedTuple):
-    ls: List[int]
-    kmin: float
-    kmax: float
-
-
-class RawPklData:
-    def __init__(
-        self,
-        kdata: NDArray,
-        data: Dict[ObsName, NDArray],
-        err: Dict[ObsName, Optional[NDArray]]
-    ) -> None:
-        self.kdata = kdata
-        self.data = data
-        self.err = err
-        self.ndata = sum(x.size for x in self.data.values())
-        self.ls = [k.value for k in self.data.keys()]
-
-    def set_latexfmt(self, s: str) -> None:
-        self.data = {k.clone(latexfmt=s): v for k, v in self.data.items()}
-        self.err = {k.clone(latexfmt=s): v for k, v in self.err.items()}
-
-
-class PklData(HasLogger):
-    """a container for pkl data and err
+class Multipoles(Mapping, HasLogger):
+    """a container for multipole-like data
 
     Parameters
     ----------
-    kdata: ndarray, 1d
-    **kwargs: dict[str, ndarray]
-        legal key names are those can be transformed into ObsName or those with suffix `error_suffix`,
-        legal value are 1d ndarray
+    x: ndarray, 1d
+        k-like data in ascending order, all multipoles share the same x
+    xname: str, optional
+        name of x-axis, by default "k"
+    **kwargs: dict[str, ndarray], 1d
+        legal key names are those can be transformed into ObsName or those with suffix `error_suffix`
+        legal value are 1d ndarray with the same size as x
+        all names should share the same symbol
+        missing yerr will be filled with None
 
     Attributes
     ----------
-    symbol: str
-        symbol name of data
-    kdata: ndarray, 1d
-    raw: RawPklData
-        container for raw data
-    data_vector: ndarray, 1d
-        masked flattened data
-    data_vector_mask: ndarray, 1d, bool
-        data mask
+    xname: str
+        name of x-axis
+    yname: str
+        observables' name
+    x_all: ndarray, 1d
+        all x data
+    raw: dict[int, Statistics]
+        raw data with no masking
+    masked: dict[int, Statistics]
+        masked data
+    masks: dict[int, ndarray]
+        mask for each multipole
+    ls: list[int]
+        masked l values
     ndata: int
         total number of masked data
-    ls: list[int]
-        contained multipoles, sorted
-    mask: MaskTuple
-        last mask settings
+    data_vector: ndarray, 1d
+        flattened masked data
+    data_vector_mask: ndarray, 1d
+        flattened mask of masked data
 
     Methods
     -------
-    set_mask(ls: list[int] | int = None, kmin: float = None, kmax: float = None)
-        mask data based on `self.raw`
+    set_mask(ls: int | Iterable[int] = (), kmin: float | Iterable[float] = (), kmax: float | Iterable[float] = ())
+        mask data based on self.raw
     set_latexfmt(s: str)
-        set latex format, eg. "{symbol}_{value}"
+        set latex format for all observables
     log_state()
         log current state
-    loadtxt(path, header: Iterable[str] = None, skip: Container[str] = None)
-        classmethod, create PklData from txt
-        If txt doesn't have header, assuming "kdata P0 P2 P4"
-        'k' is an alias of 'kdata'
+    loadtxt(path, header: Iterable[str] = None, skip: Container[str] = None) -> Self
+        load multipoles from a text file
 
     Notes
     -----
-    both data and err are sorted in ascending order, i.e. P0, P2, P4 ...
+    1. both raw and masked data are sorted in ascending order, i.e. P0, P2, P4 ...
+    2. all x in `raw` and `masked` are views of the same data
+    3. all y/yerr in `masked` are views of `raw`'s y/yerr
+    4. data_vector and data_vector_mask owns data
+    5. this class is a Mapping, one can iterate over it to access masked data
     """
-    error_suffix: str = 'err'
 
-    def __init__(self, kdata: NDArray, **kwargs: NDArray) -> None:
-        """init
+    error_suffix: str = "err"
 
-        Raises
-        ------
-        ValueError
-            no kwargs provided
-        ObsNameError
-            illegal key name
-        DistinctError
-            data.shape != kdata.shape
-        """
-        self.symbol: str = ""
-        self.kdata = kdata
+    def __init__(self, x: NDArray, xname: str = "k", **kwargs: NDArray) -> None:
+        self.set_logger(name="lssdata.Multipoles")
+        self.xname: str = xname
+
+        # collect multipoles, expect same symbol and size
         if not kwargs:
-            raise ValueError('expect at least one keyword')
-        self._set_data_and_err(**kwargs)
-        self.raw = RawPklData(self.kdata, self.data, self.err)
-        self.data_vector = np.hstack([v for v in self.data.values()])
-        self.data_vector_mask = np.ones(self.data_vector.size, dtype=bool)
-        self.ndata = self.data_vector.size
-        self.ls = [v.value for v in self.data.keys()]
-        self.mask = MaskTuple(
-            ls=self.ls,
-            kmin=self.kdata.min() - 0.1,
-            kmax=self.kdata.max() + 0.1
-        )
-        self.set_logger(name="lssdata.PklData")
+            raise LoggedError(self.log, "expect at least one keyword")
+        y = {}
+        yerr = {}
+        symbols = set()
+        for k, v in kwargs.items():
+            if v.size != x.size:
+                raise LoggedError(self.log, "expect %s to have %d elements", k, x.size)
+            adder = y
+            if k.endswith(self.error_suffix):
+                k = k[: -len(self.error_suffix)]
+                adder = yerr
+            try:
+                name = ObsName.from_str(k)
+            except ObsNameError as ex:
+                raise LoggedError(self.log, "%s is not a valid ObsName", k) from ex
+            symbols.add(name.symbol)
+            adder[name.value] = v
+        if len(symbols) != 1:
+            raise LoggedError(
+                self.log, "expect exactly one symbol, but given %s", symbols
+            )
+        self.yname: str = symbols.pop()
+        # num of multipoles should not be less than num of errors
+        ls_diff = set(yerr.keys()) - set(y.keys())
+        if ls_diff:
+            raise LoggedError(
+                self.log, "missing %s", [f"{self.yname}{x}" for x in ls_diff]
+            )
 
-    def _set_data_and_err(self, **kwargs: NDArray) -> None:
-        data: Dict[ObsName, NDArray] = {}
-        err: Dict[ObsName, Optional[NDArray]] = {}
-        sameshape = Same(self.kdata, len)
-        for obsname, value in kwargs.items():
-            todata = True
-            if obsname.endswith(self.error_suffix):
-                obsname = obsname[:-len(self.error_suffix)]
-                todata = False
-            obsname = ObsName.from_str(obsname)
-            if not self.symbol:
-                self.symbol = obsname.symbol
-            else:
-                if obsname.symbol != self.symbol:
-                    raise ObsNameError(f"unexpected obsname {obsname}")
-            if todata:
-                data[obsname] = sameshape.validate(value)
-            else:
-                err[obsname] = sameshape.validate(value)
-        data = dict(sorted(data.items()))
-        # obsname in err should appear in data
-        for obsname in err.keys():
-            if obsname not in data.keys():
-                raise ObsNameError(f"unexpected obsname{self.error_suffix}")
-        # default None if not set
-        for obsname, value in data.items():
-            res = err.get(obsname, None)
-            if res is None:
-                err[obsname] = None
-        err = dict(sorted(err.items()))
-        self.data, self.err = data, err
+        self.raw: dict[int, Statistics] = {}
+        y = {l: y[l] for l in sorted(y.keys())}  # sorted in ascending order
+        x = x.copy()  # copy x only once
+        self.x_all: NDArray = x
+        for l, v in y.items():
+            verr = yerr.get(l, None)
+            verr = verr.copy() if verr is not None else None
+            tmp = Statistics(x=x, y=v.copy(), yerr=verr, name=ObsName(self.yname, l))
+            self.raw[l] = tmp
+        self.masked: dict[int, Statistics] = {l: v for l, v in self.raw.items()}
+
+        self.set_mask()
 
     def set_mask(
         self,
-        ls: Optional[Union[int, List[int]]] = None,
-        kmin: Optional[float] = None,
-        kmax: Optional[float] = None,
+        ls: int | Iterable[int] = (),
+        xmin: float | Iterable[float] = (),
+        xmax: float | Iterable[float] = (),
+        drop: bool = False,
     ) -> None:
-        if ls is None:
-            ls = self.raw.ls
-        elif isinstance(ls, int):
-            ls = [ls]
-        kmin = self.raw.kdata.min() - 1.0 if kmin is None else kmin
-        kmax = self.raw.kdata.max() + 1.0 if kmax is None else kmax
-        kmin, kmax = cast(float, kmin), cast(float, kmax)
-        kmask = slice(
-            np.searchsorted(self.raw.kdata, kmin),
-            np.searchsorted(self.raw.kdata, kmax, side='right')
+        """apply mask filter
+
+        ls: int | Iterable[int]
+            l values to be selected, by default all
+        xmin: float | Iterable[float]
+            minimum x value, by default self._x_all[0] - 0.5 * (self._x_all[1] - self._x_all[0])
+            if one value is given, it will be copied to match ls
+        xmax: float | Iterable[float]
+            maximum x value, by default self._x_all[-1] + 0.5 * (self._x_all[-1] - self._x_all[-2])
+            if one value is given, it will be copied to match ls
+        drop: bool, optional
+            if True, masked all data, by default False
+        """
+
+        def helper(x):
+            if isinstance(x, Iterable):
+                out = [t for t in x]
+            else:
+                out = [x]
+            return out
+
+        # to list
+        ls, xmin, xmax = helper(ls), helper(xmin), helper(xmax)
+        self._last_set_mask = dict(
+            ls=helper(ls), xmin=helper(xmin), xmax=helper(xmax), drop=drop
         )
-        self.mask = MaskTuple(ls=ls, kmin=kmin, kmax=kmax)
-        newdata: Dict[ObsName, NDArray] = {}
-        newerr: Dict[ObsName, Optional[NDArray]] = {}
-        for name, arr in self.raw.data.items():
-            if name.value in ls:
-                newdata[name] = arr[kmask]
-        for name, arr in self.raw.err.items():
-            if name.value in ls:
-                newerr[name] = arr[kmask] if arr is not None else None
-        self.kdata = self.raw.kdata[kmask]
-        self.data = newdata
-        self.err = newerr
-        self.ls = [k.value for k in newdata.keys()]
-        self.ndata = sum(v.size for v in newdata.values())
-        self.data_vector = np.hstack([v for v in newdata.values()])
-        kmask_bool = np.zeros(self.raw.kdata.size, dtype=bool)
-        kmask_bool[kmask] = True
-        allfalse = np.zeros(self.raw.kdata.size, dtype=bool)
-        self.data_vector_mask = np.hstack(
-            [(kmask_bool if l in self.ls else allfalse) for l in self.raw.ls]
-        )
+        # default
+        if not ls:
+            ls = list(self.raw.keys())
+        if not xmin:
+            xmin = float(self.x_all[0] - 0.5 * (self.x_all[1] - self.x_all[0]))
+            xmin = [xmin]
+        if not xmax:
+            xmax = float(self.x_all[-1] + 0.5 * (self.x_all[-1] - self.x_all[-2]))
+            xmax = [xmax]
+        if len(xmin) == 1:
+            xmin = xmin * len(ls)
+        if len(xmax) == 1:
+            xmax = xmax * len(ls)
+        if not (len(ls) == len(xmin) == len(xmax)):
+            raise LoggedError(
+                self.log,
+                "expect same length, given %d ls, %d xmin, %d xmax",
+                len(ls),
+                len(xmin),
+                len(xmax),
+            )
+
+        if not drop:
+            ls_tot = [l for l in self.raw.keys()]
+            ls_diff = set(ls) - set(ls_tot)
+            if ls_diff:
+                raise LoggedError(self.log, "unexpected ls: %s", ls_diff)
+            slices = {}
+            for l, xmin_, xmax_ in zip(ls, xmin, xmax):
+                slices[l] = slice(
+                    np.searchsorted(self.x_all, xmin_),
+                    np.searchsorted(self.x_all, xmax_, side="right"),
+                )
+            masked = {}
+            for l, v in self.raw.items():
+                if l in ls:
+                    sel = slices[l]
+                    masked[l] = Statistics(
+                        x=v.x[sel],
+                        y=v.y[sel],
+                        yerr=v.yerr[sel] if v.yerr is not None else None,
+                        name=v.name,
+                    )
+            self.masked = masked
+            self.ls = ls
+            self.ndata = sum(v.x.size for v in self.values())
+            self.data_vector = np.hstack([v.y for v in self.values()])
+            xmask_bool = np.zeros(self.x_all.size, dtype=bool)
+            xmasks_bool = []
+            for l in ls_tot:
+                sel = slices.get(l, slice(-1, 0))
+                tmp = xmask_bool.copy()
+                tmp[sel] = True
+                xmasks_bool.append(tmp)
+            self.masks = {l: mask for l, mask in zip(ls_tot, xmasks_bool)}
+            self.data_vector_mask = np.hstack(xmasks_bool)
+        else:
+            self.masked = {}
+            self.ls = []
+            self.ndata = 0
+            self.data_vector = np.array([])
+            self.masks = {
+                l: np.zeros(self.x_all.size, dtype=bool) for l in self.raw.keys()
+            }
+            self.data_vector_mask = np.zeros(
+                self.x_all.size * len(self.ls_raw), dtype=bool
+            )
 
     def set_latexfmt(self, s: str) -> None:
-        self.data = {k.clone(latexfmt=s): v for k, v in self.data.items()}
-        self.err = {k.clone(latexfmt=s): v for k, v in self.err.items()}
-        self.raw.set_latexfmt(s)
+        for l, v in self.raw.items():
+            name_ = v.name.clone(latexfmt=s)
+            self.raw[l].name = name_
+            if l in self.ls:
+                self.masked[l].name = name_
 
     def log_state(self) -> None:
-        self.mpi_info("symbol=%s", self.symbol)
+        self.mpi_info("xname=%s, yname=%s", self.xname, self.yname)
         self.mpi_info("ls=%s", self.ls)
-        self.mpi_info(
-            "kdata: min=%.3e, max=%.3e", self.kdata[0], self.kdata[-1])
+        for l in self.ls:
+            try:
+                self.mpi_info(
+                    f"l=%d, {self.xname}min=%.3e, {self.xname}max=%.3e, n=%d",
+                    l,
+                    self[l].x[0],
+                    self[l].x[-1],
+                    self[l].x.size,
+                )
+            except IndexError as ex:
+                self.mpi_info("l=%d is totally masked", l)
+                self.mpi_warning(
+                    "Please use ls=[...] to mask specific l, "
+                    "or set drop=True to mask all data",
+                    l,
+                )
         self.mpi_info("ndata=%d", self.ndata)
 
     @classmethod
     def loadtxt(
         cls,
         path,
-        header: Optional[Iterable[str]] = None,
-        skip: Optional[Container[str]] = None,
-        log: bool = True,
-    ) -> "PklData":
+        header: Iterable[str] | None = None,
+        skip: Container[str] | None = None,
+    ) -> Self:
         path = Path(path).resolve()
         msg = ""
         if not header:
             with path.open() as f:
                 s = f.readline()
-                if not s.startswith('#'):
-                    msg = "no header comment, assuming 'kdata P0 P2 P4'"
-                    header_list = ['kdata', 'P0', 'P2', 'P4']
+                if not s.startswith("#"):
+                    msg = "no header comment, assuming 'k P0 P2 P4'"
+                    header_list = ["k", "P0", "P2", "P4"]
                 else:
-                    header_list = s.split()[1:]
+                    header_list = s[1:].split()
         else:
             header_list = list(header)
-        # alias
-        if 'k' in header_list:
-            i = header_list.index('k')
-            header_list[i] = 'kdata'
         if not skip:
             skip = []
         data = np.loadtxt(path)
-        dct = {
-            name: v for name, v in zip(header_list, data.T)
-            if name not in skip
-        }
+        errmsg = ""
+        if len(header_list) != data.shape[-1]:
+            errmsg = "header length mismatch with data"
+        x = data[:, 0]
+        xname = header_list.pop(0)
+        dct = {name: v for name, v in zip(header_list, data.T[1:]) if name not in skip}
+        dct["x"] = x
+        dct["xname"] = xname
         out = cls(**dct)
-        if msg and log:
+        if errmsg:
+            raise LoggedError(out.log, errmsg)
+        if msg:
             out.mpi_warning(msg)
         return out
 
+    @property
+    def ls_raw(self) -> list[int]:
+        return list(self.raw.keys())
+
+    @property
+    def ndata_raw(self) -> int:
+        return len(self.raw) * self.x_all.size
+
     def __repr__(self) -> str:
+        ndata = self.ndata
+        ls = self.ls
+        try:
+            kmin = [v.x[0] for v in self.values()]
+            kmax = [v.x[-1] for v in self.values()]
+        except IndexError as ex:
+            kmin, kmax = None, None
         return (
             f"{self.__class__.__name__}("
-            f"symbol={self.symbol}, "
-            f"ls={self.ls}, "
-            f"kmin={self.kdata[0]:.4f}, "
-            f"kmax={self.kdata[-1]:.4f}, "
-            f"ndata={self.ndata}"
-            f")"
+            f"xname={self.xname}, yname={self.yname}, "
+            f"ndata={ndata}, ls={ls}, "
+            f"{self.xname}min={kmin}, {self.xname}max={kmax})"
         )
 
-    def __getattr__(self, name: str) -> Optional[NDArray]:
-        try:
-            if name.endswith(self.error_suffix):
-                key = ObsName.from_str(name[:-len(self.error_suffix)])
-                return self.err[key]
-            else:
-                key = ObsName.from_str(name)
-                return self.data[key]
-        except (ObsNameError, KeyError) as ex:
-            raise AttributeError(
-                f"{self.__class__.__name__!r} object has no attribute {name!r}"
-            ) from ex
+    # Mapping interface
+    def __getitem__(self, l: int) -> Statistics:
+        return self.masked[l]
+
+    def __iter__(self) -> Iterator[Statistics]:
+        return iter(self.masked)
+
+    def __len__(self) -> int:
+        return len(self.masked)
+
+    def keys(self):
+        return self.masked.keys()
+
+    def values(self):
+        return self.masked.values()
+
+    def items(self):
+        return self.masked.items()
+
+    def get(self, l: int, default=None) -> Statistics | None:
+        return self.masked.get(l, default)
 
 
-class PklDataDict(TypedDict, total=False):
-    pkl_path: str
-    ls: List[int]
-    kmin: float
-    kmax: float
-    header: List[str]
-    skip: List[str]
+@dataclass
+class BAOData:
+    alperp: float
+    alpara: float
+    alperp_err: float | None = None
+    alpara_err: float | None = None
 
 
-class FullShapeDataDict(TypedDict, total=False):
-    """dictionary for FullShapeData construction"""
-    pklinfo: List[PklDataDict]
-    common: PklDataDict
-    cov_path: str
-    Nreal: int
-    rescale: float
-
-
-class FullShapeData(Sequence[PklData], HasLogger):
-    """Sequence Container for PklData and covariance matrix
+class LSSData(HasLogger):
+    """Container for Multipoles and BAOData
 
     Parameters
     ----------
-    pkldatas: PklData | Iterable[Pkldata]
+    fullshape: Multipoles | list[Multipoles]
     cov: ndarray, 2d
-        covariance matrix for pkldatas, multipoles should be sorted in ascending order
-    Nreal: int
-        realizations, for Hartlap correction
-    rescale: float
-        rescale the covariance matrix, can be understand as rescale x survey volume
+        total covariance matrix, multipoles should be sorted in ascending order,
+        BAO should be in this order: alperp, alpara
+    bao: BAOData | list[BAOData], optional
+        by default None
+    cov_items: list[str], optional
+        terms in covariance matrix, e.g. ['f0', 'b0', 'f1'] represents fullshape[0], bao[0], fullshape[1]
+        by default ['f0', ..., 'fx']
+        cov_items also determine the data_vector
+    Nreal: int, optional
+        number of realizations for Hartlap correction, by default 1
+    rescale: float, optional
+        rescale factor for covariance matrix, by default 1
 
     Attributes
     ----------
-    pkldatas: list[PklData]
+    fullshape: list[Multipoles]
+    bao: list[BAOData]
+    cov_items: list[str]
     ndata: int
+        total number of masked data
     data_vector: ndarray, 1d
         flattend masked data vector
     raw_cov: ndarray, 2d
@@ -402,111 +454,164 @@ class FullShapeData(Sequence[PklData], HasLogger):
     cov: ndarray, 2d
         rescaled and masked covariance matrix
     invcov: ndarray, 2d
-        rescaled, masked and hartlap corrected covariance matrix inverse
+        rescaled, masked and hartlap-corrected inverse covariance matrix
     rescale: float
     hartlap: float | None
-        hartlap factor
+        hartlap correction factor
 
     Methods
     -------
+    combine(bao_like: Iterable[T], fullshape_like: Iterable[T]) -> list[T]
+        combine bao-like and fullshape-like Iterables into a list matching cov
+        cached_property
+    split(cov_like: Iterable[T]) -> tuple[list[T], list[T]]
+        split a list which matches cov into bao-like list and fullshape-like list
+        cached_property
+    assign_cov(cov: ndarray)
+        set yerr, alperp_err, alpara_err according to rescaled cov
+    cov_mask() -> ndarray
+        returns cov mask
     log_state()
         log current state
-    from_dict(dct: FullShapeDataDict)
-        classmethod, construct FullShapeData from dictionary
+    from_dict(d: dict) -> Self
+        construct from yaml/json dict
+        class method
     """
 
     def __init__(
         self,
-        pkldatas: Union[PklData, Iterable[PklData]],
+        fullshape: Multipoles | list[Multipoles],
         cov: NDArray,
-        Nreal: Optional[int] = None,
+        bao: BAOData | list[BAOData] | None = None,
+        cov_items: list[str] | None = None,
+        Nreal: int | None = None,
         rescale: float = 1.0,
     ) -> None:
-        self.pkldatas = (
-            [pkldatas] if isinstance(pkldatas, PklData) else list(pkldatas)
-        )
-        self.assign_cov(self.pkldatas, cov / rescale)
-        self.ndata: int = sum(x.ndata for x in self)
-        self.data_vector = np.hstack([x.data_vector for x in self])
+        self.set_logger(name="lssdata")
+
+        self.fullshape = [fullshape] if isinstance(fullshape, Multipoles) else fullshape
+        if bao is None:
+            bao = []
+        self.bao = [bao] if isinstance(bao, BAOData) else bao
+        if self.bao:
+            self.mpi_warning("cov assumes order in (alperp, alpara)")
+        if cov_items is None:
+            cov_items = [f"f{i}" for i in range(len(self.fullshape))]
+        self.cov_items = cov_items
+        nbao = sum(1 if x.startswith("b") else 0 for x in self.cov_items)
+        nfull = sum(1 if x.startswith("f") else 0 for x in self.cov_items)
+        if nbao != len(self.bao) or nfull != len(self.fullshape):
+            raise LoggedError(
+                self.log,
+                "cov_items mismatch, "
+                "please make ensure cov_items startswith 'b' or 'f'",
+            )
+
+        self.assign_cov(cov / rescale)
+        self.ndata = sum(x.ndata for x in self.fullshape) + 2 * len(self.bao)
+        bao_data = (np.array([x.alperp, x.alpara]) for x in self.bao)
+        fullshape_data = (x.data_vector for x in self.fullshape)
+        self.data_vector = np.hstack(self.combine(bao_data, fullshape_data))
         self.raw_cov = cov
-        data_vector_mask = np.hstack(
-            [x.data_vector_mask for x in self])
-        self.cov = cov[np.outer(data_vector_mask, data_vector_mask)]
-        self.cov: NDArray = self.cov.reshape(
-            (self.ndata, self.ndata)) / rescale
+        self.cov = self.raw_cov[self.cov_mask()]
+        self.cov = self.cov.reshape((self.ndata, self.ndata)) / rescale
         self.rescale = rescale
         self.invcov: NDArray = np.linalg.inv(self.cov)
-        self.hartlap: Optional[float] = None
+        self.hartlap: float | None = None
         if Nreal is not None:
             self.hartlap = (Nreal - self.ndata - 2) / (Nreal - 1)
             self.invcov *= self.hartlap
-        self.set_logger(name="lssdata.FullShapeData")
 
-    def assign_cov(self, pkldatas: List[PklData], cov: NDArray) -> None:
-        diag = np.sqrt(np.diag(cov))
-        start = 0
-        for pkldata in pkldatas:
-            nraw = pkldata.raw.ndata
-            nl = len(pkldata.raw.ls)
-            newerrs = diag[start:start + nraw].reshape((nl, -1))
-            for (obsname, _), err in zip(pkldata.raw.err.items(), newerrs):
-                pkldata.raw.err[obsname] = err
-            mask = pkldata.mask
-            pkldata.set_mask(ls=mask.ls, kmin=mask.kmin, kmax=mask.kmax)
-            start += nraw
+    @cached_property
+    def combine(self):
+        """combine bao-like and fullshape-like Iterable to a list matching cov"""
+        arg = np.argsort(self.cov_items)
+        unsorted_to_sorted = {j: i for i, j in enumerate(arg)}
 
-    def log_state(self) -> None:
-        self.mpi_info("total ndata=%d", self.ndata)
-        self.mpi_info("PklData items: %d", self.__len__())
-        self.mpi_info(
-            "Hartlap correction: %s",
-            'off' if not self.hartlap else f"{self.hartlap:.3f}"
-        )
-        self.mpi_info('rescale factor: %.3e', self.rescale)
+        def out(bao_like: Iterable[_T], fullshape_like: Iterable[_T]) -> list[_T]:
+            seq = list(bao_like) + list(fullshape_like)
+            l = [seq[unsorted_to_sorted[i]] for i in range(len(seq))]
+            return l
 
-    @classmethod
-    def from_dict(
-        cls, dct: FullShapeDataDict, log: bool = True
-    ) -> "FullShapeData":
-        cov: NDArray = np.loadtxt(dct['cov_path'])  # type: ignore
-        Nreal = dct.get("Nreal")
-        rescale = dct.get("rescale", 1.0)
-        common = dct.get("common", {})
-        pklinfo = dct['pklinfo']  # type: ignore
-        if not isinstance(pklinfo, list):
-            pklinfo = [pklinfo]
-        pklinfo = cast(List[PklDataDict], pklinfo)
-        pkldatas: List[PklData] = []
-        for info in pklinfo:
-            default = cast(Dict[str, Any], deepcopy(common))
-            for k, v in info.items():
-                default[k] = v
-            item = PklData.loadtxt(
-                default['pkl_path'],
-                header=default.get('header'), skip=default.get('skip'), log=log,
-            )
-            item.set_mask(
-                ls=default.get('ls'),
-                kmin=default.get('kmin'),
-                kmax=default.get('kmax')
-            )
-            if log:
-                item.log_state()
-            pkldatas.append(item)
-        out = cls(pkldatas, cov, Nreal, rescale)
-        if log:
-            out.log_state()
         return out
 
-    def __repr__(self) -> str:
-        return (
-            f"{self.__class__.__name__}["
-            + ", ".join([x.__repr__() for x in self]) +
-            f"]"
+    @cached_property
+    def split(self):
+        """split a list which matches cov into bao-like list and fullshape-like list"""
+        arg = np.argsort(self.cov_items)
+        sorted_to_unsorted = {i: j for i, j in enumerate(arg)}
+        nbao = len(self.bao)
+
+        def out(cov_like: Iterable[_T]) -> tuple[list[_T], list[_T]]:
+            seq = list(cov_like)
+            l = [seq[sorted_to_unsorted[i]] for i in range(len(seq))]
+            return l[:nbao], l[nbao:]
+
+        return out
+
+    def assign_cov(self, cov: NDArray) -> None:
+        diag = np.sqrt(np.diag(cov))
+        bao_ndata = [2] * len(self.bao)
+        fullshape_ndata = [f.ndata_raw for f in self.fullshape]
+        sections = self.combine(bao_ndata, fullshape_ndata)
+        if sum(sections) != cov.shape[0]:
+            raise LoggedError(self.log, "cov shape mismatch")
+        errs = np.split(diag, np.cumsum(sections).tolist()[:-1])
+        bao_errs, fullshape_errs = self.split(errs)
+        for bao, bao_err in zip(self.bao, bao_errs):
+            bao.alperp_err = bao_err[0]
+            bao.alpara_err = bao_err[1]
+        for fullshape, fullshape_err in zip(self.fullshape, fullshape_errs):
+            for rawv, err in zip(
+                fullshape.raw.values(),
+                np.split(fullshape_err, len(fullshape.raw.keys())),
+            ):
+                rawv.yerr = err
+            fullshape.set_mask(**fullshape._last_set_mask)
+
+    def cov_mask(self) -> NDArray:
+        """return mask for cov"""
+        bao_masks = [np.array([True, True]) for _ in self.bao]
+        fullshape_masks = [f.data_vector_mask for f in self.fullshape]
+        vector_mask = np.hstack(self.combine(bao_masks, fullshape_masks))
+        return np.outer(vector_mask, vector_mask)
+
+    def log_state(self):
+        self.mpi_info("total ndata: %d", self.ndata)
+        self.mpi_info("fullshape items: %d", len(self.fullshape))
+        if self.bao:
+            self.mpi_info("BAO items: %d", len(self.bao))
+        self.mpi_info("cov_items: %s", self.cov_items)
+        self.mpi_info(
+            "Hartlap correction: %s",
+            "off" if not self.hartlap else f"{self.hartlap:.3f}",
         )
+        self.mpi_info("rescale: %.3e", self.rescale)
 
-    def __getitem__(self, i) -> PklData:
-        return self.pkldatas[i]
+    @classmethod
+    def from_dict(cls, d: dict[str, Any]) -> Self:
+        """construct from yaml/json dict"""
+        d = deepcopy(d)
+        bao_kwargs = d.pop("bao", [])
+        bao = [BAOData(**kwargs) for kwargs in bao_kwargs]
 
-    def __len__(self) -> int:
-        return len(self.pkldatas)
+        common = d.pop("fullshape_common", {})
+        fullshape_kwargs = d.pop("fullshape", [])
+        fullshape = []
+        for kwargs in fullshape_kwargs:
+            # copy
+            kwargs_ = deepcopy(common)
+            kwargs_.update(deepcopy(kwargs))
+            # loadtxt
+            path = kwargs_.pop("path")  # must provide
+            header = kwargs_.pop("header", None)
+            skip = kwargs_.pop("skip", None)
+            multipole = Multipoles.loadtxt(path=path, header=header, skip=skip)
+            multipole.set_mask(**kwargs_)
+            multipole.log_state()
+            fullshape.append(multipole)
+
+        cov = np.loadtxt(d.pop("cov"))
+        lssdata = cls(fullshape, cov, bao, **d)
+        lssdata.log_state()
+        return lssdata
