@@ -404,17 +404,17 @@ class EFTLSS(Theory):
         if "common" in self.tracers.keys():
             self.mpi_info("'common' field is used as default settings")
             common = self.tracers.pop("common")
-            for k, v in self.tracers.items():
-                ref = deepcopy(common)
-                recursively_update_dict(ref, v)
-                self.tracers[k] = ref
+            for k, tracer_config in self.tracers.items():
+                common_config = deepcopy(common)
+                recursively_update_dict(common_config, tracer_config)
+                self.tracers[k] = common_config
         self.names = list(self.tracers.keys())
         if not self.names:
             raise LoggedError(self.log, "No tracer specified")
 
         # check cross
-        for name, v in self.tracers.items():
-            cross = v.get("cross", [])
+        for name, tracer_config in self.tracers.items():
+            cross = tracer_config.get("cross", [])
             if cross and (not isinstance(cross, list) or len(cross) != 2):
                 raise LoggedError(
                     self.log,
@@ -422,8 +422,7 @@ class EFTLSS(Theory):
                     name,
                     cross,
                 )
-            diff = set(cross).difference(self.names)
-            if diff:
+            if diff := set(cross).difference(self.names):
                 raise LoggedError(
                     self.log,
                     "tracer %s: cross=%r contains unknown tracer names: %r",
@@ -441,7 +440,7 @@ class EFTLSS(Theory):
             raise LoggedError(self.log, "supported providers: %s", supported_providers)
 
         # {requirement: tracers' names}
-        self._must_provide: dict[str, set[str]] = defaultdict(set)
+        self._must_provide: defaultdict[str, set[str]] = defaultdict(set)
 
     def get_requirements(self) -> dict[str, dict]:
         """
@@ -462,81 +461,53 @@ class EFTLSS(Theory):
         detailed requirement form can be found in ``EFTLSSChild.must_provide``
         """
         super().must_provide(**requirements)
-        reqs = defaultdict(dict)
-        for req, v in requirements.items():
-            self._must_provide[req] = self._must_provide[req].union(v.keys())
-            if req == "snapshots":
+        redirected_reqs_tmp: defaultdict[str, dict[str, Any]] = defaultdict(dict)
+        for product, config_dict in requirements.items():
+            self._must_provide[product] |= config_dict.keys()
+            if product == "snapshots":
                 # no settings required for snapshots
                 continue
-            for name, settings in v.items():
-                reqs[name][req] = settings
-        reqs_ = {}
-        common = reqs.pop("common", {})
-        for name, v in reqs.items():
-            reqs_[name + "_results"] = deepcopy(v)
-        if common:
-            for k, v in reqs_.items():
+            for tracer, settings in config_dict.items():
+                redirected_reqs_tmp[tracer][product] = settings
+        redirected_reqs = {}
+        for tracer, config_dict in redirected_reqs_tmp.items():
+            redirected_reqs[tracer + "_results"] = deepcopy(config_dict)
+        if common := redirected_reqs_tmp.pop("common", {}):
+            for tracer, config_dict in redirected_reqs.items():
                 ref = deepcopy(common)
-                recursively_update_dict(ref, v)
-                reqs_[k] = ref
-        return reqs_
+                recursively_update_dict(ref, config_dict)
+                redirected_reqs[tracer] = ref
+        return redirected_reqs
 
     def calculate(self, state, want_derived=True, **params_values_dict):
         pass
 
-    def _get_tracer_products(self, tracer: str, item: str):
-        if tracer not in self._must_provide[item]:
-            raise LoggedError(
-                self.log, "No nonlinear_Plk_grid requested for %s", tracer
-            )
-        return self.provider.get_result(tracer + "_results")[item]
+    def _get_tracer_products(self, tracer: str, product: str):
+        if tracer not in self._must_provide[product]:
+            raise LoggedError(self.log, "No %s requested for %s", product, tracer)
+        return self.provider.get_result(tracer + "_results")[product]
 
     def get_nonlinear_Plk_grid(
         self, tracer: str, chained: bool = False, binned: bool = False
     ) -> tuple[list[int], NDArray, NDArray]:
         results = self._get_tracer_products(tracer, "nonlinear_Plk_grid")
         key = PlkKey(chained=chained, binned=binned)
-        try:
-            return results[key]
-        except KeyError:
-            raise LoggedError(
-                self.log,
-                "No nonlinear_Plk_grid products for %s with chained=%s, binned=%s",
-                tracer,
-                chained,
-                binned,
-            )
+        # let it crash...
+        return results[key]
 
     def get_nonlinear_Plk_gaussian_grid(
         self, tracer: str, chained: bool = False, binned: bool = False
     ) -> tuple[list[int], NDArray, dict[str, NDArray]]:
         results = self._get_tracer_products(tracer, "nonlinear_Plk_gaussian_grid")
         key = PlkKey(chained=chained, binned=binned)
-        try:
-            return results[key]
-        except KeyError:
-            raise LoggedError(
-                self.log,
-                "No nonlinear_Plk_gaussian_grid products for %s with chained=%s, binned=%s",
-                tracer,
-                chained,
-                binned,
-            )
+        return results[key]
 
     def get_nonlinear_Plk_interpolator(
         self, tracer: str, chained: bool = False
     ) -> PlkInterpolator:
         results = self._get_tracer_products(tracer, "nonlinear_Plk_interpolator")
         key = PlkKey(chained=chained, binned=False)
-        try:
-            return results[key]
-        except KeyError:
-            raise LoggedError(
-                self.log,
-                "No nonlinear_Plk_interpolator products for %s with chained=%s",
-                tracer,
-                chained,
-            )
+        return results[key]
 
     def get_snapshots(self, tracer: str) -> dict[str, BirdSnapshot]:
         return self._get_tracer_products(tracer, "snapshots")
@@ -550,7 +521,7 @@ class EFTLSS(Theory):
         # Pk_interpolator requires at least 4 redshift
         if len(out) < 4:
             first: EFTLSSChild = out[self.names[0]]
-            first._zcomp = [first.zeff + i * 0.1 for i in range(1, 5 - len(out))]
+            first._zextra = [first.zeff + i * 0.1 for i in range(1, 5 - len(out))]
         return out
 
 
@@ -580,7 +551,12 @@ class PlkInterpolator:
         kgrid = np.hstack(([0], kgrid))
         Plk = np.insert(Plk, 0, 0, axis=-1)
         tmp = interp1d(
-            kgrid, kgrid * Plk, axis=-1, kind="cubic", fill_value="extrapolate"
+            kgrid,
+            kgrid * Plk,
+            axis=-1,
+            kind="cubic",
+            bounds_error=False,
+            fill_value="extrapolate",
         )
         fn = lambda k: tmp(k) / k
         self.fn = fn
@@ -589,15 +565,15 @@ class PlkInterpolator:
         l = int_or_list(l)
         try:
             idx = [self.ls.index(ll) for ll in l]
-        except ValueError:
-            raise ValueError(f"l={l} not in {self.ls}")
+        except ValueError as ex:
+            raise ValueError(f"l={l} not in {self.ls}") from ex
         return self.fn(k)[idx]
 
 
 class EFTLSSChild(HelperTheory):
     def __init__(self, eftlss: EFTLSS, name: str, info, timing=None) -> None:
         # append extra redshifts if using classy (classy's bug)
-        self._zcomp: list[float] = []
+        self._zextra: list[float] = []
         self.name = name
         self.eftlss = eftlss
         # EFTLSSChild always initialized after EFTLSS, safe to use config
@@ -607,10 +583,13 @@ class EFTLSSChild(HelperTheory):
     def initialize(self) -> None:
         super().initialize()
         self._not_reported = defaultdict(lambda: True)
+        # allow empty string
         prefix = self.config.get("prefix", None)
         if prefix is None:
             prefix = self.name + "_"
         self.prefix: str = prefix
+        # write back
+        self.config["prefix"] = prefix
         try:
             self.zeff: float = self.config["z"]
         except KeyError:
@@ -644,7 +623,7 @@ class EFTLSSChild(HelperTheory):
                 pybird.FiberCollision, self.config.get("fiber", {}), self.log
             )
         self.binning: Binning | None = None
-        self._must_provide: dict[str, dict[str, Any]] = defaultdict(dict)
+        self._must_provide: defaultdict[str, dict[str, Any]] = defaultdict(dict)
 
     def initialize_with_provider(self, provider: Provider):
         super().initialize_with_provider(provider)
@@ -699,8 +678,7 @@ class EFTLSSChild(HelperTheory):
                 continue
             ls_group.append(self._must_provide[name]["ls"])
         # XXX: pybird actually does not support computing, e.g. P4 only
-        ls = group_lists(*ls_group)
-        lmax = max(ls)
+        lmax = max(group_lists(*ls_group))
         ls = list(range(0, lmax + 2, 2))
         Nl = len(ls)
         self.mpi_info("compute power spectrum multipoles (internal): %s", ls)
@@ -759,7 +737,7 @@ class EFTLSSChild(HelperTheory):
             requires = {
                 "Pk_interpolator": {
                     "nonlinear": False,
-                    "z": [z] + self._zcomp,
+                    "z": [z] + self._zextra,
                     "k_max": 5,
                     "vars_pairs": vars_pairs,
                 },
@@ -896,13 +874,13 @@ class EFTLSSChild(HelperTheory):
     def must_provide(self, **requirements):
         """
         ``nonlinear_Plk_grid={...}``: nonlinear power spectrum (Hubble unit) on grid, returns ``(ls, kgrid, Plk)``,
-        ``ls`` is sorted in ascending order, but not necessarily match the one from requirements.
+        ``ls`` are sorted in ascending order, but not necessarily match the one from requirements.
         Takes ``"ls": [list of evaluated multipoles]``; ``"chained": [False | True]`` compute chained power spectrum or not,
         by default False, if True, ``ls`` represents multipoles of chained power spectrum, if ``[False, True]``,
-        ``ls`` represents multipoles of power spectrum; ``"binned": [False | True]``
+        ``ls`` represent multipoles of power spectrum; ``"binned": [False | True]``
         compute binned power spectrum or not, by default False, if True, extra
         ``"binning": {"kout": ndarray, ...}`` is required and returned ``kgrid``
-        is effective k
+        are effective ks
 
         ``nonlinear_Plk_interpolator={...}``: similar to ``nonlinear_Plk_grid``,
         but returns a cubic spline interpolator ``PlkInterpolator`` on ``kgrid``, does not support ``binned``
@@ -1078,17 +1056,18 @@ class EFTLSSChild(HelperTheory):
         if self.need_power:
             products["snapshots"] = self.bird.snapshots  # type: ignore
         # collect results
-        # be careful about possible k, v name conflicts
-        for k, v in self._must_provide.items():
+        for product, config_dict in self._must_provide.items():
             ls_tot = [2 * i for i in range(self.co.Nl)]
             kgrid = self.co.k
-            if k == "nonlinear_Plk_grid":
+            if product == "nonlinear_Plk_grid":
                 # XXX: necessary to perform the l cut?
-                ls = v["ls"]
+                ls = config_dict["ls"]
                 idx = [ls_tot.index(l) for l in ls]
                 assert self.bird is not None
                 results: dict[PlkKey, tuple[list[int], NDArray, NDArray]] = {}
-                for chained, binned in itertools.product(v["chained"], v["binned"]):
+                for chained, binned in itertools.product(
+                    config_dict["chained"], config_dict["binned"]
+                ):
                     if binned:
                         assert self.binning
                         plk = self.binning.fullPs
@@ -1103,7 +1082,7 @@ class EFTLSSChild(HelperTheory):
                         tup = (ls.copy(), kreturn, plk[idx].copy())
                     key = PlkKey(chained=chained, binned=binned)
                     results[key] = tup
-                products[k] = results
+                products[product] = results
                 if "nonlinear_Plk_interpolator" in self._must_provide.keys():
                     reqs = self._must_provide["nonlinear_Plk_interpolator"]
                     results_interp: dict[PlkKey, PlkInterpolator] = {}
@@ -1113,11 +1092,12 @@ class EFTLSSChild(HelperTheory):
                         results_interp[key] = PlkInterpolator(*tup)
                     products["nonlinear_Plk_interpolator"] = results_interp
 
-            elif k == "nonlinear_Plk_gaussian_grid":
+            elif product == "nonlinear_Plk_gaussian_grid":
                 assert self.bird is not None
                 out: dict[PlkKey, tuple[list[int], NDArray, dict[str, NDArray]]] = {}
                 for chained, binned in itertools.product(
-                    v["chained"], self._must_provide["nonlinear_Plk_grid"]["binned"],
+                    config_dict["chained"],
+                    self._must_provide["nonlinear_Plk_grid"]["binned"],
                 ):
                     if binned:
                         assert self.binning
@@ -1137,7 +1117,7 @@ class EFTLSSChild(HelperTheory):
                         tup = (ls_tot.copy(), kreturn, PG_table)
                     key = PlkKey(chained=chained, binned=binned)
                     out[key] = tup
-                products[k] = out
+                products[product] = out
 
         state[self.name + "_results"] = products
 
