@@ -1,6 +1,7 @@
 from __future__ import annotations
 import numpy as np
 from typing import Any
+from scipy.interpolate import interp1d
 from cobaya.likelihood import Likelihood
 from .lssdata import LSSData
 from .marginal import Marginalizable
@@ -28,7 +29,7 @@ class EFTLikeSingle(Likelihood, Marginalizable):
     def initialize(self) -> None:
         super().initialize()
         self.lssdata = LSSData.from_dict(self.lssdata)  # type: ignore
-        # assume all masked ks are the same
+        # TODO: support different masked ks
         self.kout = self.lssdata.fullshape[0][0].x
         self.binning = self.binning or {}
         self.binning = {"kout": self.kout, **self.binning}
@@ -71,12 +72,17 @@ class EFTLikeSingle(Likelihood, Marginalizable):
 
     # override
     def PG(self):
-        ls_tot, _, table = self.provider.get_nonlinear_Plk_gaussian_grid(
+        ls_tot, kgrid, table = self.provider.get_nonlinear_Plk_gaussian_grid(
             self.tracer, chained=self.chained, binned=self.with_binning
         )
         out = []
         for bG in self.valid_prior.keys():
-            out.append(flatten(self.ls, ls_tot, table[bG]))
+            plk = table[bG]
+            if not self.with_binning:
+                interpfn = interp1d(kgrid, kgrid * plk, kind="cubic", axis=-1)
+                fn = lambda k: interpfn(k) / k
+                plk = fn(self.kout)
+            out.append(flatten(self.ls, ls_tot, plk))
         return np.vstack(out)
 
     # override
