@@ -34,6 +34,14 @@ class EFTLikeSingle(Likelihood, Marginalizable):
         self.binning = self.binning or {}
         self.binning = {"kout": self.kout, **self.binning}
         self.ls = self.lssdata.fullshape[0].ls
+        if self.prefix:
+            self.mpi_warning(
+                "option 'prefix' is deprecated, will be infered from option 'tracer'"
+            )
+
+    def initialize_with_provider(self, provider):
+        super().initialize_with_provider(provider)
+        self.prefix = self.provider.model.theory[self.tracer].prefix
         if self.marg:
             self.setup_prior(self.marg)
 
