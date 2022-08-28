@@ -152,8 +152,14 @@ class Multipoles(Mapping, HasLogger):
 
     error_suffix: str = "err"
 
-    def __init__(self, x: NDArray, xname: str = "k", **kwargs: NDArray) -> None:
-        self.set_logger(name="lssdata.Multipoles")
+    def __init__(
+        self,
+        x: NDArray,
+        xname: str = "k",
+        logger_name="lssdata.Multipoles",
+        **kwargs: NDArray,
+    ) -> None:
+        self.set_logger(name=logger_name)
         self.xname: str = xname
 
         # collect multipoles, expect same symbol and size
@@ -335,6 +341,7 @@ class Multipoles(Mapping, HasLogger):
         path,
         header: Iterable[str] | None = None,
         skip: Container[str] | None = None,
+        logger_name="lssdata.Multipoles",
     ) -> Self:
         path = Path(path).resolve()
         msg = ""
@@ -359,7 +366,7 @@ class Multipoles(Mapping, HasLogger):
         dct = {name: v for name, v in zip(header_list, data.T[1:]) if name not in skip}
         dct["x"] = x
         dct["xname"] = xname
-        out = cls(**dct)
+        out = cls(logger_name=logger_name, **dct)
         if errmsg:
             raise LoggedError(out.log, errmsg)
         if msg:
@@ -486,8 +493,9 @@ class LSSData(HasLogger):
         cov_items: list[str] | None = None,
         Nreal: int | None = None,
         rescale: float = 1.0,
+        logger_name: str = "lssdata",
     ) -> None:
-        self.set_logger(name="lssdata")
+        self.set_logger(name=logger_name)
 
         self.fullshape = [fullshape] if isinstance(fullshape, Multipoles) else fullshape
         if bao is None:
@@ -589,7 +597,7 @@ class LSSData(HasLogger):
         self.mpi_info("rescale: %.3e", self.rescale)
 
     @classmethod
-    def from_dict(cls, d: dict[str, Any]) -> Self:
+    def from_dict(cls, d: dict[str, Any], logger_name: str = "lssdata") -> Self:
         """construct from yaml/json dict"""
         d = deepcopy(d)
         bao_kwargs = d.pop("bao", [])
@@ -606,12 +614,17 @@ class LSSData(HasLogger):
             path = kwargs_.pop("path")  # must provide
             header = kwargs_.pop("header", None)
             skip = kwargs_.pop("skip", None)
-            multipole = Multipoles.loadtxt(path=path, header=header, skip=skip)
+            multipole = Multipoles.loadtxt(
+                path=path,
+                header=header,
+                skip=skip,
+                logger_name=logger_name + ".Multipoles",
+            )
             multipole.set_mask(**kwargs_)
             multipole.log_state()
             fullshape.append(multipole)
 
         cov = np.loadtxt(d.pop("cov"))
-        lssdata = cls(fullshape, cov, bao, **d)
+        lssdata = cls(fullshape, cov, bao, logger_name=logger_name, **d)
         lssdata.log_state()
         return lssdata

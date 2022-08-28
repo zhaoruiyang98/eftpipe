@@ -28,7 +28,9 @@ class EFTLikeSingle(Likelihood, Marginalizable):
 
     def initialize(self) -> None:
         super().initialize()
-        self.lssdata = LSSData.from_dict(self.lssdata)  # type: ignore
+        self.lssdata = LSSData.from_dict(
+            self.lssdata, logger_name=self.get_name() + ".lssdata"  # type: ignore
+        )
         # TODO: support different masked ks
         self.kout = self.lssdata.fullshape[0][0].x
         self.binning = self.binning or {}
