@@ -515,12 +515,12 @@ class EFTLSS(Theory):
     def get_helper_theories(self) -> dict[str, Theory]:
         out = {}
         for name in self.names:
-            out[name] = EFTLSSChild(
+            out["eftlss." + name] = EFTLSSChild(
                 self, name, dict(stop_at_error=self.stop_at_error), timing=self.timer
             )
         # Pk_interpolator requires at least 4 redshift
         if len(out) < 4:
-            first: EFTLSSChild = out[self.names[0]]
+            first: EFTLSSChild = out["eftlss." + self.names[0]]
             first._zextra = [first.zeff + i * 0.1 for i in range(1, 5 - len(out))]
         return out
 
