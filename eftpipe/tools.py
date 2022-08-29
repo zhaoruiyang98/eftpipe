@@ -156,16 +156,14 @@ class Initializer(Generic[_T]):
         return self.cls(**{**self.kwargs, **override})
 
 
-class PathContext:
-    def __init__(self, path) -> None:
-        self.old = Path.cwd()
-        self.new = Path(path)
-
-    def __enter__(self):
-        os.chdir(self.new)
-
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        os.chdir(self.old)
+@contextmanager
+def PathContext(path):
+    current = Path.cwd()
+    os.chdir(path)
+    try:
+        yield
+    finally:
+        os.chdir(current)
 
 
 class RandomParams:
