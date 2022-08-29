@@ -1,5 +1,6 @@
 from __future__ import annotations
 import re
+import sys
 import numpy as np
 from collections.abc import Mapping
 from copy import deepcopy
@@ -13,10 +14,15 @@ from typing import (
     Iterable,
     Iterator,
     Pattern,
+    TYPE_CHECKING,
     TypeVar,
 )
-from typing_extensions import Self
-from numpy import ndarray as NDArray
+if sys.version_info >= (3, 11):
+    from typing import Self
+else:
+    from typing_extensions import Self
+if TYPE_CHECKING:
+    from numpy.typing import NDArray
 from cobaya.log import HasLogger
 from cobaya.log import LoggedError
 

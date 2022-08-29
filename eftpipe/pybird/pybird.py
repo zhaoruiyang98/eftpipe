@@ -3,8 +3,7 @@ import json
 import os
 import numpy as np
 from cobaya.log import HasLogger
-from numpy import pi, sin, log, exp, sqrt, newaxis
-from numpy.typing import NDArray
+from numpy import pi, sin, log, exp, newaxis
 from numpy.fft import rfft
 from scipy import special
 
@@ -19,6 +18,7 @@ from typing import Any, cast, Optional, TYPE_CHECKING, Union
 from .resumfactor import Qawithhex
 
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
     from ..theory import BirdPlus
 
 
@@ -938,7 +938,7 @@ class Bird(object):
 
         self.subtractShotNoise()
 
-    def setPstl(self, ks: Optional[NDArray] = None):
+    def setPstl(self, ks: NDArray | None = None):
         if ks is None:
             Nk = self.co.Nk
             ks2 = self.co.k ** 2
