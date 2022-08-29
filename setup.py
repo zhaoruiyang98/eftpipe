@@ -19,7 +19,7 @@ def read_long_description():
 
 
 install_requires = [
-    "numpy>=1.21",
+    "numpy>=1.20",
     "scipy>=1.6",
     "cobaya>=3.2.1",
     "typing_extensions>=4.1,<5",

@@ -4,9 +4,9 @@ Thin wrapper for boltzmann provider
 from __future__ import annotations
 from copy import deepcopy
 from typing import Any, cast, TYPE_CHECKING
-from numpy.typing import NDArray
 
 if TYPE_CHECKING:
+    from numpy.typing import NDArray
     from cobaya.theories.cosmo import BoltzmannBase
     from cobaya.theories.cosmo import PowerSpectrumInterpolator
 

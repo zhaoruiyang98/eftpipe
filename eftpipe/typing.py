@@ -17,7 +17,6 @@ if sys.version_info >= (3, 10):
 else:
     from typing_extensions import TypeAlias
 
-from numpy.typing import NDArray
 
 Location: TypeAlias = Union[str, Path]
 
@@ -39,5 +38,3 @@ SupportsRichComparison: TypeAlias = Union[SupportsDunderLT, SupportsDunderGT]
 SupportsRichComparisonT = TypeVar(
     "SupportsRichComparisonT", bound=SupportsRichComparison
 )
-
-NDArrayF8: TypeAlias = NDArray[np.float64]
