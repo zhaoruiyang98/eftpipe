@@ -19,7 +19,7 @@ class EFTLikeSingle(Likelihood, Marginalizable):
     file_base_name = "eftlike_s"
 
     tracer: str
-    prefix: str
+    prefix: str  # deprecated
     lssdata: LSSData
     chained: bool
     with_binning: bool
@@ -43,7 +43,8 @@ class EFTLikeSingle(Likelihood, Marginalizable):
 
     def initialize_with_provider(self, provider):
         super().initialize_with_provider(provider)
-        self.prefix = self.provider.model.theory["eftlss." + self.tracer].prefix
+        # XXX: is it possible to get rid of hardcoded prefix?
+        self.prefix = self.provider.model.theory["eftpipe.eftlss." + self.tracer].prefix
         if self.marg:
             self.setup_prior(self.marg)
 

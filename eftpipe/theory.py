@@ -435,7 +435,7 @@ class EFTLSS(Theory):
         providers = set(v.get("provider", "classy") for v in self.tracers.values())
         if len(providers) != 1:
             raise LoggedError(self.log, "All tracers should share the same provider")
-        supported_providers = ["camb", "classy", "classynu"]
+        supported_providers = ["camb", "classy", "classynu", "eftpipe.classynu"]
         if providers.pop() not in supported_providers:
             raise LoggedError(self.log, "supported providers: %s", supported_providers)
 
@@ -515,12 +515,12 @@ class EFTLSS(Theory):
     def get_helper_theories(self) -> dict[str, Theory]:
         out = {}
         for name in self.names:
-            out["eftlss." + name] = EFTLSSChild(
+            out["eftpipe.eftlss." + name] = EFTLSSChild(
                 self, name, dict(stop_at_error=self.stop_at_error), timing=self.timer
             )
         # Pk_interpolator requires at least 4 redshift
         if len(out) < 4:
-            first: EFTLSSChild = out["eftlss." + self.names[0]]
+            first: EFTLSSChild = out["eftpipe.eftlss." + self.names[0]]
             first._zextra = [first.zeff + i * 0.1 for i in range(1, 5 - len(out))]
         return out
 
@@ -633,7 +633,7 @@ class EFTLSSChild(HelperTheory):
             self.boltzmann = CobayaCambInterface(
                 provider=provider, z=self.zeff, use_cb=use_cb
             )
-        elif self.provider_name in ("classy", "classynu"):
+        elif self.provider_name in ("classy", "classynu", "eftpipe.classynu"):
             self.boltzmann = CobayaClassyInterface(
                 provider=provider, z=self.zeff, use_cb=use_cb
             )

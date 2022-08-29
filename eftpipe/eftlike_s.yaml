@@ -1,4 +1,5 @@
 tracer:
+# deprecated
 prefix: ''
 lssdata:
 chained: false
