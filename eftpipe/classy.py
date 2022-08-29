@@ -85,7 +85,7 @@ def get_delta_m(extra_args, hierarchy):
 
 
 class classynu(classy):
-    """enhanced classy theory with neutrino hierarchy supports
+    """enhanced classy theory with supports for neutrino hierarchy
     """
 
     def initialize(self):

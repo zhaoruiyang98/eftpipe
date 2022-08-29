@@ -1,11 +1,8 @@
 from .classy import classynu
-
-# from eftpipe.likelihood import EFTLike
+from .likelihood import EFTLikeSingle as eftlike_s
 from .log import logger_setup
 from .pybird import pybird
-from .theory import EFTLSS
-from .likelihood import EFTLikeSingle as eftlike_s
-
+from .theory import EFTLSS as eftlss
 
 __author__ = "Ruiyang Zhao and Xiaoyong Mu"
 __version__ = "0.0.1"

@@ -94,7 +94,7 @@ class CobayaCambInterface(BoltzmannInterface):
         by default False and compute the total matter power spectrum
     """
 
-    # XXX: warning: f computed here is different from that in classy
+    # XXX: warning: f computed here is different from that used in classy
     @property
     def f(self) -> float:
         return self.get_fsigma8(self.z) / self.get_sigma8_z(self.z)
@@ -109,7 +109,7 @@ class CobayaCambInterface(BoltzmannInterface):
     def updated(self) -> bool:
         flag = True
         provider = cast(Any, self.provider)
-        # XXX: support other names
+        # XXX: support other names (this will not be a problem for internal camb)
         transfer = provider.model.theory["camb.transfers"]
         camb = provider.model.theory["camb"]
         if len(transfer._states) != 0 and len(camb._states) != 0:
@@ -139,7 +139,7 @@ class CobayaClassyInterface(BoltzmannInterface):
     def __init__(self, provider: Any, z: float, use_cb: bool = False) -> None:
         self.name = None
         for k in provider.model.theory.keys():
-            # XXX: support other names
+            # XXX: support other names (this will not be a problem for internal classy)
             if "classy" in k:
                 self.name = k
                 break
