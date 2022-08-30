@@ -1,6 +1,5 @@
 theory:
-  classynu:
-    class: eftpipe.classynu
+  eftpipe.classynu:
     extra_args:
       N_ncdm: 1
       N_ur: 2.0328
