@@ -1040,7 +1040,11 @@ class EFTLSSChild(HelperTheory):
                 kh = np.logspace(-5, 0, 200)
                 pkh = boltzmann.Pkh(kh)
                 H, DA, f = boltzmann.H, boltzmann.DA, boltzmann.f
-                bird = BirdPlus(kh, pkh, f, DA, H, self.zeff, which="all", co=self.co)
+                rdrag, h = boltzmann.rdrag, boltzmann.h
+                # fmt: off
+                bird = BirdPlus(
+                    kh, pkh, f, DA, H, self.zeff, which="all", co=self.co, rdrag=rdrag, h=h)
+                # fmt: on
                 self.nonlinear.PsCf(bird)
                 bird.setPsCfl()
                 plugins = cast(PluginsDict, self.plugins)
@@ -1136,17 +1140,16 @@ class EFTLSSChild(HelperTheory):
         if want_derived:
             plugins = cast(PluginsDict, self.plugins)
             if self.with_APeffect:
-                # FIXME: return alperp, alpara
                 try:
-                    qperp, qpara = plugins["APeffect"].get_AP_param(self.bird)
+                    alperp, alpara = plugins["APeffect"].get_alperp_alpara(self.bird)
                 except KeyError:
                     if self.not_reported("no AP plugin"):
                         self.mpi_warning(
                             "APeffect not initialized, possiblely due to no power requested",
                         )
                 else:
-                    state["derived"][self.prefix + "alperp"] = qperp
-                    state["derived"][self.prefix + "alpara"] = qpara
+                    state["derived"][self.prefix + "alperp"] = alperp
+                    state["derived"][self.prefix + "alpara"] = alpara
             else:
                 state["derived"][self.prefix + "alperp"] = 1
                 state["derived"][self.prefix + "alpara"] = 1

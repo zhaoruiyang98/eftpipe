@@ -616,6 +616,10 @@ class Bird(object):
         Hubble parameter (for AP effect)
     z : float, optional
         Redshift (for AP effect)
+    rdrag : float, optional
+        rdrag (for alperp and alpara) in absolute units
+    h : float, optional
+        hubble parameter (for alperp and alpara)
     kin : array
         k-array on which the input linear power spectrum is evaluated
     Pin : array
@@ -652,7 +656,19 @@ class Bird(object):
         EFT parameters for the counter terms per multipole
     """
 
-    def __init__(self, kin, Plin, f, DA=None, H=None, z=None, which="full", co=common):
+    def __init__(
+        self,
+        kin,
+        Plin,
+        f,
+        DA=None,
+        H=None,
+        z=None,
+        which="full",
+        co=common,
+        rdrag: float | None = None,
+        h: float | None = None,
+    ):
         self.co = co
 
         self.which = which
@@ -661,6 +677,8 @@ class Bird(object):
         self.DA = DA
         self.H = H
         self.z = z
+        self.rdrag = rdrag
+        self.h = h
 
         self.kin = kin
         self.Pin = Plin
@@ -2571,6 +2589,11 @@ class APeffect(HasLogger):
         omega matter for fiducial cosmology
     z_AP: float, optional
         fiducial effective redshift
+    rdrag_AP: float, optional
+        fiducial rdrag, in absolute units
+    h_AP: float, optional
+        fiducial h, used together with rdrag_AP,
+        rdrag_AP and h_AP are only used in ``get_alperp_alpara``
     DA: float, optional
         fiducial DA
     H: float, optional
@@ -2599,6 +2622,8 @@ class APeffect(HasLogger):
         z_AP: float | None = None,
         DA: float | None = None,
         H: float | None = None,
+        rdrag_AP: float | None = None,
+        h_AP: float | None = None,
         nbinsmu: int = 200,
         accboost: int = 1,
         Nlmax: int | None = None,
@@ -2617,6 +2642,12 @@ class APeffect(HasLogger):
             self.H: float = Hubble(Om_AP, z_AP)
         else:
             raise ValueError("expect input params: Om_AP and z_AP, or DA and H")
+
+        self.rdrag_AP = rdrag_AP
+        self.h_AP = h_AP
+        if (self.rdrag_AP is not None) and (self.h_AP is not None):
+            self.mpi_info("fidudial rdrag=%.2f, h=%.4f", self.rdrag_AP, self.h_AP)
+        self._rdrag_warned = False
 
         self.nbinsmu = accboost * nbinsmu
         self.muacc = np.linspace(0, 1, self.nbinsmu)
@@ -2644,9 +2675,28 @@ class APeffect(HasLogger):
         """
         Compute the AP parameters
         """
+        # TODO: the definition of DA includes 1/(1+z),
+        # but typically alperp is defined without this factor, need investigation
         qperp = bird.DA / self.DA
         qpar = self.H / bird.H
         return qperp, qpar
+
+    def get_alperp_alpara(self, bird):
+        """
+        Compute the alperp and alpara
+        """
+        if any(x is None for x in (self.rdrag_AP, self.h_AP, bird.rdrag, bird.h)):
+            if not self._rdrag_warned:
+                self.mpi_warning(
+                    "rdrag_AP or h_AP or bird.rdrag or bird.h not given, "
+                    "fallback to qperp and qpara"
+                )
+                self._rdrag_warned = True
+            return self.get_AP_param(bird)
+        ratio = (self.rdrag_AP * self.h_AP) / (bird.rdrag * bird.h)  # type: ignore
+        alperp = bird.DA / self.DA * ratio
+        alpara = self.H / bird.H * ratio
+        return alperp, alpara
 
     def integrAP(self, Pk, kp, arrayLegendremup, many=False):
         """
