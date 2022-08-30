@@ -1,0 +1,348 @@
+theory:
+  eftpipe.classynu:
+    extra_args:
+      neutrino_hierarchy: normal
+  eftpipe.eftlss:
+    cache_dir_path: cache
+    stop_at_error: true
+    tracers:
+      CMASS_NGC:
+        prefix: CMASS_NGC_
+        z: 0.57
+        km: 0.7
+        nd: 0.00045
+        APeffect:
+          z_AP: 0.57
+        window:
+          window_fourier_file: cache/window_BOSS_CMASS_NGC_z057.npy
+          window_configspace_file: data/pybird/Window/window_BOSS_CMASS_NGC_z057.dat
+      CMASS_SGC:
+        prefix: CMASS_SGC_
+        z: 0.57
+        km: 0.7
+        nd: 0.00045
+        APeffect:
+          z_AP: 0.57
+        window:
+            window_fourier_file: cache/window_BOSS_CMASS_SGC_z057.npy
+            window_configspace_file: data/pybird/Window/window_BOSS_CMASS_SGC_z057.dat
+      LOWZ_NGC:
+        prefix: LOWZ_NGC_
+        z: 0.32
+        km: 0.7
+        nd: 0.0004
+        APeffect:
+          z_AP: 0.32
+        window:
+          window_fourier_file: cache/window_BOSS_LOWZ_NGC_z032.npy
+          window_configspace_file: data/pybird/Window/window_BOSS_LOWZ_NGC_z032.dat
+      default:
+        provider: classynu
+        with_IRresum: true
+        with_APeffect: true
+        with_window: true
+        with_fiber: true
+        APeffect:
+          Om_AP: 0.31
+        window:
+          window_st: false
+        fiber:
+          ktrust: 0.25
+          fs: 0.6
+          Dfc: 0.6344990408735429
+likelihood:
+  CMASS_NGC:
+    class: eftpipe.eftlike_s
+    stop_at_error: true
+    tracer: CMASS_NGC
+    lssdata:
+      fullshape:
+      - path: data/pybird/DataSims/pkl_highzNGC.dat
+        ls: [0, 2]
+        xmin: 0.01
+        xmax: 0.23
+      cov: data/pybird/Covariance/Cov_highzNGC.dat
+    with_binning: false
+    marg:
+      CMASS_NGC_b3:
+        scale: 2
+      CMASS_NGC_cct:
+        scale: 2
+      CMASS_NGC_cr1:
+        scale: 8
+      CMASS_NGC_ce0:
+        scale: 2
+      CMASS_NGC_cequad:
+        scale: 2
+  CMASS_SGC:
+    class: eftpipe.eftlike_s
+    stop_at_error: true
+    tracer: CMASS_SGC
+    lssdata:
+      fullshape:
+      - path: data/pybird/DataSims/pkl_highzSGC.dat
+        ls: [0, 2]
+        xmin: 0.01
+        xmax: 0.23
+      cov: data/pybird/Covariance/Cov_highzSGC.dat
+    with_binning: false
+    marg:
+      CMASS_SGC_b3:
+        scale: 2
+      CMASS_SGC_cct:
+        scale: 2
+      CMASS_SGC_cr1:
+        scale: 8
+      CMASS_SGC_ce0:
+        scale: 2
+      CMASS_SGC_cequad:
+        scale: 2
+  LOWZ_NGC:
+    class: eftpipe.eftlike_s
+    stop_at_error: true
+    tracer: LOWZ_NGC
+    lssdata:
+      fullshape:
+      - path: data/pybird/DataSims/pkl_lowzNGC.dat
+        ls: [0, 2]
+        xmin: 0.01
+        xmax: 0.20
+      cov: data/pybird/Covariance/Cov_lowzNGC.dat
+    with_binning: false
+    marg:
+      LOWZ_NGC_b3:
+        scale: 2
+      LOWZ_NGC_cct:
+        scale: 2
+      LOWZ_NGC_cr1:
+        scale: 8
+      LOWZ_NGC_ce0:
+        scale: 2
+      LOWZ_NGC_cequad:
+        scale: 2
+params:
+# cosmology
+  omegabh2:
+    prior:
+      dist: norm
+      loc: 0.02235
+      scale: 0.0005
+    proposal: 0.0002
+    ref: 0.02235
+    latex: \Omega_\mathrm{b} h^2
+  ombh2_10:
+    derived: 'lambda omegabh2: 100*omegabh2'
+    latex: 10^{-2}\omega_b
+  omegach2:
+    prior:
+      min: 0.05
+      max: 0.25
+    proposal: 0.003
+    ref: 0.11891
+    latex: \omega_{cdm}
+  H0:
+    prior:
+      min: 50.0
+      max: 85.0
+    proposal: 0.03
+    ref: 67.77
+    latex: H_0
+  h:
+    derived: 'lambda H0: H0/100'
+    latex: h
+  logA:
+    prior:
+      min: 2
+      max: 4
+    proposal: 0.01
+    ref: 3.04
+    latex: \ln(10^{10} A_\mathrm{s})
+    drop: true
+  As:
+    value: 'lambda logA: 1e-10*np.exp(logA)'
+    latex: A_\mathrm{s}
+  ns:
+    prior:
+      min: 0.5
+      max: 1.5
+    proposal: 0.04
+    ref: 0.96
+    latex: n_\mathrm{s}
+  mnu:
+    prior:
+      min: 0.06
+      max: 0.9
+    ref: 0.061
+    proposal: 0.02
+    latex: \sum m_\nu
+  tau:
+    value: 0.0543
+    latex: \tau_\mathrm{reio}
+  sigma8:
+    latex: \sigma_8
+  omegam:
+    latex: \Omega_\mathrm{m}
+  rdrag:
+    latex: r_\mathrm{drag}
+# eft
+# CMASS NGC
+  CMASS_NGC_b1:
+    prior:
+      min: 0.0
+      max: 4.0
+    ref: 2.0
+    proposal: 0.01
+    latex: b_1^{\mathrm{C,NGC}}
+  CMASS_NGC_c2:
+    prior:
+      min: -4.0
+      max: 4.0
+    ref: 1.5
+    proposal: 0.01
+    latex: c_2^{\mathrm{C,NGC}}
+    drop: true
+  CMASS_NGC_b3:
+    value: 0.0
+    latex: b_3^{\mathrm{C,NGC}}
+  CMASS_NGC_c4:
+    value: 0.0
+    latex: c_4^{\mathrm{C,NGC}}
+    drop: true
+  CMASS_NGC_b2:
+    value: 'lambda CMASS_NGC_c2, CMASS_NGC_c4: (CMASS_NGC_c2 + CMASS_NGC_c4) / np.sqrt(2.)'
+    latex: b_2^{\mathrm{C,NGC}}
+  CMASS_NGC_b4:
+    value: 'lambda CMASS_NGC_c2, CMASS_NGC_c4: (CMASS_NGC_c2 - CMASS_NGC_c4) / np.sqrt(2.)'
+    latex: b_4^{\mathrm{C,NGC}}
+  CMASS_NGC_cct:
+    value: 0.0
+    latex: c_\mathrm{ct}^{\mathrm{C,NGC}}
+  CMASS_NGC_cr1:
+    value: 0.0
+    latex: c_\mathrm{r,1}^{\mathrm{C,NGC}}
+  CMASS_NGC_cr2:
+    value: 0.0
+    latex: c_\mathrm{r,2}^{\mathrm{C,NGC}}
+  CMASS_NGC_ce0:
+    value: 0.0
+    latex: c_{\epsilon,0}^{\mathrm{C,NGC}}
+  CMASS_NGC_cemono:
+    value: 0.0
+    latex: c_{\epsilon,\mathrm{mono}}^{\mathrm{C,NGC}}
+  CMASS_NGC_cequad:
+    value: 0.0
+    latex: c_{\epsilon,\mathrm{quad}}^{\mathrm{C,NGC}}
+  CMASS_NGC_fsigma8_z:
+  CMASS_NGC_fz:
+  CMASS_NGC_alperp:
+  CMASS_NGC_alpara:
+# CMASS SGC
+  CMASS_SGC_b1:
+    prior:
+      min: 0.0
+      max: 4.0
+    ref: 2.0
+    proposal: 0.01
+    latex: b_1^{\mathrm{C,SGC}}
+  CMASS_SGC_c2:
+    prior:
+      min: -4.0
+      max: 4.0
+    ref: 1.5
+    proposal: 0.01
+    latex: c_2^{\mathrm{C,SGC}}
+    drop: true
+  CMASS_SGC_b3:
+    value: 0.0
+    latex: b_3^{\mathrm{C,SGC}}
+  CMASS_SGC_c4:
+    value: 0.0
+    latex: c_4^{\mathrm{C,SGC}}
+    drop: true
+  CMASS_SGC_b2:
+    value: 'lambda CMASS_SGC_c2, CMASS_SGC_c4: (CMASS_SGC_c2 + CMASS_SGC_c4) / np.sqrt(2.)'
+    latex: b_2^{\mathrm{C,SGC}}
+  CMASS_SGC_b4:
+    value: 'lambda CMASS_SGC_c2, CMASS_SGC_c4: (CMASS_SGC_c2 - CMASS_SGC_c4) / np.sqrt(2.)'
+    latex: b_4^{\mathrm{C,SGC}}
+  CMASS_SGC_cct:
+    value: 0.0
+    latex: c_\mathrm{ct}^{\mathrm{C,SGC}}
+  CMASS_SGC_cr1:
+    value: 0.0
+    latex: c_\mathrm{r,1}^{\mathrm{C,SGC}}
+  CMASS_SGC_cr2:
+    value: 0.0
+    latex: c_\mathrm{r,2}^{\mathrm{C,SGC}}
+  CMASS_SGC_ce0:
+    value: 0.0
+    latex: c_{\epsilon,0}^{\mathrm{C,SGC}}
+  CMASS_SGC_cemono:
+    value: 0.0
+    latex: c_{\epsilon,\mathrm{mono}}^{\mathrm{C,SGC}}
+  CMASS_SGC_cequad:
+    value: 0.0
+    latex: c_{\epsilon,\mathrm{quad}}^{\mathrm{C,SGC}}
+  CMASS_SGC_fsigma8_z:
+  CMASS_SGC_fz:
+  CMASS_SGC_alperp:
+  CMASS_SGC_alpara:
+# LOWZ NGC
+  LOWZ_NGC_b1:
+    prior:
+      min: 0.0
+      max: 4.0
+    ref: 2.0
+    proposal: 0.01
+    latex: b_1^{\mathrm{L,NGC}}
+  LOWZ_NGC_c2:
+    prior:
+      min: -4.0
+      max: 4.0
+    ref: 1.5
+    proposal: 0.01
+    latex: c_2^{\mathrm{L,NGC}}
+    drop: true
+  LOWZ_NGC_b3:
+    value: 0.0
+    latex: b_3^{\mathrm{L,NGC}}
+  LOWZ_NGC_c4:
+    value: 0.0
+    latex: c_4^{\mathrm{L,NGC}}
+    drop: true
+  LOWZ_NGC_b2:
+    value: 'lambda LOWZ_NGC_c2, LOWZ_NGC_c4: (LOWZ_NGC_c2 + LOWZ_NGC_c4) / np.sqrt(2.)'
+    latex: b_2^{\mathrm{L,NGC}}
+  LOWZ_NGC_b4:
+    value: 'lambda LOWZ_NGC_c2, LOWZ_NGC_c4: (LOWZ_NGC_c2 - LOWZ_NGC_c4) / np.sqrt(2.)'
+    latex: b_4^{\mathrm{L,NGC}}
+  LOWZ_NGC_cct:
+    value: 0.0
+    latex: c_\mathrm{ct}^{\mathrm{L,NGC}}
+  LOWZ_NGC_cr1:
+    value: 0.0
+    latex: c_\mathrm{r,1}^{\mathrm{L,NGC}}
+  LOWZ_NGC_cr2:
+    value: 0.0
+    latex: c_\mathrm{r,2}^{\mathrm{L,NGC}}
+  LOWZ_NGC_ce0:
+    value: 0.0
+    latex: c_{\epsilon,0}^{\mathrm{L,NGC}}
+  LOWZ_NGC_cemono:
+    value: 0.0
+    latex: c_{\epsilon,\mathrm{mono}}^{\mathrm{L,NGC}}
+  LOWZ_NGC_cequad:
+    value: 0.0
+    latex: c_{\epsilon,\mathrm{quad}}^{\mathrm{L,NGC}}
+  LOWZ_NGC_fsigma8_z:
+  LOWZ_NGC_fz:
+  LOWZ_NGC_alperp:
+  LOWZ_NGC_alpara:
+sampler:
+  mcmc:
+    Rminus1_stop: 0.01
+    max_tries: 100000
+    # blocking:
+    # - [1, ['omegabh2', 'omegach2', 'H0', 'logA', 'ns', 'mnu']]
+    # - [10, ['CMASS_NGC_b1', 'CMASS_NGC_c2', 'CMASS_SGC_b1', 'CMASS_SGC_c2', 'LOWZ_NGC_b1', 'LOWZ_NGC_c2']]
+output: chains/BOSS_fib_stnowin_neutrino_classynu
