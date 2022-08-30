@@ -36,7 +36,7 @@ class BoltzmannInterface:
     def Pkh(self, kh: NDArray) -> NDArray:
         # extra_kmin=1e-6 is sufficient
         fn: PowerSpectrumInterpolator = self.provider.get_Pk_interpolator(
-            self.var_pair, nonlinear=False, extrap_kmin=1e-6
+            var_pair=self.var_pair, nonlinear=False, extrap_kmin=1e-6
         )
         h = self.h
         pkh = fn.P(self.z, kh * h) * h ** 3
