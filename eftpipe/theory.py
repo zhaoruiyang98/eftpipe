@@ -401,13 +401,21 @@ class EFTLSS(Theory):
         self.cache_dir_path = Path(self.cache_dir_path)
         # XXX: self.tracers seems not completely copied by cobaya
         self.tracers = deepcopy(self.tracers)
-        if "common" in self.tracers.keys():
-            self.mpi_info("'common' field is used as default settings")
-            common = self.tracers.pop("common")
+        if default := self.tracers.pop("default", {}):
+            self.mpi_info("'default' field applies to all tracers")
             for k, tracer_config in self.tracers.items():
-                common_config = deepcopy(common)
-                recursively_update_dict(common_config, tracer_config)
-                self.tracers[k] = common_config
+                default_config = deepcopy(default)
+                recursively_update_dict(default_config, tracer_config)
+                self.tracers[k] = default_config
+        elif default := self.tracers.pop("common", {}):
+            self.mpi_info("'common' field applies to all tracers")
+            self.mpi_warning(
+                "'common' field is deprecated, please use 'default' instead"
+            )
+            for k, tracer_config in self.tracers.items():
+                default_config = deepcopy(default)
+                recursively_update_dict(default_config, tracer_config)
+                self.tracers[k] = default_config
         self.names = list(self.tracers.keys())
         if not self.names:
             raise LoggedError(self.log, "No tracer specified")
@@ -456,7 +464,7 @@ class EFTLSS(Theory):
         For example, ``nonlinear_Plk_grid={{'LRG': {...}, 'ELG': {...}}}`` will 
         be packed like ``{'LRG_results': {'nonlinear_Plk_grid': {...}}, 'ELG_results': {'nonlinear_Plk_grid': {...}}}``
 
-        all requirements support ``common`` field
+        all requirements support ``default`` field
 
         detailed requirement form can be found in ``EFTLSSChild.must_provide``
         """
@@ -472,9 +480,9 @@ class EFTLSS(Theory):
         redirected_reqs = {}
         for tracer, config_dict in redirected_reqs_tmp.items():
             redirected_reqs[tracer + "_results"] = deepcopy(config_dict)
-        if common := redirected_reqs_tmp.pop("common", {}):
+        if default := redirected_reqs_tmp.pop("default", {}):
             for tracer, config_dict in redirected_reqs.items():
-                ref = deepcopy(common)
+                ref = deepcopy(default)
                 recursively_update_dict(ref, config_dict)
                 redirected_reqs[tracer] = ref
         return redirected_reqs
