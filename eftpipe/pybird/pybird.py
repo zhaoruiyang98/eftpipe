@@ -9,10 +9,10 @@ from scipy import special
 
 # from pyfftw.builders import rfft
 from scipy.interpolate import interp1d, interp2d, CubicSpline
-from scipy.special import gamma, legendre, j1, spherical_jn, loggamma
+from scipy.special import legendre, j1, spherical_jn, loggamma
 from scipy.integrate import quad
 from pathlib import Path
-from typing import Any, cast, Optional, TYPE_CHECKING, Union
+from typing import Any, cast, TYPE_CHECKING, Union
 
 # local
 from .resumfactor import Qawithhex
