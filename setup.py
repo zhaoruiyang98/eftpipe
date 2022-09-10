@@ -25,7 +25,7 @@ install_requires = [
     "typing_extensions>=4.1,<5",
 ]
 
-exclude_dir = ["docs", "tests", "notes", "cobaya"]
+exclude_dir = ["cobaya", "docs", "figures", "notebook", "notes", "script", "tests"]
 packages = find_packages(exclude=exclude_dir)
 
 test_requires = [
