@@ -1,0 +1,157 @@
+theory:
+  eftpipe.classynu:
+    extra_args:
+      neutrino_hierarchy: degenerate
+  eftpipe.eftlss:
+    cache_dir_path: cache
+    stop_at_error: true
+    tracers:
+      ELG_NGC:
+        prefix: ELG_NGC_
+        provider: classynu
+        use_cb: true
+        z: 0.845
+        km: 0.45
+        nd: 0.00018518518518518518
+        with_IRresum: true
+        with_APeffect: true
+        with_window: true
+        with_fiber: false
+        APeffect:
+          Om_AP: 0.307115
+          z_AP: 0.845
+          rdrag_AP: 147.66
+          h_AP: 0.6777
+        window:
+          window_fourier_file: cache/ELG_NGC_interp_pytest.npy
+          window_configspace_file: data/window/ELG_NGC_interp.dat
+likelihood:
+  one:
+params:
+# cosmo
+  omegabh2:
+    value: 0.02214
+    latex: \Omega_\mathrm{b} h^2
+  omegach2:
+    prior:
+      min: 0.03
+      max: 0.7
+    proposal: 0.003
+    ref: 0.1189
+    latex: \Omega_\mathrm{c} h^2
+  H0:
+    prior:
+      min: 40.0
+      max: 100.0
+    proposal: 0.3
+    ref: 67.77
+    latex: H_0
+  logA:
+    prior:
+      min: 0.1
+      max: 10
+    proposal: 0.1
+    ref: 3.0
+    latex: \log(10^{10} A_\mathrm{s})
+    drop: true
+  As:
+    value: 'lambda logA: 1e-10*np.exp(logA)'
+    latex: A_\mathrm{s}
+  ns:
+    value: 0.9611
+    latex: n_\mathrm{s}
+  mnu:
+    value: 0.06
+    latex: \sum m_\nu
+  tau_reio:
+    value: 0.0543
+    latex: \tau_\mathrm{reio}
+  sigma8:
+    latex: \sigma_8
+  omegam:
+    latex: \Omega_\mathrm{m}
+  rdrag:
+    latex: r_\mathrm{drag}
+# eft
+  ELG_NGC_b1:
+    prior:
+      min: 0.0
+      max: 4.0
+    ref: 1.3
+    proposal: 0.01
+    latex: b_1^{\mathrm{ELG}}
+  ELG_NGC_c2:
+    prior:
+      min: -4.0
+      max: 4.0
+    ref: 1.4838078
+    proposal: 0.01
+    latex: c_2^{\mathrm{ELG}}
+    drop: true
+  ELG_NGC_b3:
+    prior:
+      dist: norm
+      loc: 0.0
+      scale: 2.0
+    ref: -0.08513497
+    proposal: 0.01
+    latex: b_3^{\mathrm{ELG}}
+  ELG_NGC_c4:
+    value: 0.0
+    latex: c_4^{\mathrm{ELG}}
+    drop: true
+  ELG_NGC_b2:
+    value: 'lambda ELG_NGC_c2, ELG_NGC_c4: (ELG_NGC_c2 + ELG_NGC_c4) / np.sqrt(2.)'
+    latex: b_2^{\mathrm{ELG}}
+  ELG_NGC_b4:
+    value: 'lambda ELG_NGC_c2, ELG_NGC_c4: (ELG_NGC_c2 - ELG_NGC_c4) / np.sqrt(2.)'
+    latex: b_4^{\mathrm{ELG}}
+  ELG_NGC_cct:
+    prior:
+      dist: norm
+      loc: 0.0
+      scale: 4.0
+    ref: -0.20393843
+    proposal: 0.01
+    latex: c_\mathrm{ct}^{\mathrm{ELG}}
+  ELG_NGC_cr1:
+    prior:
+      dist: norm
+      loc: 0.0
+      scale: 8.0
+    ref: -5.2021147
+    proposal: 0.01
+    latex: c_\mathrm{r,1}^{\mathrm{ELG}}
+  ELG_NGC_cr2:
+    prior:
+      dist: norm
+      loc: 0.0
+      scale: 4.0
+    ref: 0.0
+    proposal: 0.01
+    latex: c_\mathrm{r,2}^{\mathrm{ELG}}
+  ELG_NGC_ce0:
+    prior:
+      dist: norm
+      loc: 0.0
+      scale: 4.0
+    ref: 0.0
+    proposal: 0.005
+    latex: c_{\epsilon,0}^{\mathrm{ELG}}
+  ELG_NGC_cemono:
+    value: 0.0
+    latex: c_{\epsilon,\mathrm{mono}}^{\mathrm{ELG}}
+  ELG_NGC_cequad:
+    prior:
+      dist: norm
+      loc: 0.0
+      scale: 2.0
+    ref: 0.0
+    proposal: 0.005
+    latex: c_{\epsilon,\mathrm{quad}}^{\mathrm{ELG}}
+  ELG_NGC_fsigma8_z:
+    latex: f\sigma_8^{\mathrm{ELG}}
+  ELG_NGC_alperp:
+    latex: \alpha_\perp^{\mathrm{ELG}}
+  ELG_NGC_alpara:
+    latex: \alpha_\parallel^{\mathrm{ELG}}
