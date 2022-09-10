@@ -1,0 +1,42 @@
+name: eftpipe-dev
+channels:
+  - defaults
+dependencies:
+  - python=3.8
+  - conda-forge::typing_extensions>=4.1,<5.0
+  # getdist dependencies
+  - conda-forge::numpy>=1.20
+  - conda-forge::scipy>=1.6
+  - conda-forge::pandas>=1.0.1
+  - conda-forge::matplotlib
+  - conda-forge::PyYAML>=5.1
+  - conda-forge::PySide2
+  # end
+  # cobaya dependencies
+  - conda-forge::portalocker>=2.3.0
+  - conda-forge::tqdm
+  - conda-forge::fuzzywuzzy>=0.17
+  - conda-forge::requests>=2.18
+  - conda-forge::urllib3>=1.22
+  - conda-forge::dill>=0.3.3
+  - conda-forge::packaging
+  # end
+  # test framework
+  - pytest>=6.0
+  - conda-forge::pytest-cov
+  - conda-forge::pytest-regressions>=2.3.0
+  - conda-forge::pytest-datadir
+  # end
+  # miscellaneous
+  - ipython
+  - conda-forge::line_profiler
+  # end
+  - pip
+  - pip:
+    # pypi mirrors
+    # - --index-url https://
+    # - --extra-index-url https://
+    # end
+    - getdist>=1.3.1
+    - cobaya>=3.2.1,<3.3
+    - -e . # editable install of eftpipe

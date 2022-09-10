@@ -11,53 +11,41 @@ Developed by [Ruiyang Zhao](mailto:zhaoruiyang19@mails.ucas.edu.cn) and [Xiaoyon
 - `camb` or `classy` boltzamnn code (not necessary if you only want to run `eftpipe.pybird`)
 # Installation
 ## Installing all packages for analysis using Anaconda
-EFTPipe provides the theory and likelihood component for bayesian analysis of large-scale structure data. Typically people need extra packages for plotting and monte-carlo sampling, such as [getdist](https://getdist.readthedocs.io/en/latest/) and [cobaya](https://cobaya.readthedocs.io/en/latest/).
+EFTPipe provides the theory and likelihood component for bayesian analysis of large-scale structure data. Typically people need extra packages for plotting, i.e., [getdist](https://getdist.readthedocs.io/en/latest/).
 
 You can use the following codes to install all the packages you may need when doing data analysis.
-
 ```bash
-# create a new environment
-conda create -n eftpipe python=3.8
-conda activate eftpipe
-# install getdist first
-conda install -c conda-forge "numpy>=1.20" "scipy>=1.6" pandas portalocker matplotlib PySide2 tqdm
-pip install getdist
-# test if getdist is working
-python -m unittest getdist.tests.getdist_test
-# test if getdist-gui is working
-# getdist-gui
-# install cobaya
-python -m pip install "cobaya>=3.2.1" --upgrade
-# install cosmological codes and data
-cobaya-install cosmo -p /path/to/packages --upgrade
-# install camb equipped with cobaya (ensure latest)
-cd /path/to/packages/code/CAMB
-pip install .
-```
-
-MPI installation guide can be found at cobaya's [website](https://cobaya.readthedocs.io/en/latest/installation.html)
-
-If you want to install test framework for developments, please run the following commands:
-
-```shell
-conda install "pytest>=6.0"
-conda install -c conda-forge pytest-cov "pytest-regressions>=2.3.0" pytest-datadir
-```
-
-Finally, install eftpipe
-```shell
-# install eftpipe locally
-cd /path/to/working/directory
 git clone https://github.com/zhaoruiyang98/eftpipe.git
 cd eftpipe
-pip install -e .
+conda env create -f environment.yml
+# or `conda env create -f environment-dev.yml` for development
+```
+Creating an environment from an environment.yml file is usually very slow, and you may get stuck at solving environment. Alternatively, you can try [mamba](https://mamba.readthedocs.io/en/latest/index.html):
+```bash
+conda install mamba -n base -c conda-forge
+mamba env create -f environment.yml
+# or `mamba env create -f environment-dev.yml` for development
+```
+
+MPI installation guide can be found at cobaya's [website](https://cobaya.readthedocs.io/en/latest/installation.html), please run
+```shell
+conda install -c conda-forge "mpi4py>=3"
+# or `conda install -c intel "mpi4py>=3"` if you are using intel compiler
+# or `pip install "mpi4py>=3" --upgrade --no-binary :all:` if you want to build from source
+```
+
+Before running MCMC, you may need install some cosmology codes. Cobaya provides an automatic installer and you can use [that](https://cobaya.readthedocs.io/en/latest/installation_cosmo.html) to install `camb` and `classy`. Otherwise you can run the following code to install `camb` and `classy`
+```shell
+conda install -c conda-forge camb>=1.3.5
+git clone --depth 1 --branch v3.2.0 https://github.com/lesgourg/class_public
+conda install cython
+cd class_public/python
+pip install .
 ```
 ## Minimum installation
-Please have a look at [setup.py](https://github.com/zhaoruiyang98/eftpipe/blob/main/setup.py) file and make sure you have installed all dependencies and satisfied all version requirements. Then run
-
+Please run the following commands
 ```shell
 # install eftpipe locally
-cd /path/to/working/directory
 git clone https://github.com/zhaoruiyang98/eftpipe.git
 cd eftpipe
 pip install -e .

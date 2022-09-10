@@ -69,7 +69,7 @@ setup(
     extras_require={
         "test": test_requires,
         "gui": gui_requires,
-        "dev": test_requires + gui_requires + ["pyyaml>=5.1", "line_profiler", "black"],
+        "dev": test_requires + gui_requires + ["pyyaml>=5.1", "line_profiler"],
     },
     package_data={"eftpipe": ["*.yaml", "*.bibtex", "py.typed"]},
     classifiers=classifiers,
