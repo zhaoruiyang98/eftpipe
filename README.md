@@ -7,19 +7,20 @@ Developed by [Ruiyang Zhao](mailto:zhaoruiyang19@mails.ucas.edu.cn) and [Xiaoyon
 # Dependencies
 - `numpy` and `scipy` for numerical computing
 - `cobaya` for likelihood and logging
+- `typing_extensions` for better type hints
 - `camb` or `classy` boltzamnn code (not necessary if you only want to run `eftpipe.pybird`)
 # Installation
 ## Installing all packages for analysis using Anaconda
-EFTPipe provides the likelihood for bayesian analysis of large-scale structure data. Typically people need extra packages for plotting and monte-carlo sampling, such as [getdist](https://getdist.readthedocs.io/en/latest/) and [cobaya](https://cobaya.readthedocs.io/en/latest/).
+EFTPipe provides the theory and likelihood component for bayesian analysis of large-scale structure data. Typically people need extra packages for plotting and monte-carlo sampling, such as [getdist](https://getdist.readthedocs.io/en/latest/) and [cobaya](https://cobaya.readthedocs.io/en/latest/).
 
-Here we provide codes to install all packages you may need when performing data analysis.
+You can use the following codes to install all the packages you may need when doing data analysis.
 
 ```bash
 # create a new environment
 conda create -n eftpipe python=3.8
 conda activate eftpipe
 # install getdist first
-conda install -c conda-forge "numpy>=1.21" "scipy>=1.6" pandas portalocker matplotlib PySide2 tqdm
+conda install -c conda-forge "numpy>=1.20" "scipy>=1.6" pandas portalocker matplotlib PySide2 tqdm
 pip install getdist
 # test if getdist is working
 python -m unittest getdist.tests.getdist_test
@@ -64,20 +65,20 @@ pip install -e .
 # or `pip install -e .[dev]` for development
 ```
 # Compare to upstream PyBird
-Since EFTPipe is developed based on PyBird, it is quite important to keep the modified version agree to upstream PyBird repository.
+Since EFTPipe is developed based on PyBird, it is quite important to keep the modified codes consistent with upstream PyBird repository.
 
-For demonstration, we write a simple random comparison suite in [this](https://github.com/zhaoruiyang98/eftpipe/blob/main/tests/compare/test_theory.py) file. To run it yourself, you should install all packages mentioned above and install the [forked version of PyBird](https://github.com/zhaoruiyang98/pybird/tree/dev) (dev branch), where we made some minor changes:
-1. make pybird_dev as a package
+For demonstration, we write a simple random comparison suite in [this](https://github.com/zhaoruiyang98/eftpipe/blob/main/tests/compare/test_theory.py) file. To run it yourself, you should install test framework mentioned above and install the [forked version of PyBird](https://github.com/zhaoruiyang98/pybird/tree/compare) (`compare` branch), where we made some minor changes:
+1. make pybird_dev as a package named `pybird`
 2. fix overflow and file load error when computing window matrix
 3. double the default number of $\mu$ bins when applying AP effect
 
-Then, at the root directory, run `pytest tests/compare/test_theory.py --diffbird`, you will see 5 comparison results (4 are random). Typically the relative difference looks like the following picture:
+Then, at the root directory, run `pytest tests/compare/test_theory.py --diffbird 5`, you will see 5 comparison results (4 are random). Typically the relative difference appears like the following figure:
 
 ![compare](https://github.com/zhaoruiyang98/eftpipe/blob/main/figures/compare.png)
 
-Generally they are in good agreement and the appeared residual has two causes:
+Generally they are in very good agreement and the appeared residual has two causes:
 1. different integral nodes of $k$
-2. the weird peak comes from the comparison of floating numbers when applying the mask to window matrix
+2. and the weird peak comes from the inaccurate comparison of floating numbers when applying the mask to window matrix
 
 If you set totally the same integral nodes, the relative difference will be completely negligible.
 # Acknowledgements
