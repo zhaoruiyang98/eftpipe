@@ -575,6 +575,8 @@ class PlkInterpolator:
             idx = [self.ls.index(ll) for ll in l]
         except ValueError as ex:
             raise ValueError(f"l={l} not in {self.ls}") from ex
+        if len(idx) == 1:
+            return self.fn(k)[idx][0]
         return self.fn(k)[idx]
 
 
