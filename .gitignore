@@ -131,8 +131,8 @@ dmypy.json
 # cache or large products dir
 /cobaya/cache/
 /cobaya/chains/
-/tests/reg/**/test_*.npz
-/tests/reg/**/test_*.yml
+/tests/regression/**/test_*.npz
+/tests/regression/**/test_*.yml
 /tests/compare/**/test_*.npz
 /tests/compare/cache/
 
