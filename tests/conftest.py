@@ -8,10 +8,6 @@ if not CACHEPATH.exists():
 
 def pytest_addoption(parser):
     parser.addoption(
-        "--diffbird", action="store_true", default=False,
-        help="mark test to enable comparison to pybird_dev"
-    )
-    parser.addoption(
         "--fcompare", action="store_true", default=False,
         help="show failed comparison",
     )
@@ -26,11 +22,6 @@ def pytest_addoption(parser):
 
 
 def pytest_collection_modifyitems(config, items):
-    if not config.getoption("--diffbird"):
-        skip = pytest.mark.skip(reason="need --diffbird option to run")
-        for item in items:
-            if "diffbird" in item.keywords:
-                item.add_marker(skip)
     if not config.getoption("--fcompare"):
         skip = pytest.mark.skip(reason="need --fcompare option to run")
         for item in items:

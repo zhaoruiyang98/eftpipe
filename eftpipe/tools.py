@@ -3,7 +3,6 @@ import inspect
 import os
 import time
 import numpy as np
-import numpy.typing as npt
 from contextlib import contextmanager
 from enum import Enum
 from pathlib import Path
@@ -24,6 +23,7 @@ from .typing import SimpleYaml
 from .typing import SupportsRichComparisonT
 
 if TYPE_CHECKING:
+    import numpy.typing as npt
     from logging import Logger
 
 _T = TypeVar("_T")
@@ -64,22 +64,22 @@ def update_path_in_dict(d: SimpleYaml, base: Path, extra: Container[str] = (),) 
 
 
 class _NotFound(Enum):
-    NOTFOUND = 0
+    NOTFOUND = 1
 
 
 NOTFOUND = _NotFound.NOTFOUND
 
 
-def recursively_update_dict(ref: dict, new: dict):
-    for k, v in new.items():
-        rawv = ref.get(k, NOTFOUND)
+def recursively_update_dict(default: dict, override: dict):
+    for k, v in override.items():
+        rawv = default.get(k, NOTFOUND)
         if rawv is NOTFOUND:
-            ref[k] = v
+            default[k] = v
         else:
             if isinstance(rawv, dict):
                 recursively_update_dict(rawv, v)
             else:
-                ref[k] = v
+                default[k] = v
 
 
 def set_value_in_nested_dict(dct: dict[str, Any], value, *keys: str):
@@ -192,7 +192,7 @@ class RandomParams:
     rng: Generator
         random number generator
     count: int
-        called number of `random`
+        called number of ``random``
 
     Methods
     -------
@@ -230,7 +230,9 @@ class RandomParams:
         self.count += 1
         return res
 
-    def fix(self, names=None, groups=None):
+    def fix(
+        self, names: Iterable[str] | None = None, groups: Iterable[str] | None = None
+    ):
         if not (names or groups):
             return
         if names is None:
