@@ -186,7 +186,7 @@ class PybirdTh:
         ]
         fourier_name = Path(fourier_name).name
         windowPk = str(PYBIRDDEV_CACHE / fourier_name)
-        settings = dict(
+        self.settings = dict(
             output="bPk",
             multipole=config["Nl"],
             xdata=get_kdata(),
@@ -213,16 +213,16 @@ class PybirdTh:
         self.Nl = config["Nl"]
         self.z = config["z"]
 
-        from pybird.pybird import Correlator
-
-        with PathContext(PYBIRDDEV_CACHE):
-            self.corr = Correlator()
-            self.corr.set(settings)
-
     def set_bolzman_provider(self, provider):
         self.provider = CobayaCambInterface(provider, z=self.z)
 
     def Plk(self, params_dict: dict) -> NDArray:
+        from pybird.pybird import Correlator
+
+        with PathContext(PYBIRDDEV_CACHE):
+            self.corr = Correlator()
+            self.corr.set(self.settings)
+
         provider = self.provider
         k11 = np.logspace(-5, 0, 200)
         p11 = provider.Pkh(k11)
