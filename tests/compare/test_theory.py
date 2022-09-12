@@ -16,7 +16,7 @@ def has_pybird() -> bool:
 
 
 @pytest.mark.skipif(not has_pybird(), reason="should install pybird")
-def test_EFTtheory_vs_pybirddev(compare_ndarrays, diffbird: DiffbirdT):
+def test_eftlss_vs_pybird(compare_ndarrays, diffbird: DiffbirdT):
     eftpipe_th, pybird_th = diffbird()
     eftpipe_dict = {k: v for k, v in zip(("P0", "P2", "P4"), eftpipe_th)}
     pybird_dict = {k: v for k, v in zip(("P0", "P2", "P4"), pybird_th)}

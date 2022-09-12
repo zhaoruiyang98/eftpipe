@@ -8,15 +8,6 @@ from pathlib import Path
 from pytest_regressions.ndarrays_regression import NDArraysRegressionFixture
 
 
-def pytest_addoption(parser):
-    parser.addoption(
-        "--diffbird",
-        type=int,
-        default=0,
-        help="times of comparison to pybird, by default 0",
-    )
-
-
 def pytest_generate_tests(metafunc):
     if "diffbird" in metafunc.fixturenames:
         from .eftpair import EFTPair
