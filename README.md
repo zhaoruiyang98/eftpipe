@@ -15,7 +15,7 @@ EFTPipe provides the theory and likelihood component for bayesian analysis of la
 
 You can use the following codes to install all the packages you may need when doing data analysis.
 ```bash
-git clone https://github.com/zhaoruiyang98/eftpipe.git
+git clone git@github.com:zhaoruiyang98/eftpipe.git
 cd eftpipe
 conda env create -f environment.yml
 # or `conda env create -f environment-dev.yml` for development
