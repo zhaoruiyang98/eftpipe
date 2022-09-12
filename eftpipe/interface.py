@@ -4,6 +4,7 @@ Thin wrapper for boltzmann provider
 from __future__ import annotations
 from copy import deepcopy
 from typing import Any, cast, TYPE_CHECKING
+from cobaya.log import HasLogger
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -11,7 +12,7 @@ if TYPE_CHECKING:
     from cobaya.theories.cosmo import PowerSpectrumInterpolator
 
 
-class BoltzmannInterface:
+class BoltzmannInterface(HasLogger):
     """Base BoltzmannInterface
 
     Parameters
@@ -31,7 +32,8 @@ class BoltzmannInterface:
         self.var_pair = (
             ("delta_nonu", "delta_nonu") if use_cb else ("delta_tot", "delta_tot")
         )
-        self.cosmo_params_dct = {}
+        self.cosmo_params_dict = {}
+        self.set_logger()
 
     def Pkh(self, kh: NDArray) -> NDArray:
         # extra_kmin=1e-6 is sufficient
@@ -113,12 +115,12 @@ class CobayaCambInterface(BoltzmannInterface):
         transfer = provider.model.theory["camb.transfers"]
         camb = provider.model.theory["camb"]
         if len(transfer._states) != 0 and len(camb._states) != 0:
-            cosmo_params_dct = deepcopy(transfer._states[0]["params"])
-            cosmo_params_dct.update(camb._states[0]["params"])
-            if cosmo_params_dct == self.cosmo_params_dct:
+            cosmo_params_dict = deepcopy(transfer._states[0]["params"])
+            cosmo_params_dict.update(camb._states[0]["params"])
+            if cosmo_params_dict == self.cosmo_params_dict:
                 flag = False
             else:
-                self.cosmo_params_dct = cosmo_params_dct
+                self.cosmo_params_dict = cosmo_params_dict
         return flag
 
 
@@ -150,18 +152,27 @@ class CobayaClassyInterface(BoltzmannInterface):
 
     @property
     def f(self) -> float:
-        return self.provider.model.theory[  # type: ignore
-            self.name
-        ].classy.scale_independent_growth_factor_f(self.z)
+        from classy import CosmoSevereError  # type: ignore
+
+        try:
+            return self.provider.model.theory[  # type: ignore
+                self.name
+            ].classy.scale_independent_growth_factor_f(self.z)
+        except CosmoSevereError:
+            self.mpi_warning(
+                "classy failed to compute f, current cosmological parameters: %r",
+                self.provider.model.theory[self.name]._states[0]["params"],  # type: ignore
+            )
+            raise
 
     # HACK
     def updated(self) -> bool:
         flag = True
         classy = self.provider.model.theory[self.name]  # type: ignore
         if len(classy._states) != 0:
-            cosmo_params_dct = deepcopy(classy._states[0]["params"])
-            if cosmo_params_dct == self.cosmo_params_dct:
+            cosmo_params_dict = deepcopy(classy._states[0]["params"])
+            if cosmo_params_dict == self.cosmo_params_dict:
                 flag = False
             else:
-                self.cosmo_params_dct = cosmo_params_dct
+                self.cosmo_params_dict = cosmo_params_dict
         return flag
