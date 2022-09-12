@@ -170,7 +170,7 @@ class classynu(classy):
             args_dict.pop("mnu")
             (m1, m2, m3), success = get_masses(self._delta_m, mnu, self._hieararchy)
             if not success:
-                raise LoggedError(self.log, "failed to solve m_ncdm")
+                raise RuntimeError(f"failed to solve m_ncdm, delta_m={self._delta_m}")
             args_dict["m_ncdm"] = ",".join(map(str, [m1, m2, m3]))
 
     # override: import classy instead of classynu

@@ -4,6 +4,7 @@ import numpy as np
 from typing import Any, TYPE_CHECKING
 from cobaya.log import HasLogger
 from cobaya.log import LoggedError
+
 if TYPE_CHECKING:
     from numpy.typing import NDArray
 
@@ -58,7 +59,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         F0 = self.calc_F0(PNG, invcov, dvector)
         det = np.linalg.det(F2ij / (2 * np.pi))
         if det < 0:
-            raise LoggedError(
+            raise RuntimeError(
                 "det of F2ij < 0, please consider tighter prior on gaussian parameters"
             )
         chi2 = -F1i @ np.linalg.inv(F2ij) @ F1i + F0 + np.log(det)
