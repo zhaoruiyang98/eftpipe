@@ -2238,6 +2238,8 @@ class Window(HasLogger):
         default xmax_factor = 100.
     bias: float
         FFTLog bias, default -1.6
+    window_param: float | None
+        window parameter, default 1
     window_st: bool
         set it True to apply window effect to stochastic terms
     name: str
@@ -2288,6 +2290,7 @@ class Window(HasLogger):
         xmin_factor: float = 1.0,
         xmax_factor: float = 100.0,
         bias: float = -1.6,
+        window_param: float | None = 1,
         window_st: bool = True,
         name: str = "pybird.window",
         snapshot: bool = False,
@@ -2325,7 +2328,7 @@ class Window(HasLogger):
         if Na > Nl:
             raise ValueError(f"dangerous settings Na={Na}, Nl={Nl}")
         self.p = window_kgrid(kmax=pmax, accboost=accboost)
-        self.meta = dict(
+        self.meta: dict[str, Any] = dict(
             Na=Na,
             Nl=Nl,
             Nq=Nq,
@@ -2335,6 +2338,7 @@ class Window(HasLogger):
             xmin_factor=xmin_factor,
             xmax_factor=xmax_factor,
             bias=bias,
+            window_param=window_param,
             window_configspace_file=window_configspace_file_str,
             k=self.co.k.tolist(),
         )
@@ -2488,6 +2492,7 @@ class Window(HasLogger):
                     sw[newaxis, newaxis, newaxis, :]
                     * self.co.k[newaxis, newaxis, :, newaxis],
                 ),
+                window=self.meta["window_param"],
                 extrap="padding",
             )
         )
