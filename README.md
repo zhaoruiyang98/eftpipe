@@ -34,7 +34,7 @@ conda install -c conda-forge "mpi4py>=3"
 # or `pip install "mpi4py>=3" --upgrade --no-binary :all:` if you want to build from source
 ```
 
-Before running MCMC, you may need install some cosmology codes. Cobaya provides an automatic installer and you can use [that](https://cobaya.readthedocs.io/en/latest/installation_cosmo.html) to install `camb` and `classy`. Otherwise you can run the following code to install `camb` and `classy`
+Before running MCMC, you may need install some cosmology codes. Cobaya provides an automatic installer and you can use [that](https://cobaya.readthedocs.io/en/latest/installation_cosmo.html) to install `camb` and `classy`. Otherwise you can run the following code (requires gcc) to install `camb` and `classy` (for macOS user, please make sure your `gcc` points to gcc instead of clang when compiling classy)
 ```shell
 pip install "camb>=1.3.5"
 git clone --depth 1 --branch v3.2.0 https://github.com/lesgourg/class_public
