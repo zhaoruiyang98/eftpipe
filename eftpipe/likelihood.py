@@ -120,3 +120,11 @@ class EFTLikeSingle(Likelihood, Marginalizable):
             chi2 = res @ self.lssdata.invcov @ res
             state["logp"] = -0.5 * chi2
 
+    def bG_bestfit(self) -> dict[str, float]:
+        """helper method to extract bestfit bG parameters"""
+        PNG = self.PNG()
+        PG = self.PG()
+        F1i = self.calc_F1i(PG, PNG, self.lssdata.invcov, self.lssdata.data_vector)
+        F2ij = self.calc_F2ij(PG, self.lssdata.invcov)
+        ret = np.linalg.inv(F2ij) @ F1i
+        return {bG: val for bG, val in zip(self.valid_prior.keys(), ret)}
