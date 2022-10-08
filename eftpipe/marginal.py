@@ -57,12 +57,12 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         F2ij = self.calc_F2ij(PG, invcov)
         F1i = self.calc_F1i(PG, PNG, invcov, dvector)
         F0 = self.calc_F0(PNG, invcov, dvector)
-        det = np.linalg.det(F2ij / (2 * np.pi))
-        if det < 0:
+        sign, logdet = np.linalg.slogdet(F2ij / (2 * np.pi))
+        if sign <= 0:
             raise RuntimeError(
-                "det of F2ij < 0, please consider tighter prior on gaussian parameters"
+                "det of F2ij <= 0, please consider tighter prior on gaussian parameters"
             )
-        chi2 = -F1i @ np.linalg.inv(F2ij) @ F1i + F0 + np.log(det)
+        chi2 = -F1i @ np.linalg.solve(F2ij, F1i) + F0 + logdet
 
         end = time.perf_counter()
         self.mpi_debug("marginalized_logp: time used: %s", end - start)
