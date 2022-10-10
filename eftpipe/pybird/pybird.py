@@ -2021,7 +2021,6 @@ class Window(HasLogger):
         self.Waldk: NDArray = self._compute_Waldk()  # mask settings not in meta
         if self._save:
             self._save_Wal()
-        self._cached_path = {}
         self.snapshot = snapshot
         if self.snapshot:
             self.mpi_info("snapshot is enabled")
@@ -2214,23 +2213,10 @@ class Window(HasLogger):
         else:
             Pk = P
         # (multipole l, multipole ' p, k, k' m) , (multipole ', power pectra s, k' m)
-        shape = Pk.shape
-        path = self._cached_path.get(shape, None)
-        if path is None:
-            if many:
-                path = np.einsum_path(
-                    "alkp,lsp->ask", self.Waldk, Pk, optimize="optimal"
-                )[0]
-            else:
-                path = np.einsum_path(
-                    "alkp,lp->ak", self.Waldk, Pk, optimize="optimal"
-                )[0]
-            self._cached_path[shape] = path
-
         if many:
-            return np.einsum("alkp,lsp->ask", self.Waldk, Pk, optimize=path)
+            return np.einsum("alkp,lsp->ask", self.Waldk, Pk, optimize=True)
         else:
-            return np.einsum("alkp,lp->ak", self.Waldk, Pk, optimize=path)
+            return np.einsum("alkp,lp->ak", self.Waldk, Pk, optimize=True)
 
     def Window(self, bird: BirdPlus):
         """
@@ -2256,9 +2242,6 @@ class Window(HasLogger):
                 bird.create_snapshot("window")
             except AttributeError:
                 pass
-
-    def clear_cache(self):
-        self._cached_path = {}
 
 
 class APeffect(HasLogger):
@@ -2345,8 +2328,6 @@ class APeffect(HasLogger):
                 for l in 2 * np.arange(self.Nlmax)
             ]
         )
-        self._cached_path1 = {}
-        self._cached_path2 = {}
         self.logstate()
         self.snapshot = snapshot
         if self.snapshot:
@@ -2393,26 +2374,15 @@ class APeffect(HasLogger):
             fill_value="extrapolate",
         )(kp)
         if many:
-            path1 = self._cached_path1.get(Pkint.shape, None)
-            if path1 is None:
-                path1 = np.einsum_path(
-                    "lpkm,lkm->pkm", Pkint, arrayLegendremup, optimize="optimal",
-                )[0]
-                self._cached_path1[Pkint.shape] = path1
-            Pkmu = np.einsum("lpkm,lkm->pkm", Pkint, arrayLegendremup, optimize=path1)
-
-            path2 = self._cached_path2.get(Pkmu.shape, None)
-            if path2 is None:
-                path2 = np.einsum_path(
-                    "pkm,lkm->lpkm", Pkmu, self.arrayLegendremugrid, optimize="optimal",
-                )[0]
-                self._cached_path2[Pkmu.shape] = path2
+            Pkmu = np.einsum("lpkm,lkm->pkm", Pkint, arrayLegendremup, optimize=True)
             Integrandmu = np.einsum(
-                "pkm,lkm->lpkm", Pkmu, self.arrayLegendremugrid, optimize=path2
+                "pkm,lkm->lpkm", Pkmu, self.arrayLegendremugrid, optimize=True
             )
         else:
-            Pkmu = np.einsum("lkm,lkm->km", Pkint, arrayLegendremup)
-            Integrandmu = np.einsum("km,lkm->lkm", Pkmu, self.arrayLegendremugrid)
+            Pkmu = np.einsum("lkm,lkm->km", Pkint, arrayLegendremup, optimize=True)
+            Integrandmu = np.einsum(
+                "km,lkm->lkm", Pkmu, self.arrayLegendremugrid, optimize=True
+            )
         return 2 * np.trapz(Integrandmu, x=self.mugrid, axis=-1)
 
     def AP(self, bird: BirdPlus, q=None):
@@ -2428,45 +2398,24 @@ class APeffect(HasLogger):
         kp = self.kgrid / qperp * (1 + self.mugrid ** 2 * (F ** -2 - 1)) ** 0.5
         mup = self.mugrid / F * (1 + self.mugrid ** 2 * (F ** -2 - 1)) ** -0.5
         arrayLegendremup = np.array([legendre(2 * i)(mup) for i in range(self.Nlmax)])
+        coef = 1.0 / (qperp ** 2 * qpar)
 
         if bird.which == "all":
             # no effect on bird.Pstl, since the AP effect can be absorbed into coefficients
-            bird.P11l = (
-                1.0
-                / (qperp ** 2 * qpar)
-                * self.integrAP(bird.P11l, kp, arrayLegendremup, many=True)
-            )
-            bird.Pctl = (
-                1.0
-                / (qperp ** 2 * qpar)
-                * self.integrAP(bird.Pctl, kp, arrayLegendremup, many=True)
-            )
-            bird.Ploopl = (
-                1.0
-                / (qperp ** 2 * qpar)
-                * self.integrAP(bird.Ploopl, kp, arrayLegendremup, many=True)
+            bird.P11l = coef * self.integrAP(bird.P11l, kp, arrayLegendremup, many=True)
+            bird.Pctl = coef * self.integrAP(bird.Pctl, kp, arrayLegendremup, many=True)
+            bird.Ploopl = coef * self.integrAP(
+                bird.Ploopl, kp, arrayLegendremup, many=True
             )
         elif bird.which == "marg":
-            bird.fullPs = (
-                1.0
-                / (qperp ** 2 * qpar)
-                * self.integrAP(bird.fullPs, kp, arrayLegendremup, many=False)
+            bird.fullPs = coef * self.integrAP(
+                bird.fullPs, kp, arrayLegendremup, many=False
             )
-            bird.Pb3 = (
-                1.0
-                / (qperp ** 2 * qpar)
-                * self.integrAP(bird.Pb3, kp, arrayLegendremup, many=False)
-            )
-            bird.Pctl = (
-                1.0
-                / (qperp ** 2 * qpar)
-                * self.integrAP(bird.Pctl, kp, arrayLegendremup, many=True)
-            )
+            bird.Pb3 = coef * self.integrAP(bird.Pb3, kp, arrayLegendremup, many=False)
+            bird.Pctl = coef * self.integrAP(bird.Pctl, kp, arrayLegendremup, many=True)
         elif bird.which == "full":
-            bird.fullPs = (
-                1.0
-                / (qperp ** 2 * qpar)
-                * self.integrAP(bird.fullPs, kp, arrayLegendremup, many=False)
+            bird.fullPs = coef * self.integrAP(
+                bird.fullPs, kp, arrayLegendremup, many=False
             )
         else:
             raise ValueError(f"unexpected bird.which={bird.which}")
@@ -2480,10 +2429,6 @@ class APeffect(HasLogger):
         self.mpi_info("fiducial DA=%.5f, H=%.5f", self.DA, self.H)
         self.mpi_info("nbinsmu=%d", self.nbinsmu)
         self.mpi_info("Nlmax=%d", self.Nlmax)
-
-    def clear_cache(self):
-        self._cached_path1 = {}
-        self._cached_path2 = {}
 
 
 # deprecated

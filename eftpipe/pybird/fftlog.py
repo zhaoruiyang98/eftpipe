@@ -10,7 +10,7 @@ from numpy.fft import rfft
 from scipy.interpolate import CubicSpline
 
 
-def CoefWindow(N, window: float | None = 1):
+def CoefWindow(N: int, window: float = 1):
     """ FFTLog auxiliary function: window sending the FFT coefficients to 0 at the edges. From fast-pt """
     n = np.arange(-N // 2, N // 2 + 1)
     if window == 1:
@@ -130,8 +130,8 @@ class FFTLog(object):
         if not log_interp:
             interpfunc = CubicSpline(xin, f, axis=-1, extrapolate=False)
         else:
-            _ = CubicSpline(xin, f, axis=-1, extrapolate=False)
-            interpfunc = lambda x: _(np.log(x))
+            _interpfunc = CubicSpline(xin, f, axis=-1, extrapolate=False)
+            interpfunc = lambda x: _interpfunc(np.log(x))
 
         _shape = list(f.shape)[:-1]
         fx = np.zeros(tuple(_shape + [self.Nmax]), dtype=np.float64)
