@@ -1,5 +1,5 @@
 import numpy as np
-from eftpipe.pybird.pybird import FFTLog
+from eftpipe.pybird.fftlog import FFTLog
 
 
 def FFTLog_results():
