@@ -11,6 +11,33 @@ from scipy.special import loggamma
 _ComplexOrArrayT = TypeVar("_ComplexOrArrayT", complex, NDArray)
 
 
+def bessel_matrix(p: _ComplexOrArrayT, l: int) -> _ComplexOrArrayT:
+    r"""helper function to do bessel transfrom
+
+    Parameters
+    ----------
+    p : ndarray | complex
+        power
+    l : int
+        order of spherical bessel function
+
+    Returns
+    -------
+    ndarray | complex
+
+    Notes
+    -----
+    This function evaluates the following integral:
+
+    .. math::
+        \int_0^\infty s_1^{2+p} j_l(s_1)\;ds_1
+    
+    k dependence can be obtained by multiplying  the factor :math:`k^{-3-p}`
+    """
+    ret = np.exp(loggamma(0.5 * (3.0 + l + p)) - loggamma(0.5 * (l - p)))
+    return ret * np.power(2.0, 1.0 + p) * np.sqrt(pi)
+
+
 class FFTLog2D:
     """2D FFTLog algorithm"""
 
@@ -51,9 +78,8 @@ class FFTLog2D:
         yin: NDArray,
         zin: NDArray,
         extrap: str = "padding",
-        nf: int | None = None,
+        window: float | None = None,
     ) -> NDArray:
-
         f = interp2d(xin, yin, zin, kind="cubic")
         farr = np.zeros(shape=(self.Nxmax, self.Nymax), dtype=np.float64)
 
@@ -80,8 +106,8 @@ class FFTLog2D:
             / np.outer(np.power(self.x[0], self.xPow), np.power(self.y[0], self.yPow))
         )
 
-        if nf is not None:
-            out *= self.window(nf)
+        if window is not None:
+            out *= self.window(window)
 
         return out
 
@@ -91,56 +117,39 @@ class FFTLog2D:
         yin: NDArray,
         zin: NDArray,
         extrap: str = "padding",
-        nf: int | None = None,
+        window: float | None = None,
         *,
         k1: NDArray,
         k2: NDArray,
         l1: int,
         l2: int,
     ) -> NDArray:
-
-        Coef = self.Coef(xin, yin, zin, extrap=extrap, nf=nf)  # m, n
+        Coef = self.Coef(xin, yin, zin, extrap=extrap, window=window)  # m, n
         k1grid, xpowgrid = k1[:, newaxis], (-3.0 - self.xPow)[newaxis, :]
         # p, m broadcasting
-        M1 = np.power(k1grid, xpowgrid) * self.bessel_matrix_function(self.xPow, l1)
+        M1 = np.power(k1grid, xpowgrid) * bessel_matrix(self.xPow, l1)
         k2grid, ypowgrid = k2[:, newaxis], (-3.0 - self.yPow)[newaxis, :]
         # q, n broadcasting
-        M2 = np.power(k2grid, ypowgrid) * self.bessel_matrix_function(self.yPow, l2)
-        return np.real(np.einsum("mn,pm,qn->pq", Coef, M1, M2, optimize=True))
+        M2 = np.power(k2grid, ypowgrid) * bessel_matrix(self.yPow, l2)
+        return np.einsum("mn,pm,qn->pq", Coef, M1, M2, optimize=True).real
 
-    def bessel_matrix_function(self, p: _ComplexOrArrayT, l: int) -> _ComplexOrArrayT:
-        r"""helper function to do bessel transfrom
-
-        Parameters
-        ----------
-        p : ndarray | complex
-            power
-        l : int
-            order of spherical bessel function
-
-        Returns
-        -------
-        ndarray | complex
-
-        Notes
-        -----
-        This function evaluates the following integral:
-
-        .. math::
-            \int_0^\infty s_1^{2+p} j_l(s_1)\;ds_1
-        
-        k dependence can be obtained by multiplying  the factor :math:`k^{-3-p}`
+    def window(self, window: float) -> NDArray:
         """
-        out = np.exp(loggamma(0.5 * (3.0 + l + p)) - loggamma(0.5 * (l - p)))
-        return out * np.power(2.0, 1.0 + p) * np.sqrt(pi)
-
-    def window(self, nf: int) -> NDArray:
+        window : float
+            0 <= window <= 1
+        """
         fx = np.fft.fftfreq(self.Nxmax, d=1.0)
         fy = np.fft.fftfreq(self.Nymax, d=1.0)
-        fx_left, fx_right = fx[-nf], fx[nf]
-        fy_left, fy_right = fy[-nf], fy[nf]
+        nfx = int((1 - window) * self.Nxmax / 2)
+        nfy = int((1 - window) * self.Nymax / 2)
+        if nfx >= self.Nxmax // 2:
+            nfx -= 1
+        if nfy >= self.Nymax // 2:
+            nfy -= 1
+        fx_left, fx_right = fx[-nfx], fx[nfx]
+        fy_left, fy_right = fy[-nfy], fy[nfy]
         fx_min = np.min(fx)
-        fx_max = -fx_min  # standard order for fft
+        fx_max = -fx_min  # standard order of fft
         fy_min = np.min(fy)
         fy_max = -fy_min
 
