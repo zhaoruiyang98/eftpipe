@@ -34,8 +34,12 @@ def bessel_matrix(p: _ComplexOrArrayT, l: int) -> _ComplexOrArrayT:
     
     k dependence can be obtained by multiplying  the factor :math:`k^{-3-p}`
     """
-    ret = np.exp(loggamma(0.5 * (3.0 + l + p)) - loggamma(0.5 * (l - p)))
-    return ret * np.power(2.0, 1.0 + p) * np.sqrt(pi)
+    ret = np.exp(
+        (1.0 + p) * np.log(2.0)
+        + loggamma(0.5 * (3.0 + l + p))
+        - loggamma(0.5 * (l - p))
+    )
+    return ret * np.sqrt(pi)
 
 
 class FFTLog2D:

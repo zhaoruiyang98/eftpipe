@@ -9,6 +9,8 @@ Developed by [Ruiyang Zhao](mailto:zhaoruiyang19@mails.ucas.edu.cn) and [Xiaoyon
 - `cobaya` for likelihood and logging
 - `typing_extensions` for better type hints
 - `camb` or `classy` boltzamnn code (not necessary if you only want to run `eftpipe.pybird`)
+- `numba` for better performance, optional
+- `pandas` for large csv file loading, optional
 # Installation
 ## Installing all packages for analysis using Anaconda
 EFTPipe provides the theory and likelihood component for bayesian analysis of large-scale structure data. Typically people need extra packages for plotting, i.e., [getdist](https://getdist.readthedocs.io/en/latest/).

@@ -14,6 +14,9 @@ from typing import Any, cast, TYPE_CHECKING, Union
 # local
 from .fftlog import FFTLog
 from .resumfactor import Qawithhex
+from ..tools import is_main_process
+from ..tools import replace_suffix
+from ..tools import root_only
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
@@ -717,6 +720,10 @@ class Bird(object):
         self.Ps = np.empty(shape=(2, self.co.Nl, self.co.Nk))
         self.Cf = np.empty(shape=(2, self.co.Nl, self.co.Ns))
         self.fullPs = np.empty(shape=(self.co.Nl, self.co.Nk))
+        # integral constraint terms, "constant" part
+        # observational effects **after** fiber collision will have effect on it, e.g. binning
+        # The rationale is, pixelation is performed after fiber collision and affects typically large-scale modes
+        self.Picc = np.zeros(shape=(self.co.Nl, self.co.Nk))
 
         self.initialize()
 
@@ -1245,16 +1252,17 @@ class NonLinear(object):
 
         if save is True:
             try:
-                np.savez(
-                    os.path.join(path, f"pyegg{NFFT}_Nl{co.Nl}.npz"),
-                    Pow=self.fft.Pow,
-                    M22=self.M22,
-                    M13=self.M13,
-                    Mcf11=self.Mcf11,
-                    Mcf22=self.Mcf22,
-                    Mcf13=self.Mcf13,
-                    Mcfct=self.Mcfct,
-                )
+                if is_main_process():
+                    np.savez(
+                        os.path.join(path, f"pyegg{NFFT}_Nl{co.Nl}.npz"),
+                        Pow=self.fft.Pow,
+                        M22=self.M22,
+                        M13=self.M13,
+                        Mcf11=self.Mcf11,
+                        Mcf22=self.Mcf22,
+                        Mcf13=self.Mcf13,
+                        Mcfct=self.Mcfct,
+                    )
             except:
                 print("Can't save loop matrices at %s." % path)
 
@@ -1852,12 +1860,6 @@ def window_kgrid(kmax: float = 0.3, accboost: int = 1) -> NDArray:
     )
 
 
-def replace_suffix(path: Path, suffix: str) -> Path:
-    x = path.resolve()
-    out = x.parent / (x.stem + suffix)
-    return out
-
-
 class MetaInfoError(Exception):
     pass
 
@@ -2188,6 +2190,7 @@ class Window(HasLogger):
         deltap = np.concatenate([[0], deltap])
         return np.einsum("alkp,p->alkp", Wal_masked, deltap)
 
+    @root_only
     def _save_Wal(self):
         assert self.window_fourier_file
         self.mpi_info("Saving mask: %s", self.window_fourier_file)

@@ -22,6 +22,7 @@ if TYPE_CHECKING:
     from cobaya.theory import Provider
 
 # local
+from .icc import IntegralConstraint
 from .interface import CobayaCambInterface
 from .interface import CobayaClassyInterface
 from .pybird import pybird
@@ -159,19 +160,20 @@ class BirdPlus(pybird.Bird):
             Ploopl=self.Ploopl,
             Pctl=self.Pctl,
             Pstl=self.Pstl,
+            Picc=self.Picc,
         )
         for viewer in self._hooks:
             viewer.setreducePslb(self)
 
     def reducePslb(
-        self, *, b11AB, bloopAB, bctAB, bstAB, P11l, Ploopl, Pctl, Pstl
+        self, *, b11AB, bloopAB, bctAB, bstAB, P11l, Ploopl, Pctl, Pstl, Picc
     ) -> NDArray:
         Ps0 = np.einsum("b,lbx->lx", b11AB, P11l)
         Ps1 = np.einsum("b,lbx->lx", bloopAB, Ploopl) + np.einsum(
             "b,lbx->lx", bctAB, Pctl
         )
         Ps2 = np.einsum("b,lbx->lx", bstAB, Pstl)
-        return Ps0 + Ps1 + Ps2
+        return Ps0 + Ps1 + Ps2 + Picc
 
     def setreducePG(self, b1A: float, b1B: float) -> None:
 
@@ -234,6 +236,7 @@ class BirdSnapshot(BirdHook):
         self.Ploopl = bird.Ploopl.copy()
         self.Pctl = bird.Pctl.copy()
         self.Pstl = bird.Pstl.copy()
+        self.Picc = bird.Picc.copy()
 
     def setreducePslb(self, bird: BirdPlus) -> None:
         self.fullPs = bird.reducePslb(
@@ -245,6 +248,7 @@ class BirdSnapshot(BirdHook):
             Ploopl=self.Ploopl,
             Pctl=self.Pctl,
             Pstl=self.Pstl,
+            Picc=self.Picc,
         )
 
 
@@ -359,6 +363,7 @@ class Binning(BirdHook, HasLogger):
         self.Pctl = self.integrBinning(bird.Pctl)
         self.Ploopl = self.integrBinning(bird.Ploopl)
         self.Pstl = self.integrBinning(bird.Pstl)
+        self.Picc = self.integrBinning(bird.Picc)
 
     # override
     def setreducePslb(self, bird: BirdPlus) -> None:
@@ -371,6 +376,7 @@ class Binning(BirdHook, HasLogger):
             Ploopl=self.Ploopl,
             Pctl=self.Pctl,
             Pstl=self.Pstl,
+            Picc=self.Picc,
         )
 
     # override
@@ -537,6 +543,7 @@ class PluginsDict(TypedDict):
     IRresum: pybird.Resum
     APeffect: pybird.APeffect
     window: pybird.Window
+    icc: IntegralConstraint
     fiber: pybird.FiberCollision
 
 
@@ -631,6 +638,11 @@ class EFTLSSChild(HelperTheory):
         if self.with_window:
             self.plugins["_fiber"] = Initializer(
                 pybird.FiberCollision, self.config.get("fiber", {}), self.log
+            )
+        self.with_icc: bool = self.config.get("with_icc", False)
+        if self.with_icc:
+            self.plugins["_icc"] = Initializer(
+                IntegralConstraint, self.config.get("icc", {}), self.log
             )
         self.binning: Binning | None = None
         self._must_provide: defaultdict[str, dict[str, Any]] = defaultdict(dict)
@@ -727,6 +739,11 @@ class EFTLSSChild(HelperTheory):
                 co=self.co, name=self.get_name() + ".fiber"
             )
             msg_pool.append(("fiber enabled",))
+        if self.with_icc:
+            self.plugins["icc"] = self.plugins["_icc"].initialize(
+                co=self.co, name=self.get_name() + ".icc"
+            )
+            msg_pool.append(("Integral Constraint Correction (icc) enabled",))
         for msg in msg_pool:
             self.mpi_info(*msg)
 
@@ -1058,6 +1075,8 @@ class EFTLSSChild(HelperTheory):
                     plugins["window"].Window(bird)
                 if self.with_fiber:
                     plugins["fiber"].fibcolWindow(bird)
+                if self.with_icc:
+                    plugins["icc"].icc(bird)
                 if self.binning:
                     self.binning.kbinning(bird)
                     bird.attach_hook(self.binning)

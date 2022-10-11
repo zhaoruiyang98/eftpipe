@@ -19,6 +19,7 @@ from typing import (
 )
 from cobaya.log import LoggedError
 from cobaya.mpi import is_main_process
+from cobaya.mpi import root_only  # DO NOT delete this line
 from .typing import SimpleYaml
 from .typing import SupportsRichComparisonT
 
@@ -111,13 +112,18 @@ def group_lists(*args: list[SupportsRichComparisonT]) -> list[SupportsRichCompar
     return sorted(out.union(*args))
 
 
+def replace_suffix(path: Path, suffix: str) -> Path:
+    """support invalid suffix"""
+    return path.parent / (path.stem + suffix)
+
+
 @contextmanager
-def timer(name: str = ""):
+def timer(name: str = "", info: Callable = print):
     start = time.perf_counter()
     yield
     end = time.perf_counter()
     if is_main_process():
-        print(f"{name} took {end - start} seconds")
+        info(f"{name} took {end - start} seconds")
 
 
 class Initializer(Generic[_T]):

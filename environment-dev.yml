@@ -30,6 +30,7 @@ dependencies:
   # miscellaneous
   - ipython
   - conda-forge::line_profiler
+  - conda-forge::numba
   # end
   - pip
   - pip:
