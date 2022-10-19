@@ -52,8 +52,7 @@ def chain_coeff(l: int) -> float:
 
 
 class BirdPlus(pybird.Bird):
-    """enhanced version of pybird.Bird, support multi-tracer, hook and snapshot
-    """
+    """enhanced version of pybird.Bird, support multi-tracer, hook and snapshot"""
 
     _hooks: list[BirdHook]
     b1A: float
@@ -116,15 +115,15 @@ class BirdPlus(pybird.Bird):
 
         # cct -> cct / km**2, cr1 -> cr1 / km**2, cr2 -> cr2 / km**2
         # ce0 -> ce0 / nd, cemono -> cemono / nd / km**2, cequad -> cequad / nd / km**2
-        b11AB = np.array([b1A * b1B, (b1A + b1B) * f, f ** 2])
+        b11AB = np.array([b1A * b1B, (b1A + b1B) * f, f**2])
         bctAB = np.array(
             [
-                b1A * cctB / kmB ** 2 + b1B * cctA / kmA ** 2,
-                b1B * cr1A / kmA ** 2 + b1A * cr1B / kmB ** 2,
-                b1B * cr2A / kmA ** 2 + b1A * cr2B / kmB ** 2,
-                (cctA / kmA ** 2 + cctB / kmB ** 2) * f,
-                (cr1A / kmA ** 2 + cr1B / kmB ** 2) * f,
-                (cr2A / kmA ** 2 + cr2B / kmB ** 2) * f,
+                b1A * cctB / kmB**2 + b1B * cctA / kmA**2,
+                b1B * cr1A / kmA**2 + b1A * cr1B / kmB**2,
+                b1B * cr2A / kmA**2 + b1A * cr2B / kmB**2,
+                (cctA / kmA**2 + cctB / kmB**2) * f,
+                (cr1A / kmA**2 + cr1B / kmB**2) * f,
+                (cr2A / kmA**2 + cr2B / kmB**2) * f,
             ]
         )
         bloopAB = np.array(
@@ -144,7 +143,7 @@ class BirdPlus(pybird.Bird):
             ]
         )
         xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
-        xfactor2 = 0.5 * (1.0 / ndA / kmA ** 2 + 1.0 / ndB / kmB ** 2)
+        xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
         bstAB = np.array([ce0 * xfactor1, cemono * xfactor2, cequad * xfactor2])
 
         self.b11AB = b11AB
@@ -194,15 +193,15 @@ class BirdPlus(pybird.Bird):
         kmA, ndA, kmB, ndB = self.co.kmA, self.co.ndA, self.co.kmB, self.co.ndB
         PG: dict[str, Any] = {}
         PG["b3A"] = 1 / 2 * Ploopl[:, 3, :] + 1 / 2 * b1B * Ploopl[:, 7, :]
-        PG["cctA"] = b1B / kmA ** 2 * Pctl[:, 0, :] + f / kmA ** 2 * Pctl[:, 3, :]
-        PG["cr1A"] = b1B / kmA ** 2 * Pctl[:, 1, :] + f / kmA ** 2 * Pctl[:, 4, :]
-        PG["cr2A"] = b1B / kmA ** 2 * Pctl[:, 2, :] + f / kmA ** 2 * Pctl[:, 5, :]
+        PG["cctA"] = b1B / kmA**2 * Pctl[:, 0, :] + f / kmA**2 * Pctl[:, 3, :]
+        PG["cr1A"] = b1B / kmA**2 * Pctl[:, 1, :] + f / kmA**2 * Pctl[:, 4, :]
+        PG["cr2A"] = b1B / kmA**2 * Pctl[:, 2, :] + f / kmA**2 * Pctl[:, 5, :]
         PG["b3B"] = 1 / 2 * Ploopl[:, 3, :] + 1 / 2 * b1A * Ploopl[:, 7, :]
-        PG["cctB"] = b1A / kmB ** 2 * Pctl[:, 0, :] + f / kmB ** 2 * Pctl[:, 3, :]
-        PG["cr1B"] = b1A / kmB ** 2 * Pctl[:, 1, :] + f / kmB ** 2 * Pctl[:, 4, :]
-        PG["cr2B"] = b1A / kmB ** 2 * Pctl[:, 2, :] + f / kmB ** 2 * Pctl[:, 5, :]
+        PG["cctB"] = b1A / kmB**2 * Pctl[:, 0, :] + f / kmB**2 * Pctl[:, 3, :]
+        PG["cr1B"] = b1A / kmB**2 * Pctl[:, 1, :] + f / kmB**2 * Pctl[:, 4, :]
+        PG["cr2B"] = b1A / kmB**2 * Pctl[:, 2, :] + f / kmB**2 * Pctl[:, 5, :]
         xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
-        xfactor2 = 0.5 * (1.0 / ndA / kmA ** 2 + 1.0 / ndB / kmB ** 2)
+        xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
         PG["ce0"] = Pstl[:, 0, :] * xfactor1
         PG["cemono"] = Pstl[:, 1, :] * xfactor2
         PG["cequad"] = Pstl[:, 2, :] * xfactor2
@@ -210,17 +209,14 @@ class BirdPlus(pybird.Bird):
 
 
 class BirdHook:
-    """accept a BirdPlus object, and then do postprocessing
-    """
+    """accept a BirdPlus object, and then do postprocessing"""
 
     def setreducePslb(self, bird: BirdPlus) -> None:
-        """automatically invoked when BirdPlus.setreducePslb is called
-        """
+        """automatically invoked when BirdPlus.setreducePslb is called"""
         pass
 
     def setreducePG(self, bird: BirdPlus) -> None:
-        """automatically invoked when BirdPlus.setreducePG is called
-        """
+        """automatically invoked when BirdPlus.setreducePG is called"""
         pass
 
 
@@ -310,7 +306,8 @@ class Binning(BirdHook, HasLogger):
         self.loadBinning(self.kout)
         self.mpi_info("num of kgrids in each bin: %d", self.points[0].size)
         self.mpi_info(
-            "round the difference of last two kout to %d decimal places", self.decimals,
+            "round the difference of last two kout to %d decimal places",
+            self.decimals,
         )
 
     def loadBinning(self, setkout) -> None:
@@ -323,13 +320,13 @@ class Binning(BirdHook, HasLogger):
         binmax = kcentral + delta_k / 2
         self.binvol = np.array(
             [
-                quad(lambda k: k ** 2, kbinmin, kbinmax)[0]
+                quad(lambda k: k**2, kbinmin, kbinmax)[0]
                 for (kbinmin, kbinmax) in zip(binmin, binmax)
             ]
         )
         self.keff = np.array(
             [
-                quad(lambda k: k * k ** 2, kbinmin, kbinmax)[0]
+                quad(lambda k: k * k**2, kbinmin, kbinmax)[0]
                 for (kbinmin, kbinmax) in zip(binmin, binmax)
             ]
         )
@@ -352,7 +349,7 @@ class Binning(BirdHook, HasLogger):
             bounds_error=False,
             fill_value="extrapolate",
         )
-        res = np.trapz(Pkint(self.points) * self.points ** 2, x=self.points, axis=-1)
+        res = np.trapz(Pkint(self.points) * self.points**2, x=self.points, axis=-1)
         return res / self.binvol
 
     def kbinning(self, bird: BirdPlus) -> None:
@@ -467,7 +464,7 @@ class EFTLSS(Theory):
     ) -> dict[str, dict[str, Any]]:
         """redirect requirements to EFTLSSChild
 
-        For example, ``nonlinear_Plk_grid={{'LRG': {...}, 'ELG': {...}}}`` will 
+        For example, ``nonlinear_Plk_grid={{'LRG': {...}, 'ELG': {...}}}`` will
         be packed like ``{'LRG_results': {'nonlinear_Plk_grid': {...}}, 'ELG_results': {'nonlinear_Plk_grid': {...}}}``
 
         all requirements support ``default`` field
@@ -942,7 +939,10 @@ class EFTLSSChild(HelperTheory):
                     self._config_ls(k, v, chained=chained_get)
                 else:
                     self._config_ls(
-                        k, v, chained=chained_get, base="nonlinear_Plk_grid",
+                        k,
+                        v,
+                        chained=chained_get,
+                        base="nonlinear_Plk_grid",
                     )
                     # request nonlinear_Plk_interpolator, but no nonlinear_Plk_grid requirements
                     base = self._must_provide["nonlinear_Plk_grid"]
@@ -1004,8 +1004,7 @@ class EFTLSSChild(HelperTheory):
 
     @cached_property
     def _build_PG_table(self):
-        """depending on BirdPlus.reducePG
-        """
+        """depending on BirdPlus.reducePG"""
         prefix = self.prefix
         names = ("b3", "cct", "cr1", "cr2")
         stnames = ("ce0", "cemono", "cequad")
@@ -1062,7 +1061,7 @@ class EFTLSSChild(HelperTheory):
                 rdrag, h = boltzmann.rdrag, boltzmann.h
                 # fmt: off
                 bird = BirdPlus(
-                    kh, pkh, f, DA, H, self.zeff, which="all", co=self.co, rdrag=rdrag, h=h)
+                    kh, pkh, f, DA, H, self.zeff, co=self.co, rdrag=rdrag, h=h)
                 # fmt: on
                 self.nonlinear.PsCf(bird)
                 bird.setPsCfl()

@@ -47,7 +47,6 @@ except ImportError:
             ret[i, j, k, l] = value
         return ret
 
-
 else:
     from numba import int64, float64
     from numba import njit
@@ -187,14 +186,14 @@ class IntegralConstraint(HasLogger):
 
     ..math::
         -\left(P_{\mathrm{shot}}\mathcal{W}_{\ell_{1}}^{\mathrm{sn}}(s_{1})+\sum_{\ell_{2},s_{2}}\frac{4\pi s_{2}^{2}ds_{2}}{2\ell_{2}+1}\mathcal{W}_{\ell_{1},\ell_{2}}^{\mathrm{ic}}(s_{1},s_{2})\xi_{\ell_{2}}(s_{2})\right)
-    
+
     this formula applies to window-convolved correlation function,
     where the first term can be directly FFTLog to fourier space,
     and the second term is window-like convolution in fourier space, ie.
 
     ..math::
         P_{\ell}^{\mathrm{ic}}(k) = -\sum_{\ell'}\int dk'\;W_{\ell,\ell'}^{\mathrm{ic}}(k,k')P_{\ell'}(k')
-    
+
     where the window matrix can be evaluated via FFTLog2D
 
     ..math::
@@ -392,7 +391,10 @@ class IntegralConstraint(HasLogger):
         s = data[:, 0]
         xi = data[:, 1:].T
         fft = FFTLog(
-            Nmax=self.meta["Nmax"], xmin=s[0], xmax=s[-1], bias=self.meta["bias"],
+            Nmax=self.meta["Nmax"],
+            xmin=s[0],
+            xmax=s[-1],
+            bias=self.meta["bias"],
         )
         # a, n
         coef = fft.Coef(s, xi, extrap="padding", window=self.meta["window_param"])
@@ -427,9 +429,9 @@ class IntegralConstraint(HasLogger):
         fft2d = FFTLog2D(
             Nxmax=self.meta["Nxmax"],
             Nymax=self.meta["Nymax"],
-            xmin=10 ** -3,
+            xmin=10**-3,
             xmax=s1in[-1],
-            ymin=10 ** -3,
+            ymin=10**-3,
             ymax=s2in[-1],
             xbias=self.meta["xbias"],
             ybias=self.meta["ybias"],
@@ -452,7 +454,7 @@ class IntegralConstraint(HasLogger):
                     8.0
                     * np.real((-1j) ** (2 * il1) * (1j) ** (2 * il2))
                     / (2 * (2 * il2) + 1)
-                    * self.p ** 2
+                    * self.p**2
                 )
         return Wal
 
@@ -479,7 +481,7 @@ class IntegralConstraint(HasLogger):
             with meta_file.open("w") as f:
                 json.dump(self.meta, f, indent=2)
 
-    def integrWindow(self, P, many=False):
+    def integrWindow(self, P):
         """
         Convolve the window functions to a power spectrum P
         """
@@ -492,16 +494,13 @@ class IntegralConstraint(HasLogger):
             fill_value="extrapolate",
         )(self.p)
         # (multipole l, multipole ' p, k, k' m) , (multipole ', power pectra s, k' m)
-        if many:
-            return np.einsum("alkp,lsp->ask", self.Waldk, Pk, optimize=True)
-        else:
-            return np.einsum("alkp,lp->ak", self.Waldk, Pk, optimize=True)
+        return np.einsum("alkp,lsp->ask", self.Waldk, Pk, optimize=True)
 
     def icc(self, bird: BirdPlus):
-        bird.P11l -= self.integrWindow(bird.P11l, many=True)
-        bird.Pctl -= self.integrWindow(bird.Pctl, many=True)
-        bird.Ploopl -= self.integrWindow(bird.Ploopl, many=True)
-        bird.Pstl -= self.integrWindow(bird.Pstl, many=True)
+        bird.P11l -= self.integrWindow(bird.P11l)
+        bird.Pctl -= self.integrWindow(bird.Pctl)
+        bird.Ploopl -= self.integrWindow(bird.Ploopl)
+        bird.Pstl -= self.integrWindow(bird.Pstl)
         assert self.PSN is not None
         bird.Picc -= self.PSN
         if self.snapshot:

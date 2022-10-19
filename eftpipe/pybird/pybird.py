@@ -24,59 +24,59 @@ if TYPE_CHECKING:
 
 
 def cH(Om, a):
-    """ LCDM growth rate auxiliary function """
-    return np.sqrt(Om / a + a ** 2 * (1 - Om))
+    """LCDM growth rate auxiliary function"""
+    return np.sqrt(Om / a + a**2 * (1 - Om))
 
 
 def DgN(Om, a):
-    """ LCDM growth rate auxiliary function """
+    """LCDM growth rate auxiliary function"""
     return 5.0 / 2 * Om * cH(Om, a) / a * quad(lambda x: cH(Om, x) ** -3, 0, a)[0]
 
 
 def fN(Om, z):
-    """ LCDM growth rate """
+    """LCDM growth rate"""
     a = 1.0 / (1.0 + z)
     return (Om * (5 * a - 3 * DgN(Om, a))) / (
-        2.0 * (a ** 3 * (1 - Om) + Om) * DgN(Om, a)
+        2.0 * (a**3 * (1 - Om) + Om) * DgN(Om, a)
     )
 
 
 def Hubble(Om, z):
-    """ LCDM AP parameter auxiliary function """
+    """LCDM AP parameter auxiliary function"""
     return ((Om) * (1 + z) ** 3.0 + (1 - Om)) ** 0.5
 
 
 def DAfunc(Om, z):
-    """ LCDM AP parameter auxiliary function """
+    """LCDM AP parameter auxiliary function"""
     r = quad(lambda x: 1.0 / Hubble(Om, x), 0, z)[0]
     return r / (1 + z)
 
 
 def W2D(x):
-    """ Fiber collision effective window method auxiliary function  """
+    """Fiber collision effective window method auxiliary function"""
     return (2.0 * j1(x)) / x
 
 
 def Hllp(l, lp, x):
-    """ Fiber collision effective window method auxiliary function  """
+    """Fiber collision effective window method auxiliary function"""
     if l == 2 and lp == 0:
-        return x ** 2 - 1.0
+        return x**2 - 1.0
     if l == 4 and lp == 0:
-        return 1.75 * x ** 4 - 2.5 * x ** 2 + 0.75
+        return 1.75 * x**4 - 2.5 * x**2 + 0.75
     if l == 4 and lp == 2:
-        return x ** 4 - x ** 2
+        return x**4 - x**2
     if l == 6 and lp == 0:
-        return 4.125 * x ** 6 - 7.875 * x ** 4 + 4.375 * x ** 2 - 0.625
+        return 4.125 * x**6 - 7.875 * x**4 + 4.375 * x**2 - 0.625
     if l == 6 and lp == 2:
-        return 2.75 * x ** 6 - 4.5 * x ** 4 + 7.0 / 4.0 * x ** 2
+        return 2.75 * x**6 - 4.5 * x**4 + 7.0 / 4.0 * x**2
     if l == 6 and lp == 4:
-        return x ** 6 - x ** 4
+        return x**6 - x**4
     else:
         return x * 0.0
 
 
 def fllp_IR(l, lp, k, q, Dfc):
-    """ Fiber collision effective window method auxiliary function  """
+    """Fiber collision effective window method auxiliary function"""
     # IR q < k
     # q is an array, k is a scalar
     if l == lp:
@@ -92,7 +92,7 @@ def fllp_IR(l, lp, k, q, Dfc):
 
 
 def fllp_UV(l, lp, k, q, Dfc):
-    """ Fiber collision effective window method auxiliary function  """
+    """Fiber collision effective window method auxiliary function"""
     # UV q > k
     # q is an array, k is a scalar
     if l == lp:
@@ -128,7 +128,7 @@ M13b = {
 
 
 def M13a(n1):
-    """ Common part of the 13-loop matrices """
+    """Common part of the 13-loop matrices"""
     return np.tan(n1 * pi) / (14.0 * (-3 + n1) * (-2 + n1) * (-1 + n1) * n1 * pi)
 
 
@@ -168,26 +168,26 @@ M22b = {
 
 
 def M22a(n1, n2):
-    """ Common part of the 22-loop matrices """
+    """Common part of the 22-loop matrices"""
     return exp(loggamma(1.5 - n1) + loggamma(1.5 - n2) + loggamma(-1.5 + n1 + n2)) / (
-        8.0 * pi ** 1.5 * exp(loggamma(n1) + loggamma(3 - n1 - n2) + loggamma(n2))
+        8.0 * pi**1.5 * exp(loggamma(n1) + loggamma(3 - n1 - n2) + loggamma(n2))
     )
 
 
 def MPC(l, pn):
-    r""" matrix for spherical bessel transform from power spectrum to correlation function 
+    r"""matrix for spherical bessel transform from power spectrum to correlation function
     Notes:
     -----
     The explicit expression can be written as:
 
-    .. math:: 
+    .. math::
         \frac{1}{2\pi^2}\int_0^\infty t^2 t^{-2pn}j_l(t)\;dt
-    
+
     Note here if you want full result, this expression should be multiplied by :math:`s^{-3+2pn}`
     """
     # return pi**-1.5 * 2.**(-2. * pn) * gamma(1.5 + l / 2. - pn) / gamma(l / 2. + pn)
     return (
-        pi ** -1.5
+        pi**-1.5
         * 2.0 ** (-2.0 * pn)
         * exp(loggamma(1.5 + l / 2.0 - pn) - loggamma(l / 2.0 + pn))
     )
@@ -608,10 +608,6 @@ class Bird(object):
     ----------
     co : class, optional
         An object of type Common() used to share data
-    which : string, optional
-        Options to choose (default: 'full'):
-        - 'full': to compute with a given cosmology and a given set of EFT parameters. This is the fastest evaluation.
-        - 'all': to compute with a given cosmology only. Bird(object) will store all terms factorized from the EFT parameters.
     f : float
         Growth rate (for redshift space distortion)
     DA : float, optional
@@ -668,14 +664,11 @@ class Bird(object):
         DA=None,
         H=None,
         z=None,
-        which="full",
         co=common,
         rdrag: float | None = None,
         h: float | None = None,
     ):
         self.co = co
-
-        self.which = which
 
         self.f: float = f  # fN(Omega_m, z)
         self.DA = DA
@@ -691,23 +684,15 @@ class Bird(object):
         self.P22 = np.empty(shape=(self.co.N22, self.co.Nk))
         self.P13 = np.empty(shape=(self.co.N13, self.co.Nk))
 
-        if self.which == "all":
-            self.Ploopl = np.empty(shape=(self.co.Nl, self.co.Nloop, self.co.Nk))
-            self.Cloopl = np.empty(shape=(self.co.Nl, self.co.Nloop, self.co.Ns))
-            self.P11l = np.empty(shape=(self.co.Nl, self.co.N11, self.co.Nk))
-            self.Pctl = np.empty(shape=(self.co.Nl, self.co.Nct, self.co.Nk))
-            self.P22l = np.empty(shape=(self.co.Nl, self.co.N22, self.co.Nk))
-            self.P13l = np.empty(shape=(self.co.Nl, self.co.N13, self.co.Nk))
-            self.Pb3 = np.empty(shape=(self.co.Nl, self.co.Nk))
-            # stochastic terms
-            self.Pstl = np.empty(shape=(self.co.Nl, 3, self.co.Nk))
-
-        elif self.which == "marg":
-            self.full = False
-            self.Pctl = np.empty(shape=(self.co.Nl, self.co.Nct, self.co.Nk))
-            self.P13l = np.empty(shape=(self.co.Nl, self.co.N13, self.co.Nk))
-            self.Pb3 = np.empty(shape=(self.co.Nl, self.co.Nk))
-            self.Cb3 = np.empty(shape=(self.co.Nl, self.co.Ns))
+        self.Ploopl = np.empty(shape=(self.co.Nl, self.co.Nloop, self.co.Nk))
+        self.Cloopl = np.empty(shape=(self.co.Nl, self.co.Nloop, self.co.Ns))
+        self.P11l = np.empty(shape=(self.co.Nl, self.co.N11, self.co.Nk))
+        self.Pctl = np.empty(shape=(self.co.Nl, self.co.Nct, self.co.Nk))
+        self.P22l = np.empty(shape=(self.co.Nl, self.co.N22, self.co.Nk))
+        self.P13l = np.empty(shape=(self.co.Nl, self.co.N13, self.co.Nk))
+        self.Pb3 = np.empty(shape=(self.co.Nl, self.co.Nk))
+        # stochastic terms
+        self.Pstl = np.empty(shape=(self.co.Nl, 3, self.co.Nk))
 
         self.C11 = np.empty(shape=(self.co.Nl, self.co.Ns))
         self.C22 = np.empty(shape=(self.co.Nl, self.co.N22, self.co.Ns))
@@ -730,135 +715,10 @@ class Bird(object):
     def initialize(self):
         pass
 
-    def setBias(self, bs):
-        """ For option: which='full'. Given an array of EFT parameters, set them among linear, loops and counter terms, and among multipoles
-
-        Parameters
-        ----------
-        bs : array
-            An array of 7 EFT parameters: b_1, b_2, b_3, b_4, c_{ct}/k_{nl}^2, c_{r,1}/k_{m}^2, c_{r,2}/k_{m}^2
-        """
-        b1, b2, b3, b4, b5, b6, b7 = bs
-        f = self.f
-        for i in range(self.co.Nl):
-            l = 2 * i
-            self.b11[i] = (
-                b1 ** 2 * mu[0][l] + 2.0 * b1 * f * mu[2][l] + f ** 2 * mu[4][l]
-            )
-            self.b22[i] = np.array(
-                [
-                    b1 ** 2 * mu[0][l],
-                    b1 * b2 * mu[0][l],
-                    b1 * b4 * mu[0][l],
-                    b2 ** 2 * mu[0][l],
-                    b2 * b4 * mu[0][l],
-                    b4 ** 2 * mu[0][l],
-                    b1 ** 2 * f * mu[2][l],
-                    b1 * b2 * f * mu[2][l],
-                    b1 * b4 * f * mu[2][l],
-                    b1 * f * mu[2][l],
-                    b2 * f * mu[2][l],
-                    b4 * f * mu[2][l],
-                    b1 ** 2 * f ** 2 * mu[2][l],
-                    b1 ** 2 * f ** 2 * mu[4][l],
-                    b1 * f ** 2 * mu[2][l],
-                    b1 * f ** 2 * mu[4][l],
-                    b2 * f ** 2 * mu[2][l],
-                    b2 * f ** 2 * mu[4][l],
-                    b4 * f ** 2 * mu[2][l],
-                    b4 * f ** 2 * mu[4][l],
-                    f ** 2 * mu[4][l],
-                    b1 * f ** 3 * mu[4][l],
-                    b1 * f ** 3 * mu[6][l],
-                    f ** 3 * mu[4][l],
-                    f ** 3 * mu[6][l],
-                    f ** 4 * mu[4][l],
-                    f ** 4 * mu[6][l],
-                    f ** 4 * mu[8][l],
-                ]
-            )
-            self.b13[i] = np.array(
-                [
-                    b1 ** 2 * mu[0][l],
-                    b1 * b3 * mu[0][l],
-                    b1 ** 2 * f * mu[2][l],
-                    b1 * f * mu[2][l],
-                    b3 * f * mu[2][l],
-                    b1 * f ** 2 * mu[2][l],
-                    b1 * f ** 2 * mu[4][l],
-                    f ** 2 * mu[4][l],
-                    f ** 3 * mu[4][l],
-                    f ** 3 * mu[6][l],
-                ]
-            )
-            self.bct[i] = 2.0 * b1 * (
-                b5 * mu[0][l] + b6 * mu[2][l] + b7 * mu[4][l]
-            ) + 2.0 * f * (b5 * mu[2][l] + b6 * mu[4][l] + b7 * mu[6][l])
-
-    def setPs(self, bs):
-        """ For option: which='full'. Given an array of EFT parameters, multiplies them accordingly to the power spectrum multipole terms and adds the resulting terms together per loop order
-
-        Parameters
-        ----------
-        bs : array
-            An array of 7 EFT parameters: b_1, b_2, b_3, b_4, c_{ct}/k_{nl}^2, c_{r,1}/k_{m}^2, c_{r,2}/k_{m}^2
-        """
-        self.setBias(bs)
-        self.Ps[0] = np.einsum("l,x->lx", self.b11, self.P11)
-        self.Ps[1] = np.einsum("lb,bx->lx", self.b22, self.P22)
-        for l in range(self.co.Nl):
-            self.Ps[1, l] -= self.Ps[1, l, 0]
-        self.Ps[1] += np.einsum("lb,bx->lx", self.b13, self.P13) + np.einsum(
-            "l,x,x->lx", self.bct, self.co.k ** 2, self.P11
-        )
-
-    def setCf(self, bs):
-        """ For option: which='full'. Given an array of EFT parameters, multiply them accordingly to the correlation function multipole terms
-
-        Parameters
-        ----------
-        bs : array
-            An array of 7 EFT parameters: b_1, b_2, b_3, b_4, c_{ct}/k_{nl}^2, c_{r,1}/k_{m}^2, c_{r,2}/k_{m}^2
-        """
-        self.setBias(bs)
-        self.Cf[0] = np.einsum("l,lx->lx", self.b11, self.C11)
-        self.Cf[1] = (
-            np.einsum("lb,lbx->lx", self.b22, self.C22)
-            + np.einsum("lb,lbx->lx", self.b13, self.C13)
-            + np.einsum("l,lx->lx", self.bct, self.Cct)
-        )
-
-    def setPsCf(self, bs):
-        """ For option: which='full'. Given an array of EFT parameters, multiply them accordingly to the power spectrum and correlation function multipole terms
-
-        Parameters
-        ----------
-        bs : array
-            An array of 7 EFT parameters: b_1, b_2, b_3, b_4, c_{ct}/k_{nl}^2, c_{r,1}/k_{m}^2, c_{r,2}/k_{m}^2
-        """
-        self.setBias(bs)
-        self.Ps[0] = np.einsum("l,x->lx", self.b11, self.P11)
-        self.Ps[1] = np.einsum("lb,bx->lx", self.b22, self.P22)
-        for l in range(self.co.Nl):
-            self.Ps[1, l] -= self.Ps[1, l, 0]
-        self.Ps[1] += np.einsum("lb,bx->lx", self.b13, self.P13) + np.einsum(
-            "l,x,x->lx", self.bct, self.co.k ** 2, self.P11
-        )
-        self.Cf[0] = np.einsum("l,lx->lx", self.b11, self.C11)
-        self.Cf[1] = (
-            np.einsum("lb,lbx->lx", self.b22, self.C22)
-            + np.einsum("lb,lbx->lx", self.b13, self.C13)
-            + np.einsum("l,lx->lx", self.bct, self.Cct)
-        )
-
-    def setfullPs(self):
-        """ For option: which='full'. Adds together the linear and the loop parts to get the full power spectrum multipoles """
-        self.fullPs = np.sum(self.Ps, axis=0)
-
     def setPsCfl(self):
-        """ For option: which='full'. Creates multipoles for each term weighted accordingly """
+        """For option: which='all'. Creates multipoles for each term weighted accordingly"""
         self.P11l = np.einsum("x,ln->lnx", self.P11, self.co.l11)
-        self.Pctl = np.einsum("x,x,ln->lnx", self.co.k ** 2, self.P11, self.co.lct)
+        self.Pctl = np.einsum("x,x,ln->lnx", self.co.k**2, self.P11, self.co.lct)
         self.P22l = np.einsum("nx,ln->lnx", self.P22, self.co.l22)
         self.P13l = np.einsum("nx,ln->lnx", self.P13, self.co.l13)
 
@@ -869,46 +729,46 @@ class Bird(object):
         self.setPstl()
 
     def reducePsCfl(self):
-        """ For option: which='all'. Regroups terms that share the same EFT parameter(s) """
+        """For option: which='all'. Regroups terms that share the same EFT parameter(s)"""
         f1 = self.f
 
         self.Ploopl[:, 0] = (
-            f1 ** 2 * self.P22l[:, 20]
-            + f1 ** 3 * self.P22l[:, 23]
-            + f1 ** 3 * self.P22l[:, 24]
-            + f1 ** 4 * self.P22l[:, 25]
-            + f1 ** 4 * self.P22l[:, 26]
-            + f1 ** 4 * self.P22l[:, 27]
-            + f1 ** 2 * self.P13l[:, 7]
-            + f1 ** 3 * self.P13l[:, 8]
-            + f1 ** 3 * self.P13l[:, 9]
+            f1**2 * self.P22l[:, 20]
+            + f1**3 * self.P22l[:, 23]
+            + f1**3 * self.P22l[:, 24]
+            + f1**4 * self.P22l[:, 25]
+            + f1**4 * self.P22l[:, 26]
+            + f1**4 * self.P22l[:, 27]
+            + f1**2 * self.P13l[:, 7]
+            + f1**3 * self.P13l[:, 8]
+            + f1**3 * self.P13l[:, 9]
         )  # *1
         self.Ploopl[:, 1] = (
             f1 * self.P22l[:, 9]
-            + f1 ** 2 * self.P22l[:, 14]
-            + f1 ** 2 * self.P22l[:, 15]
-            + f1 ** 3 * self.P22l[:, 21]
-            + f1 ** 3 * self.P22l[:, 22]
+            + f1**2 * self.P22l[:, 14]
+            + f1**2 * self.P22l[:, 15]
+            + f1**3 * self.P22l[:, 21]
+            + f1**3 * self.P22l[:, 22]
             + f1 * self.P13l[:, 3]
-            + f1 ** 2 * self.P13l[:, 5]
-            + f1 ** 2 * self.P13l[:, 6]
+            + f1**2 * self.P13l[:, 5]
+            + f1**2 * self.P13l[:, 6]
         )  # *b1
         self.Ploopl[:, 2] = (
             f1 * self.P22l[:, 10]
-            + f1 ** 2 * self.P22l[:, 16]
-            + f1 ** 2 * self.P22l[:, 17]
+            + f1**2 * self.P22l[:, 16]
+            + f1**2 * self.P22l[:, 17]
         )  # *b2
         self.Ploopl[:, 3] = f1 * self.P13l[:, 4]  # *b3
         self.Ploopl[:, 4] = (
             f1 * self.P22l[:, 11]
-            + f1 ** 2 * self.P22l[:, 18]
-            + f1 ** 2 * self.P22l[:, 19]
+            + f1**2 * self.P22l[:, 18]
+            + f1**2 * self.P22l[:, 19]
         )  # *b4
         self.Ploopl[:, 5] = (
             self.P22l[:, 0]
             + f1 * self.P22l[:, 6]
-            + f1 ** 2 * self.P22l[:, 12]
-            + f1 ** 2 * self.P22l[:, 13]
+            + f1**2 * self.P22l[:, 12]
+            + f1**2 * self.P22l[:, 13]
             + self.P13l[:, 0]
             + f1 * self.P13l[:, 2]
         )  # *b1*b1
@@ -920,38 +780,38 @@ class Bird(object):
         self.Ploopl[:, 11] = self.P22l[:, 5]  # *b4*b4
 
         self.Cloopl[:, 0] = (
-            f1 ** 2 * self.C22[:, 20]
-            + f1 ** 3 * self.C22[:, 23]
-            + f1 ** 3 * self.C22[:, 24]
-            + f1 ** 4 * self.C22[:, 25]
-            + f1 ** 4 * self.C22[:, 26]
-            + f1 ** 4 * self.C22[:, 27]
-            + f1 ** 2 * self.C13[:, 7]
-            + f1 ** 3 * self.C13[:, 8]
-            + f1 ** 3 * self.C13[:, 9]
+            f1**2 * self.C22[:, 20]
+            + f1**3 * self.C22[:, 23]
+            + f1**3 * self.C22[:, 24]
+            + f1**4 * self.C22[:, 25]
+            + f1**4 * self.C22[:, 26]
+            + f1**4 * self.C22[:, 27]
+            + f1**2 * self.C13[:, 7]
+            + f1**3 * self.C13[:, 8]
+            + f1**3 * self.C13[:, 9]
         )  # *1
         self.Cloopl[:, 1] = (
             f1 * self.C22[:, 9]
-            + f1 ** 2 * self.C22[:, 14]
-            + f1 ** 2 * self.C22[:, 15]
-            + f1 ** 3 * self.C22[:, 21]
-            + f1 ** 3 * self.C22[:, 22]
+            + f1**2 * self.C22[:, 14]
+            + f1**2 * self.C22[:, 15]
+            + f1**3 * self.C22[:, 21]
+            + f1**3 * self.C22[:, 22]
             + f1 * self.C13[:, 3]
-            + f1 ** 2 * self.C13[:, 5]
-            + f1 ** 2 * self.C13[:, 6]
+            + f1**2 * self.C13[:, 5]
+            + f1**2 * self.C13[:, 6]
         )  # *b1
         self.Cloopl[:, 2] = (
-            f1 * self.C22[:, 10] + f1 ** 2 * self.C22[:, 16] + f1 ** 2 * self.C22[:, 17]
+            f1 * self.C22[:, 10] + f1**2 * self.C22[:, 16] + f1**2 * self.C22[:, 17]
         )  # *b2
         self.Cloopl[:, 3] = f1 * self.C13[:, 4]  # *b3
         self.Cloopl[:, 4] = (
-            f1 * self.C22[:, 11] + f1 ** 2 * self.C22[:, 18] + f1 ** 2 * self.C22[:, 19]
+            f1 * self.C22[:, 11] + f1**2 * self.C22[:, 18] + f1**2 * self.C22[:, 19]
         )  # *b4
         self.Cloopl[:, 5] = (
             self.C22[:, 0]
             + f1 * self.C22[:, 6]
-            + f1 ** 2 * self.C22[:, 12]
-            + f1 ** 2 * self.C22[:, 13]
+            + f1**2 * self.C22[:, 12]
+            + f1**2 * self.C22[:, 13]
             + self.C13[:, 0]
             + f1 * self.C13[:, 2]
         )  # *b1*b1
@@ -967,10 +827,10 @@ class Bird(object):
     def setPstl(self, ks: NDArray | None = None):
         if ks is None:
             Nk = self.co.Nk
-            ks2 = self.co.k ** 2
+            ks2 = self.co.k**2
         else:
             Nk = ks.shape[0]
-            ks2 = ks ** 2
+            ks2 = ks**2
         Nl = self.co.Nl
         self.Pstl = np.zeros(shape=(Nl, 3, Nk), dtype=np.float64)
         self.Pstl[0, 0, :] = np.ones(shape=(Nk,), dtype=np.float64)
@@ -979,7 +839,7 @@ class Bird(object):
             self.Pstl[1, 2, :] = ks2
 
     def setreducePslb(self, bs):
-        """ For option: which='all'. Given an array of EFT parameters, multiply them accordingly to the power spectrum multipole regrouped terms and adds the resulting terms together per loop order.
+        """For option: which='all'. Given an array of EFT parameters, multiply them accordingly to the power spectrum multipole regrouped terms and adds the resulting terms together per loop order.
 
         Parameters
         ----------
@@ -989,7 +849,7 @@ class Bird(object):
         b1, b2, b3, b4, b5, b6, b7 = bs
         f = self.f
 
-        b11 = np.array([b1 ** 2, 2.0 * b1 * f, f ** 2])
+        b11 = np.array([b1**2, 2.0 * b1 * f, f**2])
         bct = np.array(
             [
                 2.0 * b1 * b5,
@@ -1016,10 +876,6 @@ class Bird(object):
                 b4 * b4,
             ]
         )
-        # self.Ps[0] = np.einsum('b,lbx->lx', b11, self.P11l)
-        # self.Ps[1] = np.einsum('b,lbx->lx', bloop, self.Ploopl)
-        # for l in range(self.co.Nl): self.Ps[1,l] -= self.Ps[1,l,0]
-        # self.Ps[1] += np.einsum('b,lbx->lx', bct, self.Pctl)
         Ps0 = np.einsum("b,lbx->lx", b11, self.P11l)
         Ps1 = np.einsum("b,lbx->lx", bloop, self.Ploopl) + np.einsum(
             "b,lbx->lx", bct, self.Pctl
@@ -1027,149 +883,19 @@ class Bird(object):
         self.fullPs = Ps0 + Ps1
 
     def subtractShotNoise(self):
-        """ For option: which='all'. Subtract the constant stochastic term from the (22-)loop """
+        """For option: which='all'. Subtract the constant stochastic term from the (22-)loop"""
         for l in range(self.co.Nl):
             for n in range(self.co.Nloop):
                 shotnoise = self.Ploopl[l, n, 0]
                 self.Ploopl[l, n] -= shotnoise
 
-    def formatTaylor(self):
-        """ An auxiliary to pipe PyBird with TBird: puts Bird(object) power spectrum multipole terms into the right shape for TBird """
-        allk = np.concatenate([self.co.k, self.co.k]).reshape(-1, 1)
-        Plin = np.flip(
-            np.einsum(
-                "n,lnk->lnk", np.array([1.0, 2.0 * self.f, self.f ** 2]), self.P11l
-            ),
-            axis=1,
-        )
-        Plin = np.concatenate(np.einsum("lnk->lkn", Plin), axis=0)
-        Plin = np.hstack((allk, Plin))
-        Ploop1 = np.concatenate(np.einsum("lnk->lkn", self.Ploopl), axis=0)
-        Ploop2 = np.einsum(
-            "n,lnk->lnk",
-            np.array([2.0, 2.0, 2.0, 2.0 * self.f, 2.0 * self.f, 2.0 * self.f]),
-            self.Pctl,
-        )
-        Ploop2 = np.concatenate(np.einsum("lnk->lkn", Ploop2), axis=0)
-        Ploop = np.hstack((allk, Ploop1, Ploop2))
-        return Plin, Ploop
-
-    def setmargPsCfl(self, bs):
-        """ For option: which='marg'. Given an array of EFT parameters, multiply them accordingly to the power spectrum multipole terms and adds the resulting terms together per loop-order and differentiating parts with an EFT parameter appearing only linearly in the power spectrum from the others: {b_3}, {c_{i}} in one side, {b_1, b_2, b_4} on the other.
-
-        Parameters
-        ----------
-        bs : array
-            An array of 7 EFT parameters: b_1, b_2, b_3, b_4, c_{ct}/k_{nl}^2, c_{r,1}/k_{m}^2, c_{r,2}/k_{m}^2
-        """
-        b1, b2, _, b4, _, _, _ = bs
-        f = self.f
-
-        for i in range(self.co.Nl):
-            l = 2 * i
-            self.b11[i] = (
-                b1 ** 2 * mu[0][l] + 2.0 * b1 * f * mu[2][l] + f ** 2 * mu[4][l]
-            )
-            self.b22[i] = np.array(
-                [
-                    b1 ** 2 * mu[0][l],
-                    b1 * b2 * mu[0][l],
-                    b1 * b4 * mu[0][l],
-                    b2 ** 2 * mu[0][l],
-                    b2 * b4 * mu[0][l],
-                    b4 ** 2 * mu[0][l],
-                    b1 ** 2 * f * mu[2][l],
-                    b1 * b2 * f * mu[2][l],
-                    b1 * b4 * f * mu[2][l],
-                    b1 * f * mu[2][l],
-                    b2 * f * mu[2][l],
-                    b4 * f * mu[2][l],
-                    b1 ** 2 * f ** 2 * mu[2][l],
-                    b1 ** 2 * f ** 2 * mu[4][l],
-                    b1 * f ** 2 * mu[2][l],
-                    b1 * f ** 2 * mu[4][l],
-                    b2 * f ** 2 * mu[2][l],
-                    b2 * f ** 2 * mu[4][l],
-                    b4 * f ** 2 * mu[2][l],
-                    b4 * f ** 2 * mu[4][l],
-                    f ** 2 * mu[4][l],
-                    b1 * f ** 3 * mu[4][l],
-                    b1 * f ** 3 * mu[6][l],
-                    f ** 3 * mu[4][l],
-                    f ** 3 * mu[6][l],
-                    f ** 4 * mu[4][l],
-                    f ** 4 * mu[6][l],
-                    f ** 4 * mu[8][l],
-                ]
-            )
-
-        self.P13l = np.einsum("nx,ln->lnx", self.P13, self.co.l13)
-        self.C13 = np.einsum("lnx,ln->lnx", self.C13, self.co.l13)
-
-        b13nob3 = np.array([1.0, b1, b1 ** 2])
-        P13nob3 = np.array(
-            [
-                f ** 2 * self.P13l[:, 7]
-                + f ** 3 * self.P13l[:, 8]
-                + f ** 3 * self.P13l[:, 9],  # *1
-                +f * self.P13l[:, 3]
-                + f ** 2 * self.P13l[:, 5]
-                + f ** 2 * self.P13l[:, 6],  # *b1
-                +self.P13l[:, 0] + f * self.P13l[:, 2],  # *b1*b1
-            ]
-        )
-        C13nob3 = np.array(
-            [
-                f ** 2 * self.C13[:, 7]
-                + f ** 3 * self.C13[:, 8]
-                + f ** 3 * self.C13[:, 9],  # *1
-                +f * self.C13[:, 3]
-                + f ** 2 * self.C13[:, 5]
-                + f ** 2 * self.C13[:, 6],  # *b1
-                +self.C13[:, 0] + f * self.C13[:, 2],  # *b1*b1
-            ]
-        )
-
-        self.Ps[0] = np.einsum("l,x->lx", self.b11, self.P11)
-        self.Ps[1] = np.einsum("lb,bx->lx", self.b22, self.P22)
-        for l in range(self.co.Nl):
-            self.Ps[1, l] -= self.Ps[1, l, 0]
-        self.Ps[1] += np.einsum("b,blx->lx", b13nob3, P13nob3)
-
-        self.Cf[0] = np.einsum("l,lx->lx", self.b11, self.C11)
-        self.Cf[1] = np.einsum("lb,lbx->lx", self.b22, self.C22) + np.einsum(
-            "b,blx->lx", b13nob3, C13nob3
-        )
-
-        self.Pb3 = f * self.P13l[:, 4] + b1 * self.P13l[:, 1]  # *b3 + *b1*b3
-        self.Cb3 = f * self.C13[:, 4] + b1 * self.C13[:, 1]  # *b3 + *b1*b3
-
-        self.Pctl = np.einsum("x,x,ln->lnx", self.co.k ** 2, self.P11, self.co.lct)
-        self.Pctl = np.einsum("x,x,ln->lnx", self.co.k ** 2, self.P11, self.co.lct)
-
-    def setmargPslb(self, bs):
-        """ For option: which='marg'. Adds together all pieces to get the full power spectrum multipoles """
-        b1, _, b3, _, b5, b6, b7 = bs
-        f = self.f
-        bct = np.array(
-            [
-                2.0 * b1 * b5,
-                2.0 * b1 * b6,
-                2.0 * b1 * b7,
-                2.0 * f * b5,
-                2.0 * f * b6,
-                2.0 * f * b7,
-            ]
-        )
-        self.fullPs += b3 * self.Pb3 + np.einsum("b,lbx->lx", bct, self.Pctl)
-
 
 # TODO: support logger and snapshot
 class NonLinear(object):
     """
-    given a Bird() object, computes the one-loop power spectrum and one-loop correlation function. 
+    given a Bird() object, computes the one-loop power spectrum and one-loop correlation function.
     The correlation function is useful to perform the IR-resummation of the power spectrum.
-    The loop and spherical Bessel transform matrices are either loaded either precomputed and stored at the instanciation of the class. 
+    The loop and spherical Bessel transform matrices are either loaded either precomputed and stored at the instanciation of the class.
 
     Attributes
     ----------
@@ -1180,7 +906,7 @@ class NonLinear(object):
         An object of type FFTLog() to perform the FFTLog
     M22 : ndarray
         22-loop power spectrum matrices
-    M13 : ndarray 
+    M13 : ndarray
         13-loop power spectrum matrices
     Mcf11 : ndarray
         Spherical Bessel transform matrices of the linear power spectrum to correlation function
@@ -1199,7 +925,7 @@ class NonLinear(object):
     optipathC13 : NumPy einsum_path
         Optimization settings for NumPy einsum when performing matrix multiplications to compute the 13-loop correlation function. For speedup purpose in repetitive evaluations.
     optipathC22 : NumPy einsum_path
-        Optimization settings for NumPy einsum when performing matrix multiplications to compute the 22-loop correlation function. For speedup purpose in repetitive evaluations. 
+        Optimization settings for NumPy einsum when performing matrix multiplications to compute the 22-loop correlation function. For speedup purpose in repetitive evaluations.
     """
 
     def __init__(self, load=True, save=True, path="./", NFFT=256, co=common):
@@ -1290,7 +1016,7 @@ class NonLinear(object):
         )[0]
 
     def setM22(self):
-        """ Compute the 22-loop power spectrum matrices. Called at the instantiation of the class if the matrices are not loaded. """
+        """Compute the 22-loop power spectrum matrices. Called at the instantiation of the class if the matrices are not loaded."""
         self.M22 = np.empty(
             shape=(self.co.N22, self.fft.Pow.shape[0], self.fft.Pow.shape[0]),
             dtype="complex",
@@ -1303,20 +1029,20 @@ class NonLinear(object):
             self.M22[i] = Ma * M22b[i](ns[:, None], ns[None, :])
 
     def setM13(self):
-        """ Compute the 13-loop power spectrum matrices. Called at the instantiation of the class if the matrices are not loaded. """
+        """Compute the 13-loop power spectrum matrices. Called at the instantiation of the class if the matrices are not loaded."""
         self.M13 = np.empty(shape=(self.co.N13, self.fft.Pow.shape[0]), dtype="complex")
         Ma = M13a(-0.5 * self.fft.Pow)
         for i in range(self.co.N13):
             self.M13[i] = Ma * M13b[i](-0.5 * self.fft.Pow)
 
     def setMcf11(self):
-        """ Compute the 11-loop correlation function matrices. Called at the instantiation of the class if the matrices are not loaded. """
+        """Compute the 11-loop correlation function matrices. Called at the instantiation of the class if the matrices are not loaded."""
         # self.Mcf11 = np.empty(shape=(self.co.Nl, self.fft.Pow.shape[0]), dtype='complex')
         ns = -0.5 * self.fft.Pow
         self.Mcf11 = MPC(2 * np.arange(self.co.Nl)[:, None], ns[None, :])  # * 1j**(2*l)
 
     def setMl(self):
-        """ Compute the power spectrum to correlation function spherical Bessel transform matrices. Called at the instantiation of the class if the matrices are not loaded. """
+        """Compute the power spectrum to correlation function spherical Bessel transform matrices. Called at the instantiation of the class if the matrices are not loaded."""
         # self.Ml = np.empty(shape=(self.co.Nl, self.fft.Pow.shape[0], self.fft.Pow.shape[0]), dtype='complex')
         ns = -0.5 * self.fft.Pow
         self.Ml = MPC(
@@ -1325,47 +1051,47 @@ class NonLinear(object):
         )  # * 1j**(2*l)
 
     def setMcf22(self):
-        """ Compute the 22-loop correlation function matrices. Called at the instantiation of the class if the matrices are not loaded. """
+        """Compute the 22-loop correlation function matrices. Called at the instantiation of the class if the matrices are not loaded."""
         self.Mcf22 = np.einsum("lnm,bnm->blnm", self.Ml, self.M22)
 
     def setMcf13(self):
-        """ Compute the 13-loop correlation function matrices. Called at the instantiation of the class if the matrices are not loaded. """
+        """Compute the 13-loop correlation function matrices. Called at the instantiation of the class if the matrices are not loaded."""
         self.Mcf13 = np.einsum("lnm,bn->blnm", self.Ml, self.M13)
 
     def setMcfct(self):
-        """ Compute the counterterm correlation function matrices. Called at the instantiation of the class if the matrices are not loaded. """
+        """Compute the counterterm correlation function matrices. Called at the instantiation of the class if the matrices are not loaded."""
         # self.Mcfct = np.empty(shape=(self.co.Nl, self.fft.Pow.shape[0]), dtype='complex')
         ns = -0.5 * self.fft.Pow
         self.Mcfct = MPC(2 * np.arange(self.co.Nl)[:, None], ns - 1.0)  # * 1j**(2*l)
 
     def setkPow(self):
-        """ Compute the k's to the powers of the FFTLog to evaluate the loop power spectrum. Called at the instantiation of the class. """
+        """Compute the k's to the powers of the FFTLog to evaluate the loop power spectrum. Called at the instantiation of the class."""
         self.kPow = exp(np.einsum("n,k->nk", self.fft.Pow, log(self.co.k)))
 
     def setsPow(self):
-        """ Compute the s's to the powers of the FFTLog to evaluate the loop correlation function. Called at the instantiation of the class. """
+        """Compute the s's to the powers of the FFTLog to evaluate the loop correlation function. Called at the instantiation of the class."""
         self.sPow = exp(np.einsum("n,s->ns", -self.fft.Pow - 3.0, log(self.co.s)))
 
     def CoefkPow(self, Coef):
-        """ Multiply the coefficients with the k's to the powers of the FFTLog to evaluate the loop power spectrum. """
+        """Multiply the coefficients with the k's to the powers of the FFTLog to evaluate the loop power spectrum."""
         return Coef[:, newaxis] * self.kPow
 
     def CoefsPow(self, Coef):
-        """ Multiply the coefficients with the s's to the powers of the FFTLog to evaluate the correlation function. """
+        """Multiply the coefficients with the s's to the powers of the FFTLog to evaluate the correlation function."""
         return Coef[:, newaxis] * self.sPow
 
     def makeP22(self, CoefkPow, bird):
-        """ Perform the 22-loop power spectrum matrix multiplications """
-        bird.P22 = self.co.k ** 3 * np.real(
+        """Perform the 22-loop power spectrum matrix multiplications"""
+        bird.P22 = self.co.k**3 * np.real(
             np.einsum(
                 "nk,mk,bnm->bk", CoefkPow, CoefkPow, self.M22, optimize=self.optipathP22
             )
         )
 
     def makeP13(self, CoefkPow, bird):
-        """ Perform the 13-loop power spectrum matrix multiplications """
+        """Perform the 13-loop power spectrum matrix multiplications"""
         bird.P13 = (
-            self.co.k ** 3
+            self.co.k**3
             * bird.P11
             * np.real(
                 np.einsum("nk,bn->bk", CoefkPow, self.M13, optimize=self.optipathP13)
@@ -1373,19 +1099,19 @@ class NonLinear(object):
         )
 
     def makeC11(self, CoefsPow, bird):
-        """ Perform the 11-loop correlation function matrix multiplications """
+        """Perform the 11-loop correlation function matrix multiplications"""
         bird.C11 = np.real(
             np.einsum("ns,ln->ls", CoefsPow, self.Mcf11, optimize=self.optipathC11)
         )
 
     def makeCct(self, CoefsPow, bird):
-        """ Perform the counterterm correlation function matrix multiplications """
-        bird.Cct = self.co.s ** -2 * np.real(
+        """Perform the counterterm correlation function matrix multiplications"""
+        bird.Cct = self.co.s**-2 * np.real(
             np.einsum("ns,ln->ls", CoefsPow, self.Mcfct, optimize=self.optipathCct)
         )
 
     def makeC22(self, CoefsPow, bird):
-        """ Perform the 22-loop correlation function matrix multiplications """
+        """Perform the 22-loop correlation function matrix multiplications"""
         bird.C22 = np.real(
             np.einsum(
                 "ns,ms,blnm->lbs",
@@ -1397,7 +1123,7 @@ class NonLinear(object):
         )
 
     def makeC13(self, CoefsPow, bird):
-        """ Perform the 13-loop correlation function matrix multiplications """
+        """Perform the 13-loop correlation function matrix multiplications"""
         bird.C13 = np.real(
             np.einsum(
                 "ns,ms,blnm->lbs",
@@ -1409,7 +1135,7 @@ class NonLinear(object):
         )
 
     def Coef(self, bird, window=None):
-        """ Perform the FFTLog (i.e. calculate the coefficients of the FFTLog) of the input linear power spectrum in the given a Bird().
+        """Perform the FFTLog (i.e. calculate the coefficients of the FFTLog) of the input linear power spectrum in the given a Bird().
 
         Parameters
         ----------
@@ -1419,7 +1145,7 @@ class NonLinear(object):
         return self.fft.Coef(bird.kin, bird.Pin, window=window)
 
     def Ps(self, bird, window=0.2):
-        """ Compute the loop power spectrum given a Bird(). Perform the FFTLog and the matrix multiplications.
+        """Compute the loop power spectrum given a Bird(). Perform the FFTLog and the matrix multiplications.
 
         Parameters
         ----------
@@ -1432,7 +1158,7 @@ class NonLinear(object):
         self.makeP13(coefkPow, bird)
 
     def Cf(self, bird, window=0.2):
-        """ Compute the loop correlation function given a Bird(). Perform the FFTLog and the matrix multiplications.
+        """Compute the loop correlation function given a Bird(). Perform the FFTLog and the matrix multiplications.
 
         Parameters
         ----------
@@ -1447,7 +1173,7 @@ class NonLinear(object):
         self.makeC13(coefsPow, bird)
 
     def PsCf(self, bird, window=0.2):
-        """ Compute the loop power spectrum and correlation function given a Bird(). Perform the FFTLog and the matrix multiplications.
+        """Compute the loop power spectrum and correlation function given a Bird(). Perform the FFTLog and the matrix multiplications.
 
         Parameters
         ----------
@@ -1468,7 +1194,7 @@ class NonLinear(object):
 # TODO: support snapshot
 class Resum(object):
     """
-    given a Bird() object, performs the IR-resummation of the power spectrum. 
+    given a Bird() object, performs the IR-resummation of the power spectrum.
     There are two options:
     1.  fullresum: the FFTLog's are performed on the full integrands from s = .1 to s = 10000. in (Mpc/h) (default)
     2. 'optiresum: the FFTLog's are performed only on the BAO peak that is extracted by removing the smooth part of the correlation function. What is left is then padded with zeros and the FFTLog's run from s = .1 to s = 1000. in (Mpc/h).
@@ -1519,7 +1245,7 @@ class Resum(object):
     XM : ndarray
         spherical Bessel transform matrices to evaluate the IR-filters X and Y
     XsPow : ndarray
-        s's to the powers on which to perform the FFTLog to evaluate the IR-filters X and Y    
+        s's to the powers on which to perform the FFTLog to evaluate the IR-filters X and Y
     """
 
     def __init__(self, LambdaIR=1.0, NFFT=192, co: Common = common):
@@ -1566,19 +1292,9 @@ class Resum(object):
         self.IRloopresum = np.zeros(shape=(self.co.Nl, self.co.Nloop, self.co.Nk))
 
         self.IRcorr = np.zeros(shape=(2, self.co.Nl, self.NIR, self.co.Nkr))
-        # self.IR11 = np.zeros(shape=(self.co.Nl, self.NIR, self.co.Nkr))
-        # self.IRct = np.zeros(shape=(self.co.Nl, self.NIR, self.co.Nkr))
-        # self.IRloop = np.zeros(shape=(self.co.Nl, self.co.Nloop, self.NIR, self.co.Nkr))
 
         # keep these to zeros for padding zeros at low k
         self.IRresum = np.zeros(shape=(2, self.co.Nl, self.co.Nk))
-        # self.IR11resum = np.zeros(shape=(self.co.Nl, self.co.N11, self.co.Nk))
-        # self.IRctresum = np.zeros(shape=(self.co.Nl, self.co.Nct, self.co.Nk))
-        # self.IRloopresum = np.zeros(shape=(self.co.Nl, self.co.Nloop, self.co.Nk))
-
-        # for marg
-        self.IRb3 = np.zeros(shape=(self.co.Nl, self.NIR, self.co.Nkr))
-        self.IRb3resum = np.zeros(shape=(self.co.Nl, self.co.Nk))
 
         if self.co.optiresum is True:
             self.fftsettings = dict(Nmax=NFFT, xmin=0.1, xmax=1000.0, bias=-0.6)
@@ -1595,26 +1311,26 @@ class Resum(object):
         self.setXsPow()
 
     def setXsPow(self):
-        """ Multiply the coefficients with the s's to the powers of the FFTLog to evaluate the IR-filters X and Y. """
+        """Multiply the coefficients with the s's to the powers of the FFTLog to evaluate the IR-filters X and Y."""
         self.XsPow = exp(np.einsum("n,s->ns", -self.Xfft.Pow - 3.0, log(self.co.sr)))
 
     def setkPow(self):
-        """ Multiply the coefficients with the k's to the powers of the FFTLog to evaluate the IR-corrections. """
+        """Multiply the coefficients with the k's to the powers of the FFTLog to evaluate the IR-corrections."""
         self.kPow = exp(np.einsum("n,s->ns", -self.fft.Pow - 3.0, log(self.co.kr)))
 
     def setXM(self):
-        """ Compute the matrices to evaluate the IR-filters X and Y. Called at instantiation. """
+        """Compute the matrices to evaluate the IR-filters X and Y. Called at instantiation."""
         self.XM = np.empty(shape=(2, self.Xfft.Pow.shape[0]), dtype="complex")
         for l in range(2):
             self.XM[l] = MPC(2 * l, -0.5 * self.Xfft.Pow)
 
     def IRFilters(self, bird, soffset=1.0, LambdaIR=None, RescaleIR=1.0, window=None):
-        """ Compute the IR-filters X and Y. """
+        """Compute the IR-filters X and Y."""
         if LambdaIR is None:
             LambdaIR = self.LambdaIR
         Coef = self.Xfft.Coef(
             bird.kin,
-            bird.Pin * exp(-bird.kin ** 2 / LambdaIR ** 2) / bird.kin ** 2,
+            bird.Pin * exp(-bird.kin**2 / LambdaIR**2) / bird.kin**2,
             window=window,
         )
         CoefsPow = np.einsum("n,ns->ns", Coef, self.XsPow)
@@ -1632,16 +1348,10 @@ class Resum(object):
         return X, Y
 
     def setM(self):
-        """ Compute the matrices to evaluate the IR-corrections. Called at instantiation. """
+        """Compute the matrices to evaluate the IR-corrections. Called at instantiation."""
         self.M = np.empty(shape=(self.co.Nl, self.fft.Pow.shape[0]), dtype="complex")
         for l in range(self.co.Nl):
-            self.M[l] = 8.0 * pi ** 3 * MPC(2 * l, -0.5 * self.fft.Pow)
-
-    def IRn(self, XpYpC, window=None):
-        """ Compute the spherical Bessel transform in the IR correction of order n given [XY]^n """
-        Coef = self.fft.Coef(self.co.sr, XpYpC, extrap="padding", window=window)
-        CoefkPow = np.einsum("n,nk->nk", Coef, self.kPow)
-        return np.real(np.einsum("nk,ln->lk", CoefkPow, self.M[: self.co.Na]))
+            self.M[l] = 8.0 * pi**3 * MPC(2 * l, -0.5 * self.fft.Pow)
 
     def IRnWithCoef(self, Coef):
         # CoefkPow = np.einsum("n,nk->nk", Coef, self.kPow)
@@ -1650,14 +1360,8 @@ class Resum(object):
         # precomputed np.einsum_path does not improve the performance
         return np.real(self.M[: self.co.Na] @ (Coef[:, newaxis] * self.kPow))
 
-    def IRCorrection(self, XpYpC, k2p, lpr=None, window=None):
-        """ Compute the IR-corrections of order n given [XY]^n and k^{2n} """
-        Coef = self.fft.Coef(self.co.sr, XpYpC, extrap="padding", window=window)
-        CoefkPow = np.einsum("n,nk->nk", Coef, self.kPow)
-        return k2p * np.real(np.einsum("nk,ln->lk", CoefkPow, self.M))
-
     def makeQ(self, f):
-        """ Compute the bulk coefficients Q^{ll'}_{||N-j}(n, \alpha, f) """
+        """Compute the bulk coefficients Q^{ll'}_{||N-j}(n, \alpha, f)"""
         for a in range(2):
             for l in range(self.co.Nl):
                 for lpr in range(self.co.Nl):
@@ -1674,31 +1378,31 @@ class Resum(object):
                             raise ValueError(f"unexpected co.NIR == {self.co.NIR}")
 
     def extractBAO(self, cf):
-        """ Given a correlation function cf, 
-            - if fullresum, return cf 
-            - if optiresum, extract the BAO peak """
-        if self.co.optiresum is True:
-            cfnobao = np.concatenate(
-                [cf[..., : self.co.idlow], cf[..., self.co.idhigh :]], axis=-1
-            )
-            nobao = (
-                interp1d(
-                    self.co.snobao,
-                    self.co.snobao ** 2 * cfnobao,
-                    kind="linear",
-                    axis=-1,
-                )(self.co.sbao)
-                * self.co.sbao ** -2
-            )
-            bao = cf[..., self.co.idlow : self.co.idhigh] - nobao
-            return bao
-        else:
+        """Given a correlation function cf,
+        - if fullresum, return cf
+        - if optiresum, extract the BAO peak"""
+        if not self.co.optiresum:
             return cf
+
+        cfnobao = np.concatenate(
+            [cf[..., : self.co.idlow], cf[..., self.co.idhigh :]], axis=-1
+        )
+        nobao = (
+            interp1d(
+                self.co.snobao,
+                self.co.snobao**2 * cfnobao,
+                kind="linear",
+                axis=-1,
+            )(self.co.sbao)
+            * self.co.sbao**-2
+        )
+        bao = cf[..., self.co.idlow : self.co.idhigh] - nobao
+        return bao
 
     def setXpYp(self, bird):
         X, Y = self.IRFilters(bird)
         Xp = np.array([X ** (p + 1) for p in range(self.co.NIR)])
-        XpY = np.array([Y * X ** p for p in range(self.co.NIR)])
+        XpY = np.array([Y * X**p for p in range(self.co.NIR)])
         XpYp = np.concatenate((Xp, XpY))
         return XpYp
 
@@ -1707,148 +1411,47 @@ class Resum(object):
         return self.fft.Coef(self.co.sr, input, extrap="padding", window=window)
 
     def Ps(self, bird: Bird, window=None):
-        """ This is the main method of the class. Compute the IR-corrections. """
+        """This is the main method of the class. Compute the IR-corrections."""
         self.makeQ(bird.f)
 
         XpYp = self.setXpYp(bird)
 
-        # TODO: update 'marg'
-        if bird.which == "marg":
-            raise NotImplementedError
-            for a, cf in enumerate(self.extractBAO(bird.Cf)):
-                for l, cl in enumerate(cf):
-                    u = 0
-                    for j, (xy, k2pj, lpr) in enumerate(
-                        zip(XpYp, self.k2p, self.alllpr)
-                    ):
-                        IRcorrUnsorted = self.IRCorrection(
-                            xy * cl, k2pj, lpr=lpr, window=window
-                        )
-                        for v in range(len(lpr)):
-                            self.IRcorr[a, l, u + v] = IRcorrUnsorted[v]
-                        u += len(lpr)
-            for l, cl in enumerate(self.extractBAO(bird.Cct)):
-                u = 0
-                for j, (xy, k2pj, lpr) in enumerate(zip(XpYp, self.k2p, self.alllpr)):
-                    IRcorrUnsorted = self.IRCorrection(
-                        xy * cl, k2pj, lpr=lpr, window=window
-                    )
-                    for v in range(len(lpr)):
-                        self.IRct[l, u + v] = IRcorrUnsorted[v]
-                    u += len(lpr)
-            for l, cl in enumerate(self.extractBAO(bird.Cb3)):
-                u = 0
-                for j, (xy, k2pj, lpr) in enumerate(zip(XpYp, self.k2p, self.alllpr)):
-                    IRcorrUnsorted = self.IRCorrection(
-                        xy * cl, k2pj, lpr=lpr, window=window
-                    )
-                    for v in range(len(lpr)):
-                        self.IRb3[l, u + v] = IRcorrUnsorted[v]
-                    u += len(lpr)
-            self.IRresum[..., self.co.Nklow :] = np.einsum(
-                "alpn,apnk->alk", self.Q, self.IRcorr
-            )
-            self.IRctresum[..., self.co.Nklow :] = np.einsum(
-                "lpn,pnk,pi->lik", self.Q[1], self.IRct, self.co.lct
-            )
-            self.IRb3resum[..., self.co.Nklow :] = np.einsum(
-                "lpn,pnk->lk", self.Q[1], self.IRb3
-            )
-            bird.Ps += self.IRresum
-            bird.Pctl += self.IRctresum
-            bird.Pb3 += self.IRb3resum
-            bird.setfullPs()
-
-        elif bird.which == "all":
-            extracted_C11 = self.extractBAO(bird.C11)
-            CoefArray = self.precomputedCoef(XpYp, extracted_C11, window=window)
-            for l, cl in enumerate(extracted_C11):
-                # u = 0
-                # for j, (xy, k2pj, lpr) in enumerate(zip(XpYp, self.k2p, self.alllpr)):
-                #     IRcorrUnsorted = self.IRCorrection(xy * cl, k2pj, lpr=lpr, window=window)
-                #     for v in range(len(lpr)):
-                #         self.IR11[l, u + v] = IRcorrUnsorted[v]
-                #     u += len(lpr)
+        extracted_C11 = self.extractBAO(bird.C11)
+        CoefArray = self.precomputedCoef(XpYp, extracted_C11, window=window)
+        for l, cl in enumerate(extracted_C11):
+            for j, xy in enumerate(XpYp):
+                IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(CoefArray[l, j, :])
+                for v in range(self.co.Na):
+                    self.IR11[l, j * self.co.Na + v, self.co.Nklow :] = IRcorrUnsorted[
+                        v
+                    ]
+        extracted_Cct = self.extractBAO(bird.Cct)
+        CoefArray = self.precomputedCoef(XpYp, extracted_Cct, window=window)
+        for l, cl in enumerate(extracted_Cct):
+            for j, xy in enumerate(XpYp):
+                IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(CoefArray[l, j, :])
+                for v in range(self.co.Na):
+                    self.IRct[l, j * self.co.Na + v, self.co.Nklow :] = IRcorrUnsorted[
+                        v
+                    ]
+        extracted_Cloopl = self.extractBAO(bird.Cloopl)
+        CoefArray = self.precomputedCoef(XpYp, extracted_Cloopl, window=window)
+        for l, cl in enumerate(extracted_Cloopl):
+            for i, cli in enumerate(cl):
                 for j, xy in enumerate(XpYp):
-                    # np.real((-j)**(2*l))
-                    # IRcorrUnsorted = self.k2p[j] * self.IRn(xy * cl, window=window)
-                    IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(CoefArray[l, j, :])
+                    IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(
+                        CoefArray[l, i, j, :]
+                    )
                     for v in range(self.co.Na):
-                        self.IR11[
-                            l, j * self.co.Na + v, self.co.Nklow :
+                        self.IRloop[
+                            l, i, j * self.co.Na + v, self.co.Nklow :
                         ] = IRcorrUnsorted[v]
-            extracted_Cct = self.extractBAO(bird.Cct)
-            CoefArray = self.precomputedCoef(XpYp, extracted_Cct, window=window)
-            for l, cl in enumerate(extracted_Cct):
-                # u = 0
-                # for j, (xy, k2pj, lpr) in enumerate(zip(XpYp, self.k2p, self.alllpr)):
-                #     IRcorrUnsorted = self.IRCorrection(xy * cl, k2pj, lpr=lpr, window=window)
-                #     for v in range(len(lpr)):
-                #         self.IRct[l, u + v] = IRcorrUnsorted[v]
-                #     u += len(lpr)
-                for j, xy in enumerate(XpYp):
-                    # np.real((-j)**(2*l))
-                    # IRcorrUnsorted = self.k2p[j] * self.IRn(xy * cl, window=window)
-                    IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(CoefArray[l, j, :])
-                    for v in range(self.co.Na):
-                        self.IRct[
-                            l, j * self.co.Na + v, self.co.Nklow :
-                        ] = IRcorrUnsorted[v]
-            extracted_Cloopl = self.extractBAO(bird.Cloopl)
-            CoefArray = self.precomputedCoef(XpYp, extracted_Cloopl, window=window)
-            for l, cl in enumerate(extracted_Cloopl):
-                # for i, cli in enumerate(cl):
-                #     u = 0
-                #     for j, (xy, k2pj, lpr) in enumerate(zip(XpYp, self.k2p, self.alllpr)):
-                #         IRcorrUnsorted = self.IRCorrection(xy * cli, k2pj, lpr=lpr, window=window)
-                #         for v in range(len(lpr)):
-                #             self.IRloop[l, i, u + v] = IRcorrUnsorted[v]
-                #         u += len(lpr)
-                for i, cli in enumerate(cl):
-                    for j, xy in enumerate(XpYp):
-                        # np.real((-j)**(2*l))
-                        # IRcorrUnsorted = self.k2p[j] * self.IRn(xy * cli, window=window)
-                        IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(
-                            CoefArray[l, i, j, :]
-                        )
-                        for v in range(self.co.Na):
-                            self.IRloop[
-                                l, i, j * self.co.Na + v, self.co.Nklow :
-                            ] = IRcorrUnsorted[v]
-            self.IR11resum = np.einsum(
-                "lpn,pnk,pi->lik", self.Q[0], self.IR11, self.co.l11
-            )
-            self.IRctresum = np.einsum(
-                "lpn,pnk,pi->lik", self.Q[1], self.IRct, self.co.lct
-            )
-            self.IRloopresum = np.einsum("lpn,pink->lik", self.Q[1], self.IRloop)
-            # self.IR11resum[..., self.co.Nklow:] = np.einsum('lpn,pnk,pi->lik', self.Q[0], self.IR11, self.co.l11)
-            # self.IRctresum[..., self.co.Nklow:] = np.einsum('lpn,pnk,pi->lik', self.Q[1], self.IRct, self.co.lct)
-            # self.IRloopresum[..., self.co.Nklow:] = np.einsum('lpn,pink->lik', self.Q[1], self.IRloop)
-            bird.P11l += self.IR11resum
-            bird.Pctl += self.IRctresum
-            bird.Ploopl += self.IRloopresum
-
-        # TODO: update 'full'
-        elif bird.which == "full":
-            raise NotImplementedError
-            for a, cf in enumerate(self.extractBAO(bird.Cf)):
-                for l, cl in enumerate(cf):
-                    u = 0
-                    for j, (xy, k2pj, lpr) in enumerate(
-                        zip(XpYp, self.k2p, self.alllpr)
-                    ):
-                        IRcorrUnsorted = self.IRCorrection(
-                            xy * cl, k2pj, lpr=lpr, window=window
-                        )
-                        for v in range(len(lpr)):
-                            self.IRcorr[a, l, u + v] = IRcorrUnsorted[v]
-                        u += len(lpr)
-            self.IRresum[..., self.co.Nklow :] = np.einsum(
-                "alpn,apnk->alk", self.Q, self.IRcorr
-            )
-            bird.Ps += self.IRresum
-            bird.setfullPs()
+        self.IR11resum = np.einsum("lpn,pnk,pi->lik", self.Q[0], self.IR11, self.co.l11)
+        self.IRctresum = np.einsum("lpn,pnk,pi->lik", self.Q[1], self.IRct, self.co.lct)
+        self.IRloopresum = np.einsum("lpn,pink->lik", self.Q[1], self.IRloop)
+        bird.P11l += self.IR11resum
+        bird.Pctl += self.IRctresum
+        bird.Ploopl += self.IRloopresum
 
 
 def window_kgrid(kmax: float = 0.3, accboost: int = 1) -> NDArray:
@@ -1924,7 +1527,7 @@ class Window(HasLogger):
 
     Notes
     -----
-    ds in mask file should be small enough because the value will be multiplied by a spherical 
+    ds in mask file should be small enough because the value will be multiplied by a spherical
     bessel function and then will be interpolated
 
     Math
@@ -1936,7 +1539,7 @@ class Window(HasLogger):
     window
 
     ..math:: W(k, p)_{a, l} = \frac{2}{\pi}(-i)^a i^l p^2 \int ds s^2 j_{a}(ks)Q_{a,l}(s)j_l(ps)
-    
+
     configspace window
 
     ..math:: Q_{a, l}(s) = \sum_{q}C_{a,l,q}Q_q(s)
@@ -2028,8 +1631,7 @@ class Window(HasLogger):
             self.mpi_info("snapshot is enabled")
 
     def _load_Wal(self):
-        """load fourier matrix, return None if failed
-        """
+        """load fourier matrix, return None if failed"""
         Wal = None
         window_fourier_file = self.window_fourier_file
         if self._load:
@@ -2151,7 +1753,8 @@ class Window(HasLogger):
             self.M[l] = 4 * pi * MPC(2 * l, -0.5 * self.fft.Pow)
 
         self.Coef = np.empty(
-            shape=(Na, Nl, self.co.Nk, self.fft.Pow.shape[0]), dtype="complex",
+            shape=(Na, Nl, self.co.Nk, self.fft.Pow.shape[0]),
+            dtype="complex",
         )
         Nas = np.arange(Na)
         Nls = np.arange(Nl)
@@ -2171,7 +1774,7 @@ class Window(HasLogger):
             )
         )
 
-        Wal = self.p ** 2 * np.real(
+        Wal = self.p**2 * np.real(
             np.einsum("alkn,np,ln->alkp", self.Coef, self.pPow, self.M)
         )
 
@@ -2200,7 +1803,7 @@ class Window(HasLogger):
             with meta_file.open("w") as f:
                 json.dump(self.meta, f, indent=2)
 
-    def integrWindow(self, P, many=False, interp=True):
+    def integrWindow(self, P, interp=True):
         """
         Convolve the window functions to a power spectrum P
         """
@@ -2216,30 +1819,18 @@ class Window(HasLogger):
         else:
             Pk = P
         # (multipole l, multipole ' p, k, k' m) , (multipole ', power pectra s, k' m)
-        if many:
-            return np.einsum("alkp,lsp->ask", self.Waldk, Pk, optimize=True)
-        else:
-            return np.einsum("alkp,lp->ak", self.Waldk, Pk, optimize=True)
+        return np.einsum("alkp,lsp->ask", self.Waldk, Pk, optimize=True)
 
     def Window(self, bird: BirdPlus):
         """
-        Apply the survey window function to the bird power spectrum 
+        Apply the survey window function to the bird power spectrum
         """
-        if bird.which == "all":
-            bird.P11l = self.integrWindow(bird.P11l, many=True)
-            bird.Pctl = self.integrWindow(bird.Pctl, many=True)
-            bird.Ploopl = self.integrWindow(bird.Ploopl, many=True)
-            if self.window_st:
-                bird.setPstl(self.p)
-                bird.Pstl = self.integrWindow(bird.Pstl, many=True, interp=False)
-        elif bird.which == "marg":
-            bird.fullPs = self.integrWindow(bird.fullPs, many=False)
-            bird.Pb3 = self.integrWindow(bird.Pb3, many=False)
-            bird.Pctl = self.integrWindow(bird.Pctl, many=True)
-        elif bird.which == "full":
-            bird.fullPs = self.integrWindow(bird.fullPs, many=False)
-        else:
-            raise ValueError(f"unexpected bird.which={bird.which}")
+        bird.P11l = self.integrWindow(bird.P11l)
+        bird.Pctl = self.integrWindow(bird.Pctl)
+        bird.Ploopl = self.integrWindow(bird.Ploopl)
+        if self.window_st:
+            bird.setPstl(self.p)
+            bird.Pstl = self.integrWindow(bird.Pstl, interp=False)
         if self.snapshot:
             try:
                 bird.create_snapshot("window")
@@ -2363,7 +1954,7 @@ class APeffect(HasLogger):
         alpara = self.H / bird.H * ratio
         return alperp, alpara
 
-    def integrAP(self, Pk, kp, arrayLegendremup, many=False):
+    def integrAP(self, Pk, kp, arrayLegendremup):
         """
         AP integration
         Credit: Jerome Gleyzes
@@ -2376,16 +1967,10 @@ class APeffect(HasLogger):
             bounds_error=False,
             fill_value="extrapolate",
         )(kp)
-        if many:
-            Pkmu = np.einsum("lpkm,lkm->pkm", Pkint, arrayLegendremup, optimize=True)
-            Integrandmu = np.einsum(
-                "pkm,lkm->lpkm", Pkmu, self.arrayLegendremugrid, optimize=True
-            )
-        else:
-            Pkmu = np.einsum("lkm,lkm->km", Pkint, arrayLegendremup, optimize=True)
-            Integrandmu = np.einsum(
-                "km,lkm->lkm", Pkmu, self.arrayLegendremugrid, optimize=True
-            )
+        Pkmu = np.einsum("lpkm,lkm->pkm", Pkint, arrayLegendremup, optimize=True)
+        Integrandmu = np.einsum(
+            "pkm,lkm->lpkm", Pkmu, self.arrayLegendremugrid, optimize=True
+        )
         return 2 * np.trapz(Integrandmu, x=self.mugrid, axis=-1)
 
     def AP(self, bird: BirdPlus, q=None):
@@ -2398,30 +1983,15 @@ class APeffect(HasLogger):
         else:
             qperp, qpar = q
         F = qpar / qperp
-        kp = self.kgrid / qperp * (1 + self.mugrid ** 2 * (F ** -2 - 1)) ** 0.5
-        mup = self.mugrid / F * (1 + self.mugrid ** 2 * (F ** -2 - 1)) ** -0.5
+        kp = self.kgrid / qperp * (1 + self.mugrid**2 * (F**-2 - 1)) ** 0.5
+        mup = self.mugrid / F * (1 + self.mugrid**2 * (F**-2 - 1)) ** -0.5
         arrayLegendremup = np.array([legendre(2 * i)(mup) for i in range(self.Nlmax)])
-        coef = 1.0 / (qperp ** 2 * qpar)
+        coef = 1.0 / (qperp**2 * qpar)
 
-        if bird.which == "all":
-            # no effect on bird.Pstl, since the AP effect can be absorbed into coefficients
-            bird.P11l = coef * self.integrAP(bird.P11l, kp, arrayLegendremup, many=True)
-            bird.Pctl = coef * self.integrAP(bird.Pctl, kp, arrayLegendremup, many=True)
-            bird.Ploopl = coef * self.integrAP(
-                bird.Ploopl, kp, arrayLegendremup, many=True
-            )
-        elif bird.which == "marg":
-            bird.fullPs = coef * self.integrAP(
-                bird.fullPs, kp, arrayLegendremup, many=False
-            )
-            bird.Pb3 = coef * self.integrAP(bird.Pb3, kp, arrayLegendremup, many=False)
-            bird.Pctl = coef * self.integrAP(bird.Pctl, kp, arrayLegendremup, many=True)
-        elif bird.which == "full":
-            bird.fullPs = coef * self.integrAP(
-                bird.fullPs, kp, arrayLegendremup, many=False
-            )
-        else:
-            raise ValueError(f"unexpected bird.which={bird.which}")
+        # no effect on bird.Pstl, since the AP effect can be absorbed into coefficients
+        bird.P11l = coef * self.integrAP(bird.P11l, kp, arrayLegendremup)
+        bird.Pctl = coef * self.integrAP(bird.Pctl, kp, arrayLegendremup)
+        bird.Ploopl = coef * self.integrAP(bird.Ploopl, kp, arrayLegendremup)
         if self.snapshot:
             try:
                 bird.create_snapshot("APeffect")
@@ -2432,146 +2002,6 @@ class APeffect(HasLogger):
         self.mpi_info("fiducial DA=%.5f, H=%.5f", self.DA, self.H)
         self.mpi_info("nbinsmu=%d", self.nbinsmu)
         self.mpi_info("Nlmax=%d", self.Nlmax)
-
-
-# deprecated
-class Binning(HasLogger):
-    """Match the theoretical output to data, doing binning or interpolation
-
-    Parameters
-    ----------
-    kout: ArrayLike, 1d
-        k of data
-    binning: bool
-        set it True to perform binning correction, default False
-    accboost: int
-        accuracy boost, default 1
-    decimals: int
-        compute delta_k by rounding the difference of last two kout.
-        Default is 2 and this works well when delta_k = 0.01
-    co: Common
-        this class only uses co.k, default pybird.Common
-    name: str
-        logger name, by default 'pybird.binning'
-
-    Methods
-    -------
-    match(bird): apply binning or interpolation
-
-    Notes
-    -----
-    if binning=True, kbins will be constructed using kout[-1] - kout[-2]
-    """
-
-    def __init__(
-        self,
-        kout,
-        binning: bool = False,
-        accboost: int = 1,
-        decimals: int = 2,
-        co: Common = common,
-        name: str = "pybird.binning",
-    ) -> None:
-        self.set_logger(name=name)
-        self.kout = np.array(kout)
-        self.co = co
-        self.binning = binning
-        self.accboost = accboost
-        self.decimals = decimals
-        self.mpi_info("matching theory output with data")
-        self.mpi_info(
-            "%d points, from %.3f to %.3f", self.kout.size, self.kout[0], self.kout[-1]
-        )
-        self.mpi_info("binning correction: %s", "on" if self.binning else "off")
-        if self.binning:
-            kspaces = np.around(self.kout[1:] - self.kout[:-1], decimals=decimals)  # type: ignore
-            kspace_diff = kspaces[1:] - kspaces[:-1]
-            if not np.allclose(kspace_diff, 0, rtol=0, atol=1e-6):
-                self.mpi_warning(
-                    "binning correction on, "
-                    "but given kout seems not linearly spaced, "
-                    "be careful because the constructed kbins may be wrong, "
-                    "especially when 'kmax' is small",
-                )
-            self.loadBinning(self.kout)
-            self.mpi_info("num of kgrids in each bin: %d", self.points[0].size)
-            self.mpi_info(
-                "round the difference of last two kout to %d decimal places",
-                self.decimals,
-            )
-
-    def loadBinning(self, setkout):
-        """
-        Create the bins of the data k's
-        """
-        delta_k = np.round(setkout[-1] - setkout[-2], self.decimals)
-        kcentral = (setkout[-1] - delta_k * np.arange(len(setkout)))[::-1]
-        binmin = kcentral - delta_k / 2
-        binmax = kcentral + delta_k / 2
-        self.binvol = np.array(
-            [
-                quad(lambda k: k ** 2, kbinmin, kbinmax)[0]
-                for (kbinmin, kbinmax) in zip(binmin, binmax)
-            ]
-        )
-        points = [
-            np.linspace(kbinmin, kbinmax, 100 * self.accboost)
-            for (kbinmin, kbinmax) in zip(binmin, binmax)
-        ]
-        self.points = np.array(points)
-
-    def integrBinning(self, P):
-        """
-        Integrate over each bin of the data k's
-        """
-        Pkint = interp1d(
-            self.co.k,
-            P,
-            axis=-1,
-            kind="cubic",
-            bounds_error=False,
-            fill_value="extrapolate",
-        )
-        res = np.trapz(Pkint(self.points) * self.points ** 2, x=self.points, axis=-1)
-        return res / self.binvol
-
-    def kbinning(self, bird: Bird):
-        """
-        Apply binning in k-space for linear-spaced data k-array
-        """
-        if bird.which == "all":
-            bird.P11l = self.integrBinning(bird.P11l)
-            bird.Pctl = self.integrBinning(bird.Pctl)
-            bird.Ploopl = self.integrBinning(bird.Ploopl)
-            bird.Pstl = self.integrBinning(bird.Pstl)
-
-    def kdata(self, bird: Bird):
-        """
-        Interpolate the bird power spectrum on the data k-array
-        """
-        if bird.which == "all":
-            bird.P11l = interp1d(
-                self.co.k, bird.P11l, axis=-1, kind="cubic", bounds_error=False
-            )(self.kout)
-            bird.Pctl = interp1d(
-                self.co.k, bird.Pctl, axis=-1, kind="cubic", bounds_error=False
-            )(self.kout)
-            bird.Ploopl = interp1d(
-                self.co.k, bird.Ploopl, axis=-1, kind="cubic", bounds_error=False
-            )(self.kout)
-            bird.Pstl = interp1d(
-                self.co.k, bird.Pstl, axis=-1, kind="cubic", bounds_error=False
-            )(self.kout)
-        if bird.which == "full":
-            bird.fullPs = interp1d(
-                self.co.k, bird.fullPs, axis=-1, kind="cubic", bounds_error=False
-            )(self.kout)
-
-    def match(self, bird: Bird):
-        if self.binning:
-            self.kbinning(bird)
-        else:
-            self.kdata(bird)
 
 
 class FiberCollision(HasLogger):
@@ -2630,7 +2060,7 @@ class FiberCollision(HasLogger):
             dPunc[int(l / 2)] = (
                 -fs
                 * pi
-                * Dfc ** 2.0
+                * Dfc**2.0
                 * (2.0 * pi / kout)
                 * (2.0 * l + 1.0)
                 / 2.0
@@ -2639,7 +2069,7 @@ class FiberCollision(HasLogger):
             )
         return dPunc
 
-    def dPcorr(self, kout, kPS, PS, many=False, ktrust=0.25, fs=0.6, Dfc=0.43 / 0.6777):
+    def dPcorr(self, kout, kPS, PS, ktrust=0.25, fs=0.6, Dfc=0.43 / 0.6777):
         """
         Compute the correlated contribution of fiber collisions
 
@@ -2660,70 +2090,36 @@ class FiberCollision(HasLogger):
             kPS, PS, axis=-1, bounds_error=False, fill_value="extrapolate"
         )(q_ref)
 
-        if many:
-            dPcorr = np.zeros(shape=(PS.shape[0], PS.shape[1], len(kout)))
-            for j in range(PS.shape[1]):
-                for l in range(self.co.Nl):
-                    for lp in range(self.co.Nl):
-                        for i, k in enumerate(kout):
-                            if lp <= l:
-                                maskIR = q_ref < k
-                                dPcorr[l, j, i] += (
-                                    -0.5
-                                    * fs
-                                    * Dfc ** 2
-                                    * np.einsum(
-                                        "q,q,q,q->",
-                                        q_ref[maskIR],
-                                        dq_ref[maskIR],
-                                        PS_interp[lp, j, maskIR],
-                                        fllp_IR(2 * l, 2 * lp, k, q_ref[maskIR], Dfc),
-                                    )
-                                )
-                            if lp >= l:
-                                maskUV = (q_ref > k) & (q_ref < ktrust)
-                                dPcorr[l, j, i] += (
-                                    -0.5
-                                    * fs
-                                    * Dfc ** 2
-                                    * np.einsum(
-                                        "q,q,q,q->",
-                                        q_ref[maskUV],
-                                        dq_ref[maskUV],
-                                        PS_interp[lp, j, maskUV],
-                                        fllp_UV(2 * l, 2 * lp, k, q_ref[maskUV], Dfc),
-                                    )
-                                )
-        else:
-            dPcorr = np.zeros(shape=(PS.shape[0], len(kout)))
+        dPcorr = np.zeros(shape=(PS.shape[0], PS.shape[1], len(kout)))
+        for j in range(PS.shape[1]):
             for l in range(self.co.Nl):
                 for lp in range(self.co.Nl):
                     for i, k in enumerate(kout):
                         if lp <= l:
                             maskIR = q_ref < k
-                            dPcorr[l, i] += (
+                            dPcorr[l, j, i] += (
                                 -0.5
                                 * fs
-                                * Dfc ** 2
+                                * Dfc**2
                                 * np.einsum(
                                     "q,q,q,q->",
                                     q_ref[maskIR],
                                     dq_ref[maskIR],
-                                    PS_interp[lp, maskIR],
+                                    PS_interp[lp, j, maskIR],
                                     fllp_IR(2 * l, 2 * lp, k, q_ref[maskIR], Dfc),
                                 )
                             )
                         if lp >= l:
                             maskUV = (q_ref > k) & (q_ref < ktrust)
-                            dPcorr[l, i] += (
+                            dPcorr[l, j, i] += (
                                 -0.5
                                 * fs
-                                * Dfc ** 2
+                                * Dfc**2
                                 * np.einsum(
                                     "q,q,q,q->",
                                     q_ref[maskUV],
                                     dq_ref[maskUV],
-                                    PS_interp[lp, maskUV],
+                                    PS_interp[lp, j, maskUV],
                                     fllp_UV(2 * l, 2 * lp, k, q_ref[maskUV], Dfc),
                                 )
                             )
@@ -2735,37 +2131,32 @@ class FiberCollision(HasLogger):
         Apply window effective method correction to fiber collisions to the bird power spectrum
         """
         ktrust, fs, Dfc = self.ktrust, self.fs, self.Dfc
-        if bird.which == "all":
-            bird.P11l += self.dPcorr(
-                self.co.k,
-                self.co.k,
-                bird.P11l,
-                many=True,
-                ktrust=ktrust,
-                fs=fs,
-                Dfc=Dfc,
-            )
-            bird.Pctl += self.dPcorr(
-                self.co.k,
-                self.co.k,
-                bird.Pctl,
-                many=True,
-                ktrust=ktrust,
-                fs=fs,
-                Dfc=Dfc,
-            )
-            bird.Ploopl += self.dPcorr(
-                self.co.k,
-                self.co.k,
-                bird.Ploopl,
-                many=True,
-                ktrust=ktrust,
-                fs=fs,
-                Dfc=Dfc,
-            )
+        bird.P11l += self.dPcorr(
+            self.co.k,
+            self.co.k,
+            bird.P11l,
+            ktrust=ktrust,
+            fs=fs,
+            Dfc=Dfc,
+        )
+        bird.Pctl += self.dPcorr(
+            self.co.k,
+            self.co.k,
+            bird.Pctl,
+            ktrust=ktrust,
+            fs=fs,
+            Dfc=Dfc,
+        )
+        bird.Ploopl += self.dPcorr(
+            self.co.k,
+            self.co.k,
+            bird.Ploopl,
+            ktrust=ktrust,
+            fs=fs,
+            Dfc=Dfc,
+        )
         if self.snapshot:
             try:
                 bird.create_snapshot("fiber")
             except AttributeError:
                 pass
-
