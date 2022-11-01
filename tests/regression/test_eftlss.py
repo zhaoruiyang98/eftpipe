@@ -5,6 +5,13 @@ from eftpipe.tools import PathContext
 from pytest_regressions.ndarrays_regression import NDArraysRegressionFixture
 
 
+def unpack_PG_table(prefix: str, product):
+    ls, kgrid, PG_table = product
+    out = {f"{prefix}_{k}": v for k, v in PG_table.items()}
+    out[f"{prefix}_ls"] = ls
+    out[f"{prefix}_kgrid"] = kgrid
+    return out
+
 def test_ELG_NGC_reg(yamlroot: Path, ndarrays_regression: NDArraysRegressionFixture):
     info = yamlroot / "mock_eBOSS_ELG_NGC_theory.yaml"
     with PathContext("cobaya"):
@@ -16,6 +23,14 @@ def test_ELG_NGC_reg(yamlroot: Path, ndarrays_regression: NDArraysRegressionFixt
                     "ELG_NGC": {"ls": [0, 2, 4], "chained": [False, True]}
                 },
                 "nonlinear_Plk_grid": {
+                    "ELG_NGC": {
+                        "ls": [0, 2, 4],
+                        "chained": [False, True],
+                        "binned": [False, True],
+                        "binning": {"kout": kout},
+                    }
+                },
+                "nonlinear_Plk_gaussian_grid": {
                     "ELG_NGC": {
                         "ls": [0, 2, 4],
                         "chained": [False, True],
@@ -44,17 +59,21 @@ def test_ELG_NGC_reg(yamlroot: Path, ndarrays_regression: NDArraysRegressionFixt
     model.logpost(sampled_dict)
     provider = model.provider
 
+    # fmt: off
     reg_dct = {
         "plk": provider.get_nonlinear_Plk_interpolator("ELG_NGC")([0, 2, 4], kout),
         "plk_chained": provider.get_nonlinear_Plk_interpolator("ELG_NGC", chained=True)(
             [0, 2], kout
         ),
         "plk_grid": provider.get_nonlinear_Plk_grid("ELG_NGC")[-1],
-        "plk_grid_chained": provider.get_nonlinear_Plk_grid("ELG_NGC", chained=True)[
-            -1
-        ],
+        "plk_grid_chained": provider.get_nonlinear_Plk_grid("ELG_NGC", chained=True)[-1],
+        "plk_grid_binned": provider.get_nonlinear_Plk_grid("ELG_NGC", chained=False, binned=True)[-1],
         "ELG_NGC_fsigma8_z": provider.get_param("ELG_NGC_fsigma8_z"),
         "ELG_NGC_alperp": provider.get_param("ELG_NGC_alperp"),
         "ELG_NGC_alpara": provider.get_param("ELG_NGC_alpara"),
+        **unpack_PG_table("plk_grid_gaussian", provider.get_nonlinear_Plk_gaussian_grid("ELG_NGC", chained=True)),
+        **unpack_PG_table("plk_grid_gaussian_chained", provider.get_nonlinear_Plk_gaussian_grid("ELG_NGC", chained=True)),
+        **unpack_PG_table("plk_grid_gaussian_binned", provider.get_nonlinear_Plk_gaussian_grid("ELG_NGC", chained=False, binned=True)),
     }
+    # fmt: on
     ndarrays_regression.check(reg_dct, default_tolerance={"atol": 0, "rtol": 1e-8})
