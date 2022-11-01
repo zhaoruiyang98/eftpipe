@@ -10,6 +10,7 @@ theory:
         prefix: CMASS_NGC_
         z: 0.57
         km: 0.7
+        kr: 0.35
         nd: 0.00045
         APeffect:
           z_AP: 0.57

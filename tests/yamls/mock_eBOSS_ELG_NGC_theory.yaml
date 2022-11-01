@@ -12,6 +12,7 @@ theory:
         use_cb: true
         z: 0.845
         km: 0.45
+        kr: 0.35
         nd: 0.00018518518518518518
         with_IRresum: true
         with_APeffect: true
