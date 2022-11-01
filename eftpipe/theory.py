@@ -698,12 +698,14 @@ class EFTLSSChild(HelperTheory):
                 kmB, krB, ndB = tracerB["km"], tracerB.get("kr"), tracerB["nd"]
                 if krA is None:
                     self.mpi_warning(
-                        "tracerA: kr not specified, assuming kr=km, will raise exception in the future"
+                        "%s: kr not specified, assuming kr=km, will raise exception in the future",
+                        cross[0],
                     )
                     krA = kmA
                 if krB is None:
                     self.mpi_warning(
-                        "tracerB: kr not specified, assuming kr=km, will raise exception in the future"
+                        "%s: kr not specified, assuming kr=km, will raise exception in the future",
+                        cross[1],
                     )
                     krB = kmB
             except KeyError:
@@ -714,6 +716,12 @@ class EFTLSSChild(HelperTheory):
             return
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+        if cross:
+            self.mpi_info("%s: km=%.3f kr=%.3f nd=%.3f", cross[0], kmA, krA, ndA)
+            self.mpi_info("%s: km=%.3f kr=%.3f nd=%.3f", cross[1], kmB, krB, ndB)
+        else:
+            self.mpi_info("km=%.3f kr=%.3f nd=%.3f", kmA, krA, ndA)
+        self.mpi_info("")
         self.mpi_info("effective redshift: %.3f", self.zeff)
         if cross:
             self.mpi_info(
