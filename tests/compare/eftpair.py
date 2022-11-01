@@ -79,7 +79,7 @@ class Config(TypedDict):
 CONFIG: Config = {
     "z": 0.7,
     "km": 0.7,
-    "kr": 0.35,
+    "kr": 0.25,
     "nd": 7.91e-05,
     "Nl": 3,
     "with_IRresum": True,

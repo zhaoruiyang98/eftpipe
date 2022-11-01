@@ -517,7 +517,7 @@ class Common(object):
         kmax: float = 0.3,
         optiresum: bool = False,
         kmA: float = 0.7,
-        krA: float = 0.35,
+        krA: float = 0.25,
         ndA: float = 3e-4,
         kmB: float | None = None,
         krB: float | None = None,
