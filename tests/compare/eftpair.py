@@ -60,6 +60,7 @@ class BinningConfig(TypedDict):
 class Config(TypedDict):
     z: float
     km: float
+    kr: float
     nd: float
     Nl: Literal[2, 3]
 
@@ -78,6 +79,7 @@ class Config(TypedDict):
 CONFIG: Config = {
     "z": 0.7,
     "km": 0.7,
+    "kr": 0.35,
     "nd": 7.91e-05,
     "Nl": 3,
     "with_IRresum": True,
@@ -111,6 +113,7 @@ def config_to_info(config: Config):
                     "provider": "camb",
                     "z": config["z"],
                     "km": config["km"],
+                    "kr": config["kr"],
                     "nd": config["nd"],
                     **d,
                 }
@@ -192,7 +195,7 @@ class PybirdTh:
             xdata=get_kdata(),
             z=config["z"],
             km=config["km"],
-            kr=config["km"],  # NOTE: the default of setting of pybird is kr != km
+            kr=config["kr"],
             nd=config["nd"],
             with_stoch=True,
             optiresum=config.get("IRresum", {"optiresum": False})["optiresum"],
@@ -240,7 +243,13 @@ class PybirdTh:
             "ce2": params_dict["cequad"],
         }
         self.corr.compute(
-            {"k11": k11, "P11": p11, "f": f, "DA": DA, "H": H,}
+            {
+                "k11": k11,
+                "P11": p11,
+                "f": f,
+                "DA": DA,
+                "H": H,
+            }
         )
         return self.corr.get(bias=dct)  # type: ignore
 

@@ -516,18 +516,23 @@ class Common(object):
         kmin: float = 0.001,
         kmax: float = 0.3,
         optiresum: bool = False,
-        kmA: float = 1.0,
+        kmA: float = 0.7,
+        krA: float = 0.35,
         ndA: float = 3e-4,
         kmB: float | None = None,
+        krB: float | None = None,
         ndB: float | None = None,
     ):
         self.optiresum = optiresum
         # set kmB and ndB when computing cross power spectrum
         self.kmA = kmA
+        self.krA = krA
         self.ndA = ndA
         kmB = kmA if kmB is None else kmB
+        krB = krA if krB is None else krB
         ndB = ndA if ndB is None else ndB
         self.kmB = kmB
+        self.krB = krB
         self.ndB = ndB
         self.Nl = Nl
         self.N11 = 3
@@ -716,7 +721,7 @@ class Bird(object):
         pass
 
     def setPsCfl(self):
-        """For option: which='all'. Creates multipoles for each term weighted accordingly"""
+        """Creates multipoles for each term weighted accordingly"""
         self.P11l = np.einsum("x,ln->lnx", self.P11, self.co.l11)
         self.Pctl = np.einsum("x,x,ln->lnx", self.co.k**2, self.P11, self.co.lct)
         self.P22l = np.einsum("nx,ln->lnx", self.P22, self.co.l22)
@@ -729,7 +734,7 @@ class Bird(object):
         self.setPstl()
 
     def reducePsCfl(self):
-        """For option: which='all'. Regroups terms that share the same EFT parameter(s)"""
+        """Regroups terms that share the same EFT parameter(s)"""
         f1 = self.f
 
         self.Ploopl[:, 0] = (
@@ -839,12 +844,12 @@ class Bird(object):
             self.Pstl[1, 2, :] = ks2
 
     def setreducePslb(self, bs):
-        """For option: which='all'. Given an array of EFT parameters, multiply them accordingly to the power spectrum multipole regrouped terms and adds the resulting terms together per loop order.
+        """Given an array of EFT parameters, multiply them accordingly to the power spectrum multipole regrouped terms and adds the resulting terms together per loop order.
 
         Parameters
         ----------
         bs : array
-            An array of 7 EFT parameters: b_1, b_2, b_3, b_4, c_{ct}/k_{nl}^2, c_{r,1}/k_{m}^2, c_{r,2}/k_{m}^2
+            An array of 7 EFT parameters: b_1, b_2, b_3, b_4, c_{ct}/k_{m}^2, c_{r,1}/k_{r}^2, c_{r,2}/k_{r}^2
         """
         b1, b2, b3, b4, b5, b6, b7 = bs
         f = self.f
@@ -883,7 +888,7 @@ class Bird(object):
         self.fullPs = Ps0 + Ps1
 
     def subtractShotNoise(self):
-        """For option: which='all'. Subtract the constant stochastic term from the (22-)loop"""
+        """Subtract the constant stochastic term from the (22-)loop"""
         for l in range(self.co.Nl):
             for n in range(self.co.Nloop):
                 shotnoise = self.Ploopl[l, n, 0]

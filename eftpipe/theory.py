@@ -105,7 +105,14 @@ class BirdPlus(pybird.Bird):
         es : Iterable[float], optional
             c_{e,0}, c_{mono}, c_{quad}, by default zeros
         """
-        kmA, ndA, kmB, ndB = self.co.kmA, self.co.ndA, self.co.kmB, self.co.ndB
+        kmA, krA, ndA, kmB, krB, ndB = (
+            self.co.kmA,
+            self.co.krA,
+            self.co.ndA,
+            self.co.kmB,
+            self.co.krB,
+            self.co.ndB,
+        )
         b1A, b2A, b3A, b4A, cctA, cr1A, cr2A = bsA
         if bsB is None:
             bsB = bsA
@@ -113,17 +120,17 @@ class BirdPlus(pybird.Bird):
         f = self.f
         ce0, cemono, cequad = es
 
-        # cct -> cct / km**2, cr1 -> cr1 / km**2, cr2 -> cr2 / km**2
+        # cct -> cct / km**2, cr1 -> cr1 / kr**2, cr2 -> cr2 / kr**2
         # ce0 -> ce0 / nd, cemono -> cemono / nd / km**2, cequad -> cequad / nd / km**2
         b11AB = np.array([b1A * b1B, (b1A + b1B) * f, f**2])
         bctAB = np.array(
             [
                 b1A * cctB / kmB**2 + b1B * cctA / kmA**2,
-                b1B * cr1A / kmA**2 + b1A * cr1B / kmB**2,
-                b1B * cr2A / kmA**2 + b1A * cr2B / kmB**2,
+                b1B * cr1A / krA**2 + b1A * cr1B / krB**2,
+                b1B * cr2A / krA**2 + b1A * cr2B / krB**2,
                 (cctA / kmA**2 + cctB / kmB**2) * f,
-                (cr1A / kmA**2 + cr1B / kmB**2) * f,
-                (cr2A / kmA**2 + cr2B / kmB**2) * f,
+                (cr1A / krA**2 + cr1B / krB**2) * f,
+                (cr2A / krA**2 + cr2B / krB**2) * f,
             ]
         )
         bloopAB = np.array(
@@ -190,16 +197,23 @@ class BirdPlus(pybird.Bird):
         self, b1A: float, b1B: float, Ploopl: NDArray, Pctl: NDArray, Pstl: NDArray
     ) -> dict[str, NDArray]:
         f = self.f
-        kmA, ndA, kmB, ndB = self.co.kmA, self.co.ndA, self.co.kmB, self.co.ndB
+        kmA, krA, ndA, kmB, krB, ndB = (
+            self.co.kmA,
+            self.co.krA,
+            self.co.ndA,
+            self.co.kmB,
+            self.co.krB,
+            self.co.ndB,
+        )
         PG: dict[str, Any] = {}
         PG["b3A"] = 1 / 2 * Ploopl[:, 3, :] + 1 / 2 * b1B * Ploopl[:, 7, :]
         PG["cctA"] = b1B / kmA**2 * Pctl[:, 0, :] + f / kmA**2 * Pctl[:, 3, :]
-        PG["cr1A"] = b1B / kmA**2 * Pctl[:, 1, :] + f / kmA**2 * Pctl[:, 4, :]
-        PG["cr2A"] = b1B / kmA**2 * Pctl[:, 2, :] + f / kmA**2 * Pctl[:, 5, :]
+        PG["cr1A"] = b1B / krA**2 * Pctl[:, 1, :] + f / krA**2 * Pctl[:, 4, :]
+        PG["cr2A"] = b1B / krA**2 * Pctl[:, 2, :] + f / krA**2 * Pctl[:, 5, :]
         PG["b3B"] = 1 / 2 * Ploopl[:, 3, :] + 1 / 2 * b1A * Ploopl[:, 7, :]
         PG["cctB"] = b1A / kmB**2 * Pctl[:, 0, :] + f / kmB**2 * Pctl[:, 3, :]
-        PG["cr1B"] = b1A / kmB**2 * Pctl[:, 1, :] + f / kmB**2 * Pctl[:, 4, :]
-        PG["cr2B"] = b1A / kmB**2 * Pctl[:, 2, :] + f / kmB**2 * Pctl[:, 5, :]
+        PG["cr1B"] = b1A / krB**2 * Pctl[:, 1, :] + f / krB**2 * Pctl[:, 4, :]
+        PG["cr2B"] = b1A / krB**2 * Pctl[:, 2, :] + f / krB**2 * Pctl[:, 5, :]
         xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
         xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
         PG["ce0"] = Pstl[:, 0, :] * xfactor1
@@ -664,17 +678,36 @@ class EFTLSSChild(HelperTheory):
         cross = self.config.get("cross", [])
         if not cross:
             try:
-                kmA, ndA = self.config["km"], self.config["nd"]
-                kmB, ndB = kmA, ndA
+                kmA, krA, ndA = (
+                    self.config["km"],
+                    self.config.get("kr"),
+                    self.config["nd"],
+                )
+                if krA is None:
+                    self.mpi_warning(
+                        "kr not specified, assuming kr=km, will raise exception in the future"
+                    )
+                    krA = kmA
+                kmB, krB, ndB = kmA, krA, ndA
             except KeyError:
-                raise LoggedError(self.log, "must specify km and nd")
+                raise LoggedError(self.log, "must specify km, kr and nd")
         else:
             try:
                 tracerA, tracerB = (self.eftlss.tracers[_] for _ in cross)
-                kmA, ndA = tracerA["km"], tracerA["nd"]
-                kmB, ndB = tracerB["km"], tracerB["nd"]
+                kmA, krA, ndA = tracerA["km"], tracerA.get("kr"), tracerA["nd"]
+                kmB, krB, ndB = tracerB["km"], tracerB.get("kr"), tracerB["nd"]
+                if krA is None:
+                    self.mpi_warning(
+                        "tracerA: kr not specified, assuming kr=km, will raise exception in the future"
+                    )
+                    krA = kmA
+                if krB is None:
+                    self.mpi_warning(
+                        "tracerB: kr not specified, assuming kr=km, will raise exception in the future"
+                    )
+                    krB = kmB
             except KeyError:
-                raise LoggedError(self.log, "missing km or nd for tracer %s", cross)
+                raise LoggedError(self.log, "missing km, kr or nd for tracer %s", cross)
 
         # do not initialize if no power spectrum requested
         if not self.need_power:
@@ -703,7 +736,14 @@ class EFTLSSChild(HelperTheory):
         self.mpi_info("compute power spectrum multipoles (internal): %s", ls)
 
         self.co = pybird.Common(
-            Nl=Nl, optiresum=self.optiresum, kmA=kmA, ndA=ndA, kmB=kmB, ndB=ndB
+            Nl=Nl,
+            optiresum=self.optiresum,
+            kmA=kmA,
+            krA=krA,
+            ndA=ndA,
+            kmB=kmB,
+            krB=krB,
+            ndB=ndB,
         )
         self.bird: BirdPlus | None = None
         self.nonlinear = pybird.NonLinear(
