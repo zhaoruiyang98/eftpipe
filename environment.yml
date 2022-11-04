@@ -1,25 +1,26 @@
 name: eftpipe
 channels:
-  - defaults
+  - conda-forge
+  - nodefaults
 dependencies:
   - python=3.8
-  - conda-forge::typing_extensions>=4.1,<5.0
+  - typing_extensions>=4.1,<5.0
   # getdist dependencies
-  - conda-forge::numpy>=1.20
-  - conda-forge::scipy>=1.6
-  - conda-forge::pandas>=1.0.1
-  - conda-forge::matplotlib
-  - conda-forge::PyYAML>=5.1
-  - conda-forge::PySide2
+  - numpy>=1.20
+  - scipy>=1.6
+  - pandas>=1.0.1
+  - matplotlib
+  - PyYAML>=5.1
+  - PySide2
   # end
   # cobaya dependencies
-  - conda-forge::portalocker>=2.3.0
-  - conda-forge::tqdm
-  - conda-forge::fuzzywuzzy>=0.17
-  - conda-forge::requests>=2.18
-  - conda-forge::urllib3>=1.22
-  - conda-forge::dill>=0.3.3
-  - conda-forge::packaging
+  - portalocker>=2.3.0
+  - tqdm
+  - fuzzywuzzy>=0.17
+  - requests>=2.18
+  - urllib3>=1.22
+  - dill>=0.3.3
+  - packaging
   # end
   - pip
   - pip:

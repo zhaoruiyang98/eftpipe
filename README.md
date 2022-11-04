@@ -40,7 +40,7 @@ Before running MCMC, you may need install some cosmology codes. Cobaya provides 
 ```shell
 pip install "camb>=1.3.5"
 git clone --depth 1 --branch v3.2.0 https://github.com/lesgourg/class_public
-conda install cython
+conda install -c conda-forge cython
 cd class_public/
 make
 ```
