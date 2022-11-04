@@ -9,8 +9,6 @@ theory:
       CMASS_NGC:
         prefix: CMASS_NGC_
         z: 0.57
-        km: 0.7
-        kr: 0.25
         nd: 0.00045
         APeffect:
           z_AP: 0.57
@@ -20,7 +18,6 @@ theory:
       CMASS_SGC:
         prefix: CMASS_SGC_
         z: 0.57
-        km: 0.7
         nd: 0.00045
         APeffect:
           z_AP: 0.57
@@ -30,7 +27,6 @@ theory:
       LOWZ_NGC:
         prefix: LOWZ_NGC_
         z: 0.32
-        km: 0.7
         nd: 0.0004
         APeffect:
           z_AP: 0.32
@@ -39,6 +35,8 @@ theory:
           window_configspace_file: data/pybird/Window/window_BOSS_LOWZ_NGC_z032.dat
       default:
         provider: classynu
+        km: 0.7
+        kr: 0.25
         with_IRresum: true
         with_APeffect: true
         with_window: true
