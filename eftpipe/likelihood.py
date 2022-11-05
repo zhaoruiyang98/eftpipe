@@ -47,6 +47,7 @@ class EFTLikeSingle(Likelihood, Marginalizable):
         self.prefix = self.provider.model.theory["eftpipe.eftlss." + self.tracer].prefix
         if self.marg:
             self.setup_prior(self.marg)
+            self.report_marginalized()
 
     def get_requirements(self):
         reqs = {}
