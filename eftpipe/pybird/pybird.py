@@ -2043,7 +2043,7 @@ class FiberCollision(HasLogger):
         self.Dfc = Dfc
         self.co = co
         self.mpi_info("Apply fiber collision correction")
-        self.mpi_info("ktrust: %.3f", self.fs)
+        self.mpi_info("ktrust: %.3f", self.ktrust)
         self.mpi_info("fs: %.3f", self.fs)
         self.mpi_info("Dfc: %.3f", self.Dfc)
         self.snapshot = snapshot
