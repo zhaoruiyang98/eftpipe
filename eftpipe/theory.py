@@ -727,7 +727,6 @@ class EFTLSSChild(HelperTheory):
             self.mpi_info(
                 "computing cross power spectrum between %s and %s", cross[0], cross[1]
             )
-        # TODO: set Nl according to plugins, e.g. window
         ls_group = []
         for name in (
             "nonlinear_Plk_grid",
@@ -841,22 +840,30 @@ class EFTLSSChild(HelperTheory):
                 "rdrag": None,
             }
 
-        # TODO: some parameters can be moved to get_can_support_params
-        # the following lines are reused by ``_params_reader``, possible to combine?
-        stnames = ("ce0", "cemono", "cequad")
-        names = ("b1", "b2", "b3", "b4", "cct", "cr1", "cr2")
-        cross = self.config.get("cross", [])
-        if cross:
-            eft_params = [self.prefix + name for name in stnames]
+        # TODO: the following lines are reused by ``_params_reader``, possible to combine?
+        names = ("b1", "b2", "b4")
+        if cross := self.config.get("cross", []):
             cross_prefix = [self.eftlss.tracers[_]["prefix"] for _ in cross]
+            eft_params = []
             for prefix in cross_prefix:
                 eft_params += [prefix + name for name in names]
         else:
             eft_params = [self.prefix + name for name in names]
-            eft_params += [self.prefix + name for name in stnames]
         eft_requires = {param: None for param in eft_params}
         requires.update(eft_requires)
         return requires
+
+    def get_can_support_params(self):
+        names = ("b3", "cct", "cr1", "cr2")
+        stnames = ("ce0", "cemono", "cequad")
+        if cross := self.config.get("cross", []):
+            ret = [self.prefix + name for name in stnames]
+            cross_prefix = [self.eftlss.tracers[_]["prefix"] for _ in cross]
+            for prefix in cross_prefix:
+                ret += [prefix + name for name in names]
+        else:
+            ret = [self.prefix + name for name in names + stnames]
+        return ret
 
     def _config_ls(
         self,
@@ -1026,24 +1033,33 @@ class EFTLSSChild(HelperTheory):
 
     @cached_property
     def _params_reader(self):
-        cross = self.config.get("cross", [])
         stnames = ("ce0", "cemono", "cequad")
         names = ("b1", "b2", "b3", "b4", "cct", "cr1", "cr2")
-        if cross:
+        if cross := self.config.get("cross", []):
             A, B = (self.eftlss.tracers[name]["prefix"] for name in cross)
+            default = {self.prefix + name: 0 for name in stnames}
+            for prefix in (A, B):
+                for name in ("b3", "cct", "cr1", "cr2"):
+                    default[prefix + name] = 0
 
             def reader(params: dict[str, float]):
-                es = [params[self.prefix + name] for name in stnames]
-                bsA = [params[A + name] for name in names]
-                bsB = [params[B + name] for name in names]
+                ps = {**default, **params}
+                es = [ps[self.prefix + name] for name in stnames]
+                bsA = [ps[A + name] for name in names]
+                bsB = [ps[B + name] for name in names]
                 b1A, b1B = bsA[0], bsB[0]
                 return bsA, bsB, es, b1A, b1B
 
         else:
+            default = {
+                self.prefix + name: 0
+                for name in ("b3", "cct", "cr1", "cr2", "ce0", "cemono", "cequad")
+            }
 
             def reader(params: dict[str, float]):
-                es = [params[self.prefix + name] for name in stnames]
-                bsA = [params[self.prefix + name] for name in names]
+                ps = {**default, **params}
+                es = [ps[self.prefix + name] for name in stnames]
+                bsA = [ps[self.prefix + name] for name in names]
                 bsB = bsA.copy()
                 b1A, b1B = bsA[0], bsB[0]
                 return bsA, bsB, es, b1A, b1B

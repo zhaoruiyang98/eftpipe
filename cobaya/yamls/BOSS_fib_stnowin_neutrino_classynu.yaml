@@ -200,9 +200,6 @@ params:
     proposal: 0.01
     latex: c_2^{\mathrm{C,NGC}}
     drop: true
-  CMASS_NGC_b3:
-    value: 0.0
-    latex: b_3^{\mathrm{C,NGC}}
   CMASS_NGC_c4:
     value: 0.0
     latex: c_4^{\mathrm{C,NGC}}
@@ -213,24 +210,6 @@ params:
   CMASS_NGC_b4:
     value: 'lambda CMASS_NGC_c2, CMASS_NGC_c4: (CMASS_NGC_c2 - CMASS_NGC_c4) / np.sqrt(2.)'
     latex: b_4^{\mathrm{C,NGC}}
-  CMASS_NGC_cct:
-    value: 0.0
-    latex: c_\mathrm{ct}^{\mathrm{C,NGC}}
-  CMASS_NGC_cr1:
-    value: 0.0
-    latex: c_\mathrm{r,1}^{\mathrm{C,NGC}}
-  CMASS_NGC_cr2:
-    value: 0.0
-    latex: c_\mathrm{r,2}^{\mathrm{C,NGC}}
-  CMASS_NGC_ce0:
-    value: 0.0
-    latex: c_{\epsilon,0}^{\mathrm{C,NGC}}
-  CMASS_NGC_cemono:
-    value: 0.0
-    latex: c_{\epsilon,\mathrm{mono}}^{\mathrm{C,NGC}}
-  CMASS_NGC_cequad:
-    value: 0.0
-    latex: c_{\epsilon,\mathrm{quad}}^{\mathrm{C,NGC}}
   CMASS_NGC_fsigma8_z:
   CMASS_NGC_fz:
   CMASS_NGC_alperp:
@@ -251,9 +230,6 @@ params:
     proposal: 0.01
     latex: c_2^{\mathrm{C,SGC}}
     drop: true
-  CMASS_SGC_b3:
-    value: 0.0
-    latex: b_3^{\mathrm{C,SGC}}
   CMASS_SGC_c4:
     value: 0.0
     latex: c_4^{\mathrm{C,SGC}}
@@ -264,24 +240,6 @@ params:
   CMASS_SGC_b4:
     value: 'lambda CMASS_SGC_c2, CMASS_SGC_c4: (CMASS_SGC_c2 - CMASS_SGC_c4) / np.sqrt(2.)'
     latex: b_4^{\mathrm{C,SGC}}
-  CMASS_SGC_cct:
-    value: 0.0
-    latex: c_\mathrm{ct}^{\mathrm{C,SGC}}
-  CMASS_SGC_cr1:
-    value: 0.0
-    latex: c_\mathrm{r,1}^{\mathrm{C,SGC}}
-  CMASS_SGC_cr2:
-    value: 0.0
-    latex: c_\mathrm{r,2}^{\mathrm{C,SGC}}
-  CMASS_SGC_ce0:
-    value: 0.0
-    latex: c_{\epsilon,0}^{\mathrm{C,SGC}}
-  CMASS_SGC_cemono:
-    value: 0.0
-    latex: c_{\epsilon,\mathrm{mono}}^{\mathrm{C,SGC}}
-  CMASS_SGC_cequad:
-    value: 0.0
-    latex: c_{\epsilon,\mathrm{quad}}^{\mathrm{C,SGC}}
   CMASS_SGC_fsigma8_z:
   CMASS_SGC_fz:
   CMASS_SGC_alperp:
@@ -302,9 +260,6 @@ params:
     proposal: 0.01
     latex: c_2^{\mathrm{L,NGC}}
     drop: true
-  LOWZ_NGC_b3:
-    value: 0.0
-    latex: b_3^{\mathrm{L,NGC}}
   LOWZ_NGC_c4:
     value: 0.0
     latex: c_4^{\mathrm{L,NGC}}
@@ -315,24 +270,6 @@ params:
   LOWZ_NGC_b4:
     value: 'lambda LOWZ_NGC_c2, LOWZ_NGC_c4: (LOWZ_NGC_c2 - LOWZ_NGC_c4) / np.sqrt(2.)'
     latex: b_4^{\mathrm{L,NGC}}
-  LOWZ_NGC_cct:
-    value: 0.0
-    latex: c_\mathrm{ct}^{\mathrm{L,NGC}}
-  LOWZ_NGC_cr1:
-    value: 0.0
-    latex: c_\mathrm{r,1}^{\mathrm{L,NGC}}
-  LOWZ_NGC_cr2:
-    value: 0.0
-    latex: c_\mathrm{r,2}^{\mathrm{L,NGC}}
-  LOWZ_NGC_ce0:
-    value: 0.0
-    latex: c_{\epsilon,0}^{\mathrm{L,NGC}}
-  LOWZ_NGC_cemono:
-    value: 0.0
-    latex: c_{\epsilon,\mathrm{mono}}^{\mathrm{L,NGC}}
-  LOWZ_NGC_cequad:
-    value: 0.0
-    latex: c_{\epsilon,\mathrm{quad}}^{\mathrm{L,NGC}}
   LOWZ_NGC_fsigma8_z:
   LOWZ_NGC_fz:
   LOWZ_NGC_alperp:

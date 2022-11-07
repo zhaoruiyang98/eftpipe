@@ -12,6 +12,7 @@ def unpack_PG_table(prefix: str, product):
     out[f"{prefix}_kgrid"] = kgrid
     return out
 
+
 def test_ELG_NGC_reg(yamlroot: Path, ndarrays_regression: NDArraysRegressionFixture):
     info = yamlroot / "mock_eBOSS_ELG_NGC_theory.yaml"
     with PathContext("cobaya"):
