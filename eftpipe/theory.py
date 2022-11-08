@@ -541,12 +541,12 @@ class EFTLSS(Theory):
     def get_helper_theories(self) -> dict[str, Theory]:
         out = {}
         for name in self.names:
-            out["eftpipe.eftlss." + name] = EFTLSSChild(
+            out["eftpipe.eftlss." + name] = EFTLSSLeaf(
                 self, name, dict(stop_at_error=self.stop_at_error), timing=self.timer
             )
         # Pk_interpolator requires at least 4 redshift
         if len(out) < 4:
-            first: EFTLSSChild = out["eftpipe.eftlss." + self.names[0]]
+            first: EFTLSSLeaf = out["eftpipe.eftlss." + self.names[0]]
             first._zextra = [first.zeff + i * 0.1 for i in range(1, 5 - len(out))]
         return out
 
@@ -599,7 +599,7 @@ class PlkInterpolator:
         return self.fn(k)[idx]
 
 
-class EFTLSSChild(HelperTheory):
+class EFTLSSLeaf(HelperTheory):
     def __init__(self, eftlss: EFTLSS, name: str, info, timing=None) -> None:
         # append extra redshifts if using classy (classy's bug)
         self._zextra: list[float] = []
