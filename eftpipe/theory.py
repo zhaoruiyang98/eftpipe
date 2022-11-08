@@ -20,11 +20,13 @@ from cobaya.theory import Theory
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
     from cobaya.theory import Provider
+    from .interface import BoltzmannInterface
 
 # local
 from .icc import IntegralConstraint
 from .interface import CobayaCambInterface
 from .interface import CobayaClassyInterface
+from .interface import find_boltzmann_interface
 from .pybird import pybird
 from .tools import bool_or_list
 from .tools import group_lists
@@ -459,10 +461,9 @@ class EFTLSS(Theory):
         # check boltzmann provider
         providers = set(v.get("provider", "classy") for v in self.tracers.values())
         if len(providers) != 1:
-            raise LoggedError(self.log, "All tracers should share the same provider")
-        supported_providers = ["camb", "classy", "classynu", "eftpipe.classynu"]
-        if providers.pop() not in supported_providers:
-            raise LoggedError(self.log, "supported providers: %s", supported_providers)
+            self.mpi_warning(
+                "Seems like tracers are not sharing the same provider, is this intended?"
+            )
 
         # {requirement: tracers' names}
         self._must_provide: defaultdict[str, set[str]] = defaultdict(set)
@@ -622,10 +623,16 @@ class EFTLSSChild(HelperTheory):
             self.zeff: float = self.config["z"]
         except KeyError:
             raise LoggedError(self.log, "must specify effective redshift z")
-        # provider_name, use_cb and optiresum should be determined at initialization
-        self.provider_name: str = self.config.get("provider", "classy")
+        # provider, use_cb and optiresum should be determined at initialization
         self.use_cb: bool = self.config.get("use_cb", False)
         self.optiresum: bool = self.config.get("IRresum", {}).pop("optiresum", False)
+        self.boltzmann = find_boltzmann_interface(
+            self.config.get("provider", "classy"),
+            self.config.get("provider_kwargs", {}),
+        )
+        self.boltzmann.initialize(
+            zeff=self.zeff, use_cb=self.use_cb, zextra=self._zextra
+        )
         # delayed initialization in initialize_with_provider,
         # so that all dependencies can be quickly checked
         # check config
@@ -661,20 +668,7 @@ class EFTLSSChild(HelperTheory):
     def initialize_with_provider(self, provider: Provider):
         super().initialize_with_provider(provider)
 
-        use_cb = self.use_cb
-        if self.provider_name == "camb":
-            self.boltzmann = CobayaCambInterface(
-                provider=provider, z=self.zeff, use_cb=use_cb
-            )
-        elif self.provider_name in ("classy", "classynu", "eftpipe.classynu"):
-            self.boltzmann = CobayaClassyInterface(
-                provider=provider, z=self.zeff, use_cb=use_cb
-            )
-        else:
-            raise LoggedError(
-                self.log, "This should not happen, please contact the authors"
-            )
-
+        self.boltzmann.initialize_with_provider(provider)
         cross = self.config.get("cross", [])
         if not cross:
             try:
@@ -757,7 +751,7 @@ class EFTLSSChild(HelperTheory):
             load=True, save=True, co=self.co, path=str(self.eftlss.cache_dir_path)
         )
 
-        if use_cb:
+        if self.use_cb:
             self.mpi_info("using P_cb as input linear power spectrum")
         else:
             self.mpi_info("using P_m as input linear power spectrum")
@@ -801,44 +795,7 @@ class EFTLSSChild(HelperTheory):
     def get_requirements(self) -> dict[str, Any]:
         # requirements should be known after initialization especially EFT parameters
         # XXX: dependency on cosmology may be dynamically updated
-        z = self.zeff
-        extra_zs = [] if z == 0.0 else [0.0]
-        vars_pairs = [2 * ["delta_nonu"]] if self.use_cb else [2 * ["delta_tot"]]
-        if self.provider_name == "camb":
-            requires = {
-                "Pk_interpolator": {
-                    "nonlinear": False,
-                    "z": [z] + self._zextra,
-                    "k_max": 5,
-                    "vars_pairs": vars_pairs,
-                },
-                "Hubble": {"z": extra_zs + [z]},
-                "angular_diameter_distance": {"z": [z]},
-                "fsigma8": {"z": [z]},
-                "sigma8_z": {"z": [z]},
-                "rdrag": None,
-            }
-        else:
-            # sometimes classy does not reach the requested maximum redshift
-            try:
-                import classy
-
-                if classy.__version__ == "v3.2.0":  # type: ignore
-                    extra_zs += [self.zeff + 0.5]
-            except ImportError:
-                extra_zs += [self.zeff + 0.5]
-            requires = {
-                "Pk_interpolator": {
-                    "nonlinear": False,
-                    "z": [z] + extra_zs,
-                    "k_max": 5,
-                    "vars_pairs": vars_pairs,
-                },
-                "Hubble": {"z": extra_zs + [z]},
-                "angular_diameter_distance": {"z": [z]},
-                "fsigma8": {"z": [z]},
-                "rdrag": None,
-            }
+        requires = self.boltzmann.get_requirements()
 
         # TODO: the following lines are reused by ``_params_reader``, possible to combine?
         names = ("b1", "b2", "b4")
@@ -1121,8 +1078,8 @@ class EFTLSSChild(HelperTheory):
                 # TODO: make kmin, kmax configurable
                 kh = np.logspace(-5, 0, 200)
                 pkh = boltzmann.Pkh(kh)
-                H, DA, f = boltzmann.H, boltzmann.DA, boltzmann.f
-                rdrag, h = boltzmann.rdrag, boltzmann.h
+                H, DA, f = boltzmann.H(), boltzmann.DA(), boltzmann.f()
+                rdrag, h = boltzmann.rdrag(), boltzmann.h()
                 # fmt: off
                 bird = BirdPlus(
                     kh, pkh, f, DA, H, self.zeff, co=self.co, rdrag=rdrag, h=h)
@@ -1237,8 +1194,8 @@ class EFTLSSChild(HelperTheory):
             else:
                 state["derived"][self.prefix + "alperp"] = 1
                 state["derived"][self.prefix + "alpara"] = 1
-            state["derived"][self.prefix + "fz"] = boltzmann.f
-            state["derived"][self.prefix + "fsigma8_z"] = boltzmann.fsigma8_z
+            state["derived"][self.prefix + "fz"] = boltzmann.f()
+            state["derived"][self.prefix + "fsigma8_z"] = boltzmann.fsigma8_z()
             # TODO: fsigma8_cb_z
         end = time.perf_counter()
         self.mpi_debug("calculate: time used: %s", end - start)

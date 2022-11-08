@@ -8,7 +8,11 @@ from eftpipe.interface import CobayaClassyInterface, CobayaCambInterface
 @pytest.mark.fcompare
 @pytest.mark.parametrize("use_cb", (False, True), ids=["no_cb", "cb"])
 def test_compare_camb_and_classy(
-    compare_ndarrays, rtol: float, atol: float, yamlroot: Path, use_cb: bool,
+    compare_ndarrays,
+    rtol: float,
+    atol: float,
+    yamlroot: Path,
+    use_cb: bool,
 ):
     camb_model = cobaya.get_model(str(yamlroot / "camb_planck18.yaml"))
     classy_model = cobaya.get_model(str(yamlroot / "classy_planck18.yaml"))
@@ -47,23 +51,28 @@ def test_compare_camb_and_classy(
     classy_model.logpost(classy_point)
     camb_model.logpost(camb_point)
 
-    classy_provider = CobayaClassyInterface(classy_model.provider, z, use_cb=use_cb)
-    camb_provider = CobayaCambInterface(camb_model.provider, z, use_cb=use_cb)
+    classy_provider = CobayaClassyInterface()
+    classy_provider.initialize(z, use_cb=use_cb)
+    classy_provider.initialize_with_provider(classy_model.provider)
+    camb_provider = CobayaCambInterface()
+    camb_provider.initialize(z, use_cb=use_cb)
+    camb_provider.initialize_with_provider(camb_model.provider)
 
     dcts = []
     for provider in (camb_provider, classy_provider):
         kh = np.logspace(-5, 0, 200)
         dct = {
-            "rdrag": provider.rdrag,
-            "DA": provider.DA,
-            "H": provider.H,
-            "f": provider.f,
+            "rdrag": provider.rdrag(),
+            "DA": provider.DA(),
+            "H": provider.H(),
+            "f": provider.f(),
             "sigma8": provider.provider.get_param("sigma8"),
             "pkh": provider.Pkh(kh),
         }
         dcts.append(dct)
     ref, data = dcts
     compare_ndarrays(
-        ref, data, default_tolerance={"atol": atol, "rtol": rtol},
+        ref,
+        data,
+        default_tolerance={"atol": atol, "rtol": rtol},
     )
-

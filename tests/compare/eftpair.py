@@ -217,10 +217,12 @@ class PybirdTh:
         self.z = config["z"]
 
     def set_bolzman_provider(self, provider):
-        self.provider = CobayaCambInterface(provider, z=self.z)
+        self.provider = CobayaCambInterface()
+        self.provider.initialize(zeff=self.z)
+        self.provider.initialize_with_provider(provider)
 
     def Plk(self, params_dict: dict) -> NDArray:
-        from pybird.pybird import Correlator
+        from pybird.pybird import Correlator  # type: ignore
 
         with PathContext(PYBIRDDEV_CACHE):
             self.corr = Correlator()
@@ -229,7 +231,7 @@ class PybirdTh:
         provider = self.provider
         k11 = np.logspace(-5, 0, 200)
         p11 = provider.Pkh(k11)
-        H, DA, f = provider.H, provider.DA, provider.f
+        H, DA, f = provider.H(), provider.DA(), provider.f()
         dct = {
             "b1": params_dict["b1"],
             "b2": (params_dict["c2"] + params_dict["c4"]) / np.sqrt(2),
