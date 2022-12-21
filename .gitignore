@@ -136,6 +136,9 @@ dmypy.json
 /tests/compare/**/test_*.npz
 /tests/compare/cache/
 
+# mac
+.DS_Store
+
 # benchmark files
 *.bench
 *.lprof
