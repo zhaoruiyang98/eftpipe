@@ -36,7 +36,7 @@ likelihood:
       path: data/mock/noric_ELG_NGC.txt
       ls: [0, 2, 4]
       kmin: 0.03
-      kmax: 0.25
+      kmax: [0.25, 0.25, 0.20]
     cov:
       path: data/cov/noric_cov_NGC_E024.txt
       rescale: 27
