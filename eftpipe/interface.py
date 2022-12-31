@@ -278,7 +278,7 @@ def find_boltzmann_interface(name: str, kwargs: dict[str, Any]) -> BoltzmannInte
         ret = CobayaClassyInterface()
     else:
         module_name, class_name = name.rsplit(".", 1)
-        module = importlib.import_module(name)
+        module = importlib.import_module(module_name)
         ret = getattr(module, class_name)(**kwargs)
     return ret
 
