@@ -31,7 +31,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         raise NotImplementedError
 
     def marginalized_logp(self, dvector: NDArray, invcov: NDArray) -> float:
-        r"""calculate marginalized posterior
+        R"""calculate marginalized posterior
 
         Parameters
         ----------
@@ -39,12 +39,12 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
             data vector
         invcov : NDArray, 2d
             inverse covariance matrix of data vector
-        
+
         Returns
         -------
         float
             marginalized log-posterior
-        
+
         Notes
         -----
         .. math::
@@ -69,8 +69,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         return -0.5 * chi2
 
     def setup_prior(self, prior: dict[str, dict[str, Any]]) -> None:
-        """setup self.valid_prior, self.mu_G and self.sigma_inv
-        """
+        """setup self.valid_prior, self.mu_G and self.sigma_inv"""
         self.valid_prior = self._update_prior(prior)
         self.mu_G, self.sigma_inv = self._calc_prior(self.valid_prior)
 
@@ -82,8 +81,8 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
             self.mpi_info(f"  scale: {dct['scale']}")
 
     def calc_F2ij(self, PG, invcov) -> NDArray:
-        r"""calculate F2 matrix
-        
+        R"""calculate F2 matrix
+
         Notes
         -----
         .. math::
@@ -92,8 +91,8 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         return PG @ invcov @ PG.T + self.sigma_inv
 
     def calc_F1i(self, PG, PNG, invcov, dvector) -> NDArray:
-        r"""calculate F1 vector
-        
+        R"""calculate F1 vector
+
         Notes
         -----
         .. math::
@@ -102,8 +101,8 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         return -PG @ invcov @ (PNG - dvector) + self.sigma_inv @ self.mu_G
 
     def calc_F0(self, PNG, invcov, dvector) -> NDArray:
-        r"""calculate F0
-        
+        R"""calculate F0
+
         Notes
         -----
         .. math::
@@ -119,7 +118,9 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         for key in prior.keys():
             if key not in marginalizable_params:
                 raise LoggedError(
-                    self.log, "key <%s> is not marginalizable", key,
+                    self.log,
+                    "key <%s> is not marginalizable",
+                    key,
                 )
         newdct = {}
         nscale_inf = 0
@@ -144,7 +145,8 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         }
         if nscale_inf != 0 and nscale_inf != len(marginalizable_params):
             raise LoggedError(
-                self.log, "only support setting infinite scale for all parameters",
+                self.log,
+                "only support setting infinite scale for all parameters",
             )
         return outdct
 

@@ -1,27 +1,34 @@
 from __future__ import annotations
 import math
 import os
+from typing import Any, cast, List, Literal
 from scipy.optimize import fsolve
 from cobaya.log import LoggedError
 from cobaya.theories.classy import classy
 
+Hierarchy_T = Literal["degenerate", "normal", "inverted"]
 
-def get_masses(delta_m, sum_masses, hierarchy):
+
+def get_masses(
+    delta_m: dict[str, float],
+    sum_masses: float,
+    hierarchy: Hierarchy_T,
+):
     if hierarchy == "normal":
         delta_m21_square = delta_m["delta_m21_square"]
         delta_m31_square = delta_m["delta_m31_square"]
         func = lambda x: (
             -sum_masses
             + x
-            + math.sqrt(delta_m21_square + x ** 2)
-            + math.sqrt(delta_m31_square + x ** 2)
+            + math.sqrt(delta_m21_square + x**2)
+            + math.sqrt(delta_m31_square + x**2)
         )
         m0, _, success, _ = fsolve(func, 0.0, full_output=True)
         m0 = m0[0]
         out = [
             m0,
-            math.sqrt(delta_m21_square + m0 ** 2),
-            math.sqrt(delta_m31_square + m0 ** 2),
+            math.sqrt(delta_m21_square + m0**2),
+            math.sqrt(delta_m31_square + m0**2),
         ]
     else:
         delta_m21_square = delta_m["delta_m21_square"]
@@ -29,20 +36,20 @@ def get_masses(delta_m, sum_masses, hierarchy):
         func = lambda x: (
             -sum_masses
             + x
-            + math.sqrt(delta_m32_square + x ** 2)
-            + math.sqrt(delta_m32_square - delta_m21_square + x ** 2)
+            + math.sqrt(delta_m32_square + x**2)
+            + math.sqrt(delta_m32_square - delta_m21_square + x**2)
         )
         m0, _, success, _ = fsolve(func, 0.0, full_output=True)
         m0 = m0[0]
         out = [
             m0,
-            math.sqrt(delta_m32_square + m0 ** 2),
-            math.sqrt(delta_m32_square - delta_m21_square + m0 ** 2),
+            math.sqrt(delta_m32_square + m0**2),
+            math.sqrt(delta_m32_square - delta_m21_square + m0**2),
         ]
     return out, success
 
 
-def get_delta_m(extra_args, hierarchy):
+def get_delta_m(extra_args: dict[str, Any], hierarchy: Hierarchy_T) -> dict[str, float]:
     """construct delta_m dictionary
 
     default values are taken from 1907.12598
@@ -55,7 +62,7 @@ def get_delta_m(extra_args, hierarchy):
     else:
         default = [-2.512e-3, 7.39e-5, -1 * (-2.512e-3 + 7.39e-5)]
 
-    inputs: list[float] = [None, None, None]  # type: ignore
+    inputs: list[float | None] = [None, None, None]
     inputs[0] = extra_args.pop("delta_m32_square", None)
     inputs[1] = extra_args.pop("delta_m21_square", None)
     x = extra_args.pop("delta_m31_square", None)
@@ -63,40 +70,40 @@ def get_delta_m(extra_args, hierarchy):
 
     flag = sum(0 if x is None else 1 for x in inputs)
     if flag == 3:
-        if sum(inputs) != 0:
+        if sum(inputs) != 0:  # type: ignore
             raise ValueError("invalid inputs")
     elif flag == 2:
         for i, v in enumerate(inputs):
             if v is None:
                 ileft = (i - 1) % 3
                 iright = (i + 1) % 3
-                inputs[i] = -(inputs[ileft] + inputs[iright])
+                inputs[i] = -(inputs[ileft] + inputs[iright])  # type: ignore
     elif flag == 1:
         raise ValueError("Please specify at least two delta_m_square")
     else:
-        inputs = default
+        inputs = default  # type: ignore
+    output = cast(List[float], inputs)
 
     out = {
-        "delta_m32_square": inputs[0],
-        "delta_m21_square": inputs[1],
-        "delta_m31_square": -inputs[2],
+        "delta_m32_square": output[0],
+        "delta_m21_square": output[1],
+        "delta_m31_square": -output[2],
     }
     return out
 
 
 class classynu(classy):
-    """enhanced classy theory with supports for neutrino hierarchy
-    """
+    """enhanced classy theory with supports for neutrino hierarchy"""
 
     def initialize(self):
         super().initialize()
-        hierarchy = self.extra_args.pop("neutrino_hierarchy", "degenerate")
+        hierarchy: Hierarchy_T = self.extra_args.pop("neutrino_hierarchy", "degenerate")
         if hierarchy not in ("degenerate", "normal", "inverted"):
             raise LoggedError(
                 self.log,
                 "neutrino hierarchy must be 'degenerate', 'normal' or 'inverted'",
             )
-        self._hieararchy = hierarchy
+        self._hieararchy: Hierarchy_T = hierarchy
         N_ur = self.extra_args.pop("N_ur", None)
         N_ncdm = self.extra_args.pop("N_ncdm", None)
         # if you want to use N_ur to get N_eff equal to 3.046 in the early universe,
@@ -155,7 +162,7 @@ class classynu(classy):
 
         Notes
         -----
-        Although some checks are performed in initialize and initialize_with_params, 
+        Although some checks are performed in initialize and initialize_with_params,
         mnu and m_ncdm may still appear at the same time.
         """
         args_dict["N_ur"] = self._N_ur

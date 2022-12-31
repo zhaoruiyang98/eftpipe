@@ -20,12 +20,9 @@ from cobaya.theory import Theory
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
     from cobaya.theory import Provider
-    from .interface import BoltzmannInterface
 
 # local
 from .icc import IntegralConstraint
-from .interface import CobayaCambInterface
-from .interface import CobayaClassyInterface
 from .interface import find_boltzmann_interface
 from .pybird import pybird
 from .tools import bool_or_list
@@ -36,7 +33,7 @@ from .tools import recursively_update_dict
 
 
 def chain_coeff(l: int) -> float:
-    r"""compute ``A_\ell`` coeff for chained power spectrum
+    R"""compute ``A_\ell`` coeff for chained power spectrum
 
     Parameters
     ----------

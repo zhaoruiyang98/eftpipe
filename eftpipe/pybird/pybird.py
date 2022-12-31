@@ -1865,7 +1865,7 @@ class APeffect(HasLogger):
         mu bins in [0, 1], default 200
     accboost: int
         boost the accuracy, default 1
-    Nlmax: int
+    Nlmax: int, optional
         approximate Pkmu using Nlmax multipoles, default self.co.Nl
     co: Common
         this class only uses co.k and co.Nl, default pybird.Common

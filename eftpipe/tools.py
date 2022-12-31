@@ -49,7 +49,11 @@ class SampledParamsMixin:
             ...
 
 
-def update_path_in_dict(d: SimpleYaml, base: Path, extra: Container[str] = (),) -> None:
+def update_path_in_dict(
+    d: SimpleYaml,
+    base: Path,
+    extra: Container[str] = (),
+) -> None:
     if isinstance(d, dict):
         for key, value in d.items():
             if not isinstance(value, (dict, list)):
@@ -106,8 +110,7 @@ def int_or_list(x: int | Iterable[int]) -> list[int]:
 
 
 def group_lists(*args: list[SupportsRichComparisonT]) -> list[SupportsRichComparisonT]:
-    """sort and join lists
-    """
+    """sort and join lists"""
     out: set[SupportsRichComparisonT] = set()
     return sorted(out.union(*args))
 
@@ -282,7 +285,10 @@ class RandomParams:
         return out
 
     def _check(
-        self, ref: dict[str, Any], covmat: npt.ArrayLike, covmat_params: Iterable[str],
+        self,
+        ref: dict[str, Any],
+        covmat: npt.ArrayLike,
+        covmat_params: Iterable[str],
     ) -> None:
         params_names = ref.keys()
         cover_all_params = set(covmat_params).issubset(set(params_names))
