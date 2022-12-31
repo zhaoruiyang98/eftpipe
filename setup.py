@@ -22,6 +22,7 @@ install_requires = [
     "numpy>=1.20",
     "scipy>=1.6",
     "cobaya>=3.2.1",
+    "pandas>=1.0.1",
     "typing_extensions>=4.1,<5",
 ]
 
