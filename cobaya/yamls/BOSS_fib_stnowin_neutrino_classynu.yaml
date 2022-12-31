@@ -54,13 +54,12 @@ likelihood:
     class: eftpipe.eftlike_s
     stop_at_error: true
     tracer: CMASS_NGC
-    lssdata:
-      fullshape:
-      - path: data/pybird/DataSims/pkl_highzNGC.dat
-        ls: [0, 2]
-        xmin: 0.01
-        xmax: 0.23
-      cov: data/pybird/Covariance/Cov_highzNGC.dat
+    data:
+      path: data/pybird/DataSims/pkl_highzNGC.dat
+      ls: [0, 2]
+      kmin: 0.01
+      kmax: 0.23
+    cov: data/pybird/Covariance/Cov_highzNGC.dat
     with_binning: false
     marg:
       CMASS_NGC_b3:
@@ -77,13 +76,12 @@ likelihood:
     class: eftpipe.eftlike_s
     stop_at_error: true
     tracer: CMASS_SGC
-    lssdata:
-      fullshape:
-      - path: data/pybird/DataSims/pkl_highzSGC.dat
-        ls: [0, 2]
-        xmin: 0.01
-        xmax: 0.23
-      cov: data/pybird/Covariance/Cov_highzSGC.dat
+    data:
+      path: data/pybird/DataSims/pkl_highzSGC.dat
+      ls: [0, 2]
+      kmin: 0.01
+      kmax: 0.23
+    cov: data/pybird/Covariance/Cov_highzSGC.dat
     with_binning: false
     marg:
       CMASS_SGC_b3:
@@ -100,13 +98,12 @@ likelihood:
     class: eftpipe.eftlike_s
     stop_at_error: true
     tracer: LOWZ_NGC
-    lssdata:
-      fullshape:
-      - path: data/pybird/DataSims/pkl_lowzNGC.dat
-        ls: [0, 2]
-        xmin: 0.01
-        xmax: 0.20
-      cov: data/pybird/Covariance/Cov_lowzNGC.dat
+    data:
+      path: data/pybird/DataSims/pkl_lowzNGC.dat
+      ls: [0, 2]
+      kmin: 0.01
+      kmax: 0.20
+    cov: data/pybird/Covariance/Cov_lowzNGC.dat
     with_binning: false
     marg:
       LOWZ_NGC_b3:

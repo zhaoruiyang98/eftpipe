@@ -1,7 +1,17 @@
 tracer:
-# deprecated
-prefix: ''
-lssdata:
+data:
+  # reader: auto
+  # reader_kwargs: {}
+  # path: ''
+  # ls: [0, 2]
+  # kmin: 0.01
+  # kmax: 0.23
+cov:
+  # reader: auto
+  # reader_kwargs: {}
+  # path: ''
+  # Nreal: 1000
+  # rescale: 1
 chained: false
 with_binning: false
 binning:

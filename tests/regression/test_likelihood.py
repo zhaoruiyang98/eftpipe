@@ -22,8 +22,8 @@ def test_test_ELG_NGC_likelihood_reg(
     likelihood = model.likelihood["ELG_NGC"]
     regdict = dict(
         logpost=logpost,
-        data_vector=likelihood.lssdata.data_vector,
-        invcov=likelihood.lssdata.invcov,
+        data_vector=likelihood.data_vector,
+        invcov=likelihood.invcov,
         PNG=likelihood.PNG(),
         PG=likelihood.PG(),
     )

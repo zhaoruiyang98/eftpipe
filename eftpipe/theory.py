@@ -712,7 +712,6 @@ class EFTLSSLeaf(HelperTheory):
             self.mpi_info("%s: km=%.3f kr=%.3f nd=%.3e", cross[1], kmB, krB, ndB)
         else:
             self.mpi_info("km=%.3f kr=%.3f nd=%.3e", kmA, krA, ndA)
-        self.mpi_info("")
         self.mpi_info("effective redshift: %.3f", self.zeff)
         if cross:
             self.mpi_info(

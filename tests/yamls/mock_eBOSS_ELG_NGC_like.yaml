@@ -32,13 +32,13 @@ likelihood:
   ELG_NGC:
     class: eftpipe.eftlike_s
     tracer: ELG_NGC
-    lssdata:
-      fullshape:
-      - path: data/mock/noric_ELG_NGC.txt
-        ls: [0, 2, 4]
-        xmin: 0.03
-        xmax: 0.25
-      cov: data/cov/noric_cov_NGC_E024.txt
+    data:
+      path: data/mock/noric_ELG_NGC.txt
+      ls: [0, 2, 4]
+      kmin: 0.03
+      kmax: 0.25
+    cov:
+      path: data/cov/noric_cov_NGC_E024.txt
       rescale: 27
       Nreal: 1000
     with_binning: true
