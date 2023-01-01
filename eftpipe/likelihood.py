@@ -149,20 +149,37 @@ def hartlap(Nreal: int, ndata: int) -> float:
     return (Nreal - ndata - 2) / (Nreal - 1)
 
 
-def flatten(ls: list[int], array, mask: dict[int, slice] | None = None):
+def flatten(
+    ls: list[int], array, mask: dict[int, slice] | None = None, out=None
+) -> Any:
     """
 
     Parameters
     ----------
     ls : list[int]
-        multipole order, should be even
+        selected multipoles, should be even
     array : ndarray, 2d
     mask : dict[int, slice] | None
+        mask for each ell, if None, use all
+    out : ndarray, 1d, optional
+        output array, if None, create a new one
     """
     idx = [ell // 2 for ell in ls]
+    if out is None:
+        if not mask:
+            return array[idx, :].flatten()
+        return np.hstack([array[i, mask[ell]] for i, ell in zip(idx, ls)])
     if not mask:
-        return array[idx, :].flatten()
-    return np.hstack([array[i, mask[ell]] for i, ell in zip(idx, ls)])
+        istart, nlen = 0, array.shape[1]
+        for i in idx:
+            out[istart : istart + nlen] = array[i, :]
+            istart += nlen
+        return
+    istart = 0
+    for i, ell in zip(idx, ls):
+        nlen = mask[ell].stop - mask[ell].start
+        out[istart : istart + nlen] = array[i, mask[ell]]
+        istart += nlen
 
 
 class EFTLikeSingle(Likelihood, Marginalizable):
@@ -229,6 +246,11 @@ class EFTLikeSingle(Likelihood, Marginalizable):
             self.hartlap = hartlap(Nreal, self.ndata)
             self.invcov *= self.hartlap
 
+    def set_cache(self) -> None:
+        self._PNG_cache = np.zeros(self.data_vector.size)
+        if self.marg:
+            self._PG_cache = np.zeros((len(self.valid_prior), self.data_vector.size))
+
     def log_data_loading(self) -> None:
         self.mpi_info("data ells=%s", self.ls)
         for ell in self.ls:
@@ -254,6 +276,7 @@ class EFTLikeSingle(Likelihood, Marginalizable):
         if self.marg:
             self.setup_prior(self.marg)
             self.report_marginalized()
+        self.set_cache()
 
     def get_requirements(self):
         reqs = {}
@@ -296,29 +319,28 @@ class EFTLikeSingle(Likelihood, Marginalizable):
         _, kgrid, table = self.provider.get_nonlinear_Plk_gaussian_grid(
             self.tracer, chained=self.chained, binned=self.with_binning
         )
-        ret = []
-        for bG in self.valid_prior.keys():
+        for i, bG in enumerate(self.valid_prior.keys()):
             plk = table[bG]
             if not self.with_binning:
                 interpfn = interp1d(kgrid, kgrid * plk, kind="cubic", axis=-1)
                 fn = lambda k: interpfn(k) / k
                 plk = fn(self.kout)
-            ret.append(flatten(self.ls, plk, self.kmask))
-        return np.vstack(ret)
+            flatten(self.ls, plk, self.kmask, out=self._PG_cache[i])
+        return self._PG_cache
 
     # override
-    def PNG(self):
+    def PNG(self) -> Any:
         if self.with_binning:
             _, _, plk = self.provider.get_nonlinear_Plk_grid(
                 self.tracer, chained=self.chained, binned=self.with_binning
             )
-            ret = flatten(self.ls, plk, self.kmask)
+            flatten(self.ls, plk, self.kmask, out=self._PNG_cache)
         else:
             fn = self.provider.get_nonlinear_Plk_interpolator(
                 self.tracer, chained=self.chained
             )
-            ret = flatten(self.ls, fn(self.ls, self.kout), self.kmask)
-        return ret
+            flatten(self.ls, fn(self.ls, self.kout), self.kmask, out=self._PNG_cache)
+        return self._PNG_cache
 
     def calculate(self, state, want_derived=True, **params_values_dict):
         if self.marg:
