@@ -744,7 +744,11 @@ class EFTLSSLeaf(HelperTheory):
         )
         self.bird: BirdPlus | None = None
         self.nonlinear = pybird.NonLinear(
-            load=True, save=True, co=self.co, path=str(self.eftlss.cache_dir_path)
+            load=True,
+            save=True,
+            co=self.co,
+            path=str(self.eftlss.cache_dir_path),
+            name=self.get_name() + ".nonlinear",
         )
 
         if self.use_cb:

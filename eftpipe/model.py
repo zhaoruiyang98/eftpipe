@@ -1,6 +1,8 @@
 from __future__ import annotations
 import contextlib
 import logging
+import tempfile
+import weakref
 from copy import deepcopy
 from typing import Any, Literal, TYPE_CHECKING
 from cobaya.model import get_model
@@ -24,7 +26,35 @@ def disable_logging():
 
 
 class EFTModel:
-    """A simplified interface to compute EFTofLSS power spectrum"""
+    """A simplified interface to compute EFTofLSS power spectrum
+
+    Parameters
+    ----------
+    z : float
+        redshift
+    ndA : float
+        number density of tracer A
+    ndB : float | None
+        number density of tracer B, if None, compute the auto power spectrum of tracer A
+    kmA : float
+        nonlinear scale of tracer A
+    krA : float
+        renormalization scale of tracer A
+    kmB : float
+        nonlinear scale of tracer B
+    krB : float
+        renormalization scale of tracer B
+    cache_dir_path : str, optional
+        path to cache directory, default to temporary directory
+    use_cb : bool
+        if true, use the linear power spectrum of cdm + baryon as input, default True
+
+    Examples
+    --------
+    >>> from eftpipe.model import EFTModel
+    >>> model = EFTModel(0.845, 1e-4).set_cosmology().set_IRresum().done(ellmax=4)
+    >>> plk = model(1.59, 1.26, 1.67, 0, -7.1, -2.6, -0.36, 0.016, 0, -0.041)
+    """
 
     def __init__(
         self,
@@ -35,13 +65,17 @@ class EFTModel:
         krA: float = 0.25,
         kmB: float = 0.7,
         krB: float = 0.25,
-        cache_dir_path: str = "cache",
+        cache_dir_path: str | None = None,
         use_cb: bool = True,
     ):
         self._done = False
         self.theory: dict[str, Any] = {"eftpipe.classynu": None, "eftpipe.eftlss": {}}
         self.params: dict[str, Any] = {}
         self.likelihood = {"one": None}
+        if not cache_dir_path:
+            tempdir = tempfile.TemporaryDirectory()
+            cache_dir_path = tempdir.name
+            weakref.finalize(self, tempdir.cleanup)
         self.theory["eftpipe.eftlss"]["cache_dir_path"] = cache_dir_path
         self.cross = ndB is not None
         if self.cross:

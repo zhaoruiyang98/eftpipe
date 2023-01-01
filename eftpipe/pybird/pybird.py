@@ -895,8 +895,8 @@ class Bird(object):
                 self.Ploopl[l, n] -= shotnoise
 
 
-# TODO: support logger and snapshot
-class NonLinear(object):
+# TODO: support snapshot
+class NonLinear(HasLogger):
     """
     given a Bird() object, computes the one-loop power spectrum and one-loop correlation function.
     The correlation function is useful to perform the IR-resummation of the power spectrum.
@@ -933,8 +933,16 @@ class NonLinear(object):
         Optimization settings for NumPy einsum when performing matrix multiplications to compute the 22-loop correlation function. For speedup purpose in repetitive evaluations.
     """
 
-    def __init__(self, load=True, save=True, path="./", NFFT=256, co=common):
-
+    def __init__(
+        self,
+        load=True,
+        save=True,
+        path="./",
+        NFFT=256,
+        co=common,
+        name="pybird.nonlinear",
+    ):
+        self.set_logger(name=name)
         self.co = co
 
         self.fftsettings = dict(Nmax=NFFT, xmin=1.5e-5, xmax=1000.0, bias=-1.6)
@@ -945,8 +953,8 @@ class NonLinear(object):
             try:
                 L = np.load(os.path.join(path, f"pyegg{NFFT}_Nl{co.Nl}.npz"))
                 if (self.fft.Pow - L["Pow"]).any():
-                    print(
-                        "Loaded loop matrices do not correspond to asked FFTLog configuration. \n Computing new matrices."
+                    self.mpi_warning(
+                        "Loaded loop matrices do not correspond to asked FFTLog configuration, computing new matrices."
                     )
                     load = False
                 else:
@@ -967,8 +975,8 @@ class NonLinear(object):
                     )
                     save = False
             except:
-                print(
-                    "Can't load loop matrices at %s. \n Computing new matrices." % path
+                self.mpi_warning(
+                    "Can't load loop matrices at %s, computing new matrices.", path
                 )
                 load = False
 
@@ -995,7 +1003,7 @@ class NonLinear(object):
                         Mcfct=self.Mcfct,
                     )
             except:
-                print("Can't save loop matrices at %s." % path)
+                self.mpi_warning("Can't save loop matrices at %s.", path)
 
         self.setkPow()
         self.setsPow()
