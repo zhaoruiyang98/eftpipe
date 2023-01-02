@@ -3,12 +3,17 @@ import importlib
 import logging
 import re
 import numpy as np
+import pandas as pd
+from copy import copy
+from dataclasses import dataclass, field
 from typing import Any, Iterable, List, Union
 from scipy.interpolate import interp1d
 from cobaya.likelihood import Likelihood
 from .marginal import Marginalizable
 from .reader import read_pkl
 from .tools import int_or_list
+
+FloatBound_T = Union[float, List[float], None]
 
 
 def find_data_reader(
@@ -53,7 +58,19 @@ def extract_multipole_info(names: Iterable[str]) -> tuple[str, list[int]]:
     return symbols.pop(), ells
 
 
-FloatBound_T = Union[float, List[float], None]
+def regularize_float_bound(
+    x: FloatBound_T, n: int, default: float | None = None
+) -> list[float]:
+    if x is None:
+        if default is None:
+            raise TypeError("empty bound is not allowed if default is not provided")
+        return [default] * n
+    elif isinstance(x, float):
+        return [x] * n
+    else:
+        if len(x) != n:
+            raise ValueError(f"expect len(x) = {n}, obtained {len(x)}")
+        return list(x)
 
 
 def parse_kmask(
@@ -81,20 +98,12 @@ def parse_kmask(
         keys are sorted in ascending order
     """
     nl = len(ells)
-
-    def regularize(x: FloatBound_T, default: float) -> list[float]:
-        if x is None:
-            return [default] * nl
-        elif isinstance(x, float):
-            return [x] * nl
-        else:
-            if len(x) != nl:
-                raise ValueError(f"length of kmin/kmax mask not matching ells")
-            return list(x)
-
     ret: dict[int, slice] = {}
-    kminlst = regularize(kmin, -1)
-    kmaxlst = regularize(kmax, 1e10)
+    try:
+        kminlst = regularize_float_bound(kmin, nl, -1)
+        kmaxlst = regularize_float_bound(kmax, nl, 1e10)
+    except ValueError as ex:
+        raise ValueError(f"length of kmin/kmax does not match ells") from ex
     for ell, min_kmask, max_kmask in zip(sorted(ells), kminlst, kmaxlst):
         ileft = np.searchsorted(kall, min_kmask)
         iright = np.searchsorted(kall, max_kmask, side="right")
@@ -182,6 +191,60 @@ def flatten(
         istart += nlen
 
 
+@dataclass
+class MultipoleInfo:
+    df: pd.DataFrame = field(repr=False)
+    symbol: str
+    ls: list[int]
+    ls_tot: list[int] = field(repr=False)
+    kmin: FloatBound_T
+    kmax: FloatBound_T
+    kmask: dict[int, slice] = field(repr=False)
+    kout: Any = field(repr=False)  # ndarray, 1d
+    kout_mask: dict[int, slice] = field(repr=False)
+    data_vector: Any = field(repr=False)  # ndarray, 1d
+
+    @classmethod
+    def load(
+        cls,
+        path: str,
+        ls: int | list[int],
+        kmin: FloatBound_T = None,
+        kmax: FloatBound_T = None,
+        reader: str = "auto",
+        reader_kwargs: dict[str, Any] = {},
+        logger: logging.Logger | None = None,
+    ):
+        df = find_data_reader(
+            reader,
+            reader_kwargs,
+            logger=logger,
+        )(path)
+        symbol, ls_tot = extract_multipole_info(df.columns)
+        ls = int_or_list(ls)
+        if not_existed_ls := set(ls).difference(ls_tot):
+            raise ValueError(f"ls {not_existed_ls} not found in data")
+        kmask = parse_kmask(df.index, ls, kmin, kmax)
+        data_vector = np.hstack(
+            [df[symbol + str(ell)].to_numpy()[kmask[ell]] for ell in ls]
+        )
+        # kout is the k-grid which the theory code will compute on
+        kout = df.index.to_numpy()[slice_union(kmask.values())]
+        kout_mask = parse_kmask(kout, ls, kmin, kmax)
+        return cls(
+            df=df,
+            symbol=symbol,
+            ls=ls,
+            ls_tot=ls_tot,
+            kmin=copy(kmin),
+            kmax=copy(kmax),
+            kmask=kmask,
+            kout=kout,
+            kout_mask=kout_mask,
+            data_vector=data_vector,
+        )
+
+
 class EFTLikeSingle(Likelihood, Marginalizable):
     """EFT likelihood for single tracer"""
 
@@ -198,32 +261,14 @@ class EFTLikeSingle(Likelihood, Marginalizable):
     def initialize(self) -> None:
         super().initialize()
 
-        self.df = df = find_data_reader(
-            self.data.get("reader", "auto"),
-            self.data.get("reader_kwargs", {}),
-            self.log,
-        )(self.data["path"])
-        symbol, ls_tot = extract_multipole_info(df.columns)
-        self.ls_tot = ls_tot
-        self.ls = ls = int_or_list(self.data["ls"])
-        if not_exsited_ls := set(ls).difference(ls_tot):
-            raise ValueError(f"ls {not_exsited_ls} not found in data")
-        kmask = parse_kmask(df.index, ls, self.data.get("kmin"), self.data.get("kmax"))
-        self.data_vector = np.hstack(
-            [df[symbol + str(ell)].to_numpy()[kmask[ell]] for ell in ls]
-        )
+        self.minfo = MultipoleInfo.load(**self.data, logger=self.log)
+        self.data_vector = self.minfo.data_vector
         self.ndata = self.data_vector.size
-        # kout is the k-grid which the theory code will compute on
-        self.kout = kout = df.index.to_numpy()[slice_union(kmask.values())]
-        # redefine kmask
-        self.kmask = kmask = parse_kmask(
-            kout, ls, self.data.get("kmin"), self.data.get("kmax")
-        )
         self.binning = self.binning or {}
-        self.binning = {"kout": kout, **self.binning}
+        self.binning = {"kout": self.minfo.kout, **self.binning}
 
         self.set_invcov()
-        self.log_data_loading()
+        self.log_data_loading_info()
 
     def set_invcov(self) -> None:
         if not isinstance(self.cov, dict):
@@ -233,11 +278,11 @@ class EFTLikeSingle(Likelihood, Marginalizable):
         )(self.cov["path"])
         cov = mask_covariance(
             cov,
-            self.ls,
-            self.ls_tot,
-            self.df.index,
-            self.data.get("kmin"),
-            self.data.get("kmax"),
+            self.minfo.ls,
+            self.minfo.ls_tot,
+            self.minfo.df.index,
+            self.minfo.kmin,
+            self.minfo.kmax,
         )
         cov /= self.cov.get("rescale", 1)
         self.invcov = np.linalg.inv(cov)
@@ -251,12 +296,12 @@ class EFTLikeSingle(Likelihood, Marginalizable):
         if self.marg:
             self._PG_cache = np.zeros((len(self.valid_prior), self.data_vector.size))
 
-    def log_data_loading(self) -> None:
-        self.mpi_info("data ells=%s", self.ls)
-        for ell in self.ls:
-            kmasked = self.kout[self.kmask[ell]]
+    def log_data_loading_info(self) -> None:
+        self.mpi_info("data ells=%s", self.minfo.ls)
+        for ell in self.minfo.ls:
+            kmasked = self.minfo.kout[self.minfo.kout_mask[ell]]
             self.mpi_info(
-                f"ell=%d, kmin=%.3e, kmax=%.3e, ndata=%d",
+                "ell=%d, kmin=%.3e, kmax=%.3e, ndata=%d",
                 ell,
                 kmasked[0],
                 kmasked[-1],
@@ -283,23 +328,23 @@ class EFTLikeSingle(Likelihood, Marginalizable):
         if self.with_binning:
             reqs["nonlinear_Plk_grid"] = {
                 self.tracer: {
-                    "ls": self.ls,
+                    "ls": self.minfo.ls,
                     "chained": self.chained,
-                    "binned": self.with_binning,
+                    "binned": True,
                     "binning": self.binning,
                 }
             }
         else:
             reqs["nonlinear_Plk_interpolator"] = {
                 self.tracer: {
-                    "ls": self.ls,
+                    "ls": self.minfo.ls,
                     "chained": self.chained,
                 }
             }
         if self.marg:
             reqs["nonlinear_Plk_gaussian_grid"] = {
                 self.tracer: {
-                    "ls": self.ls,
+                    "ls": self.minfo.ls,
                     "chained": self.chained,
                     "binned": self.with_binning,
                     **({"binning": self.binning} if self.with_binning else {}),
@@ -324,8 +369,8 @@ class EFTLikeSingle(Likelihood, Marginalizable):
             if not self.with_binning:
                 interpfn = interp1d(kgrid, kgrid * plk, kind="cubic", axis=-1)
                 fn = lambda k: interpfn(k) / k
-                plk = fn(self.kout)
-            flatten(self.ls, plk, self.kmask, out=self._PG_cache[i])
+                plk = fn(self.minfo.kout)
+            flatten(self.minfo.ls, plk, self.minfo.kout_mask, out=self._PG_cache[i])
         return self._PG_cache
 
     # override
@@ -334,12 +379,12 @@ class EFTLikeSingle(Likelihood, Marginalizable):
             _, _, plk = self.provider.get_nonlinear_Plk_grid(
                 self.tracer, chained=self.chained, binned=self.with_binning
             )
-            flatten(self.ls, plk, self.kmask, out=self._PNG_cache)
         else:
             fn = self.provider.get_nonlinear_Plk_interpolator(
                 self.tracer, chained=self.chained
             )
-            flatten(self.ls, fn(self.ls, self.kout), self.kmask, out=self._PNG_cache)
+            plk = fn(self.minfo.ls, self.minfo.kout)
+        flatten(self.minfo.ls, plk, self.minfo.kout_mask, out=self._PNG_cache)
         return self._PNG_cache
 
     # override
