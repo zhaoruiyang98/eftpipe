@@ -30,7 +30,13 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
     def PNG(self) -> NDArray:
         raise NotImplementedError
 
-    def marginalized_logp(self, dvector: NDArray, invcov: NDArray) -> float:
+    def get_data_vector(self) -> NDArray:
+        raise NotImplementedError
+
+    def get_invcov(self) -> NDArray:
+        raise NotImplementedError
+
+    def marginalized_logp(self) -> float:
         R"""calculate marginalized posterior
 
         Parameters
@@ -51,6 +57,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
             -2\ln\mathcal{P}_\mathrm{mag} = -F_{1,i} (F_2^{-1})_{ij} F_{1,j} + F_0 + \ln\det\left(\frac{F_2}{2\pi}\right)
         """
         start = time.perf_counter()
+        dvector, invcov = self.get_data_vector(), self.get_invcov()
         PNG = self.PNG()
         PG = self.PG()
         # XXX: possible cache?
@@ -79,6 +86,16 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
             self.mpi_info(f"{name}:")
             self.mpi_info(f"  loc: {dct['loc']}")
             self.mpi_info(f"  scale: {dct['scale']}")
+
+    def bG_bestfit(self) -> dict[str, float]:
+        """helper method to extract bestfit bG parameters"""
+        PNG = self.PNG()
+        PG = self.PG()
+        dvector, invcov = self.get_data_vector(), self.get_invcov()
+        F1i = self.calc_F1i(PG, PNG, invcov, dvector)
+        F2ij = self.calc_F2ij(PG, invcov)
+        ret = np.linalg.inv(F2ij) @ F1i
+        return {bG: val for bG, val in zip(self.valid_prior.keys(), ret)}
 
     def calc_F2ij(self, PG, invcov) -> NDArray:
         R"""calculate F2 matrix
@@ -114,6 +131,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
     def _update_prior(
         self, prior: dict[str, dict[str, Any]]
     ) -> dict[str, dict[str, float]]:
+        """update prior to standard form and sort it"""
         marginalizable_params = self.marginalizable_params()
         for key in prior.keys():
             if key not in marginalizable_params:

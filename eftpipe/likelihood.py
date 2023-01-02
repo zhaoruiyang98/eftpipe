@@ -342,19 +342,19 @@ class EFTLikeSingle(Likelihood, Marginalizable):
             flatten(self.ls, fn(self.ls, self.kout), self.kmask, out=self._PNG_cache)
         return self._PNG_cache
 
+    # override
+    def get_data_vector(self):
+        return self.data_vector
+
+    # override
+    def get_invcov(self):
+        return self.invcov
+
     def calculate(self, state, want_derived=True, **params_values_dict):
         if self.marg:
-            state["logp"] = self.marginalized_logp(self.data_vector, self.invcov)
+            state["logp"] = self.marginalized_logp()
         else:
             res = self.data_vector - self.PNG()
             chi2 = res @ self.invcov @ res
             state["logp"] = -0.5 * chi2
 
-    def bG_bestfit(self) -> dict[str, float]:
-        """helper method to extract bestfit bG parameters"""
-        PNG = self.PNG()
-        PG = self.PG()
-        F1i = self.calc_F1i(PG, PNG, self.invcov, self.data_vector)
-        F2ij = self.calc_F2ij(PG, self.invcov)
-        ret = np.linalg.inv(F2ij) @ F1i
-        return {bG: val for bG, val in zip(self.valid_prior.keys(), ret)}
