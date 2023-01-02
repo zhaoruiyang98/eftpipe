@@ -1,3 +1,4 @@
+# FIXME: this script is not working
 from __future__ import annotations
 import argparse
 import os
@@ -5,7 +6,7 @@ import pprint
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 from cobaya import get_model
 from cobaya.yaml import yaml_dump
 from cobaya.yaml import yaml_load_file
@@ -31,7 +32,7 @@ def extract_sampled_bestfit(file: str | os.PathLike) -> dict[str, float]:
     return params
 
 
-def check_prerequisite(yaml_file: Path, exit: Callable[[], None]):
+def satisfy_prerequisite(yaml_file: Path) -> bool:
     if not yaml_file.name.endswith(".input.yaml"):
         print("ERROR: input file does not end with .input.yaml")
         exit()
@@ -39,8 +40,8 @@ def check_prerequisite(yaml_file: Path, exit: Callable[[], None]):
         yaml_file.name.replace(".input.yaml", ".minimum")
     )
     if not minimum_file.exists():
-        print("ERROR: cannot find .minimum file")
-        exit()
+        return False
+    return True
 
 
 def compute_bG_bestfit(model, likelihoods: list[str]):
@@ -132,7 +133,9 @@ def main():
     args = parser.parse_args()
 
     yaml_file: Path = args.yaml
-    check_prerequisite(yaml_file, parser.exit)
+    if not satisfy_prerequisite(yaml_file):
+        print("ERROR: cannot find .minimum file")
+        parser.exit()
     bestfit = extract_sampled_bestfit(
         yaml_file.parent / yaml_file.name.replace(".input.yaml", ".minimum")
     )
@@ -156,7 +159,9 @@ def main():
     if len(args.tracers) == 1:
         axes: Any = [axes]
     for tracer, like, i in zip(
-        args.tracers, args.likelihoods, range(len(args.tracers)),
+        args.tracers,
+        args.likelihoods,
+        range(len(args.tracers)),
     ):
         fn = best_model.provider.get_nonlinear_Plk_interpolator(
             tracer, chained=args.chained
