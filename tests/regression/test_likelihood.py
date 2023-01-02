@@ -5,7 +5,7 @@ from eftpipe.tools import PathContext
 from pytest_regressions.ndarrays_regression import NDArraysRegressionFixture
 
 
-def test_test_ELG_NGC_likelihood_reg(
+def test_ELG_NGC_likelihood_reg(
     yamlroot: Path, ndarrays_regression: NDArraysRegressionFixture
 ):
     info = yamlroot / "mock_eBOSS_ELG_NGC_like.yaml"
