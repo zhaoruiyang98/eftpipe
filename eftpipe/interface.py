@@ -193,7 +193,8 @@ class CobayaCambInterface(InternalBoltzmannInterface):
                 self.cosmo_params_dict = cosmo_params_dict
         return flag
 
-    # XXX: warning: f computed here is different from that in classy
+    # XXX: warning: f used here is effective f, which is different from that used in classy
+    # possiblely use Omega_m(z)**0.545 instead
     def f(self) -> float:
         return self.get_fsigma8(self.zeff) / self.get_sigma8_z(self.zeff)
 

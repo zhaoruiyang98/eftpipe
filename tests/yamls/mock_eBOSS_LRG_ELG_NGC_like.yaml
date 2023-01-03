@@ -1,0 +1,188 @@
+theory:
+  eftpipe.classynu:
+    extra_args:
+      neutrino_hierarchy: degenerate
+      N_ncdm: 0
+      N_ur: 3.046
+  eftpipe.eftlss:
+    cache_dir_path: cache
+    stop_at_error: true
+    tracers:
+      LRG_NGC:
+        prefix: LRG_NGC_
+        z: 0.7
+        km: 0.7
+        kr: 0.25
+        nd: 7.65e-05
+        APeffect:
+          z_AP: 0.7
+        window:
+          window_fourier_file: cache/LRG_NGC_interp_pytest.npy
+          window_configspace_file: data/window/LRG_NGC_GB_interp.dat
+      ELG_NGC:
+        prefix: ELG_NGC_
+        z: 0.845
+        km: 0.45
+        kr: 0.25
+        nd: 0.00018518518518518518
+        APeffect:
+          z_AP: 0.845
+        window:
+          window_fourier_file: cache/ELG_NGC_interp_pytest.npy
+          window_configspace_file: data/window/ELG_NGC_interp.dat
+      default:
+        provider: classynu
+        use_cb: true
+        with_IRresum: true
+        with_APeffect: true
+        with_window: true
+        with_fiber: false
+        APeffect:
+          Om_AP: 0.307
+          rdrag_AP: 147.74
+          h_AP: 0.6777
+likelihood:
+  LRG_ELG_NGC:
+    class: eftpipe.eftlike_d
+    tracer: [LRG_NGC, ELG_NGC]
+    data:
+      LRG_NGC:
+        path: data/mock/noric_LRG_NGC.txt
+        ls: [0, 2, 4]
+        kmin: 0.02
+        kmax: [0.25, 0.25, 0.20]
+      ELG_NGC:
+        path: data/mock/noric_ELG_NGC_Q.txt
+        ls: [0, 2]
+        kmin: 0.03
+        kmax: [0.25, 0.20]
+    cov:
+      path: data/cov/noric_cov_NGC_L024E024_PQ.txt
+      rescale: 9
+      Nreal: 1000
+    chained: [false, true]
+    with_binning: true
+    marg:
+      LRG_NGC_b3:
+        scale: 2
+      LRG_NGC_cct:
+        scale: 2
+      LRG_NGC_cr1:
+        scale: 4
+      LRG_NGC_cr2:
+        scale: 4
+      LRG_NGC_ce0:
+        scale: 2
+      LRG_NGC_cequad:
+        scale: 2
+      ELG_NGC_b3:
+        scale: 2
+      ELG_NGC_cct:
+        scale: 2
+      ELG_NGC_cr1:
+        scale: 4
+      ELG_NGC_cr2:
+        scale: 4
+      ELG_NGC_ce0:
+        scale: 2
+      ELG_NGC_cequad:
+        scale: 2
+params:
+# cosmo
+  omegabh2:
+    value: 0.02214
+    latex: \Omega_\mathrm{b} h^2
+  omegach2:
+    prior:
+      min: 0.03
+      max: 0.7
+    proposal: 0.000623
+    ref: 0.1189
+    latex: \Omega_\mathrm{c} h^2
+  H0:
+    prior:
+      min: 40.0
+      max: 100.0
+    proposal: 0.3
+    ref: 67.77
+    latex: H_0
+  logA:
+    prior:
+      min: 0.1
+      max: 10
+    proposal: 0.1
+    ref: 3.0513
+    latex: \log(10^{10} A_\mathrm{s})
+    drop: true
+  As:
+    value: 'lambda logA: 1e-10*np.exp(logA)'
+    latex: A_\mathrm{s}
+  ns:
+    value: 0.9611
+    latex: n_\mathrm{s}
+  tau_reio:
+    value: 0.055
+    latex: \tau_\mathrm{reio}
+  sigma8:
+    latex: \sigma_8
+  omegam:
+    latex: \Omega_\mathrm{m}
+  rdrag:
+    latex: r_\mathrm{drag}
+# eft
+  LRG_NGC_b1:
+    prior:
+      min: 0.0
+      max: 4.0
+    ref: 2.307
+    proposal: 0.01
+    latex: b_1^{\mathrm{LRG}}
+  LRG_NGC_c2:
+    prior:
+      min: -4.0
+      max: 4.0
+    ref: 0.82917
+    proposal: 0.01
+    latex: c_2^{\mathrm{LRG}}
+    drop: true
+  LRG_NGC_c4:
+    value: 0.0
+    latex: c_4^{\mathrm{LRG}}
+    drop: true
+  LRG_NGC_b2:
+    value: 'lambda LRG_NGC_c2, LRG_NGC_c4: (LRG_NGC_c2 + LRG_NGC_c4) / np.sqrt(2.)'
+    latex: b_2^{\mathrm{LRG}}
+  LRG_NGC_b4:
+    value: 'lambda LRG_NGC_c2, LRG_NGC_c4: (LRG_NGC_c2 - LRG_NGC_c4) / np.sqrt(2.)'
+    latex: b_4^{\mathrm{LRG}}
+  ELG_NGC_b1:
+    prior:
+      min: 0.0
+      max: 4.0
+    ref: 1.307
+    proposal: 0.01
+    latex: b_1^{\mathrm{ELG}}
+  ELG_NGC_c2:
+    prior:
+      min: -4.0
+      max: 4.0
+    ref: 0.82917
+    proposal: 0.01
+    latex: c_2^{\mathrm{ELG}}
+    drop: true
+  ELG_NGC_c4:
+    value: 0.0
+    latex: c_4^{\mathrm{ELG}}
+    drop: true
+  ELG_NGC_b2:
+    value: 'lambda ELG_NGC_c2, ELG_NGC_c4: (ELG_NGC_c2 + ELG_NGC_c4) / np.sqrt(2.)'
+    latex: b_2^{\mathrm{ELG}}
+  ELG_NGC_b4:
+    value: 'lambda ELG_NGC_c2, ELG_NGC_c4: (ELG_NGC_c2 - ELG_NGC_c4) / np.sqrt(2.)'
+    latex: b_4^{\mathrm{ELG}}
+  ELG_NGC_fsigma8_z:
+    latex: f\sigma_8^{\mathrm{ELG}}
+  ELG_NGC_alperp:
+    latex: \alpha_\perp^{\mathrm{ELG}}
+  ELG_NGC_alpara:
+    latex: \alpha_\parallel^{\mathrm{ELG}}
