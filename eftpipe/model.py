@@ -315,60 +315,36 @@ class EFTModel:
         ret.params = deepcopy(self.params)
         return ret
 
+    # fmt: off
     def __call__(
         self,
-        b1A: float,
-        c2A: float,
-        b3A: float,
-        c4A: float,
-        cctA: float,
-        cr1A: float,
-        cr2A: float,
-        ce0: float = 0.0,
-        cemono: float = 0.0,
-        cequad: float = 0.0,
-        b1B: float = 0.0,
-        c2B: float = 0.0,
-        b3B: float = 0.0,
-        c4B: float = 0.0,
-        cctB: float = 0.0,
-        cr1B: float = 0.0,
-        cr2B: float = 0.0,
+        b1A: float, c2A: float, b3A: float, c4A: float,
+        cctA: float, cr1A: float, cr2A: float,
+        ce0: float = 0.0, cemono: float = 0.0, cequad: float = 0.0,
+        b1B: float = 0.0, c2B: float = 0.0, b3B: float = 0.0, c4B: float = 0.0,
+        cctB: float = 0.0, cr1B: float = 0.0, cr2B: float = 0.0,
     ) -> PlkInterpolator:
+        """
+        Notes
+        -----
+        when computing the cross, ce0, cemono and cequad are used for x
+        """
         if not self._done:
             raise RuntimeError("need to call done() first")
         if self.cross:
             sampled = dict(
-                A_b1=b1A,
-                A_c2=c2A,
-                A_b3=b3A,
-                A_c4=c4A,
-                A_cct=cctA,
-                A_cr1=cr1A,
-                A_cr2=cr2A,
-                B_b1=b1B,
-                B_c2=c2B,
-                B_b3=b3B,
-                B_c4=c4B,
-                B_cct=cctB,
-                B_cr1=cr1B,
-                B_cr2=cr2B,
-                x_ce0=ce0,
-                x_cemono=cemono,
-                x_cequad=cequad,
+                A_b1=b1A, A_c2=c2A, A_b3=b3A, A_c4=c4A,
+                A_cct=cctA, A_cr1=cr1A, A_cr2=cr2A,
+                B_b1=b1B, B_c2=c2B, B_b3=b3B, B_c4=c4B,
+                B_cct=cctB, B_cr1=cr1B, B_cr2=cr2B,
+                x_ce0=ce0, x_cemono=cemono, x_cequad=cequad,
             )
         else:
             sampled = dict(
-                x_b1=b1A,
-                x_c2=c2A,
-                x_b3=b3A,
-                x_c4=c4A,
-                x_cct=cctA,
-                x_cr1=cr1A,
-                x_cr2=cr2A,
-                x_ce0=ce0,
-                x_cemono=cemono,
-                x_cequad=cequad,
+                x_b1=b1A, x_c2=c2A, x_b3=b3A, x_c4=c4A,
+                x_cct=cctA, x_cr1=cr1A, x_cr2=cr2A,
+                x_ce0=ce0, x_cemono=cemono, x_cequad=cequad,
             )
         self.model.logpost(sampled)
         return self.model.provider.get_nonlinear_Plk_interpolator("x")
+    # fmt: on
