@@ -1,6 +1,8 @@
 from __future__ import annotations
 import inspect
+import itertools
 import os
+import sys
 import time
 import numpy as np
 from contextlib import contextmanager
@@ -118,6 +120,17 @@ def group_lists(*args: list[SupportsRichComparisonT]) -> list[SupportsRichCompar
 def replace_suffix(path: Path, suffix: str) -> Path:
     """support invalid suffix"""
     return path.parent / (path.stem + suffix)
+
+
+if sys.version_info >= (3, 10):
+    pairwise = itertools.pairwise
+else:
+
+    def pairwise(x: Iterable[_T]) -> zip[tuple[_T, _T]]:
+        """s -> (s0,s1), (s1,s2), (s2, s3), ..."""
+        a, b = itertools.tee(x)
+        next(b, None)
+        return zip(a, b)
 
 
 @contextmanager
