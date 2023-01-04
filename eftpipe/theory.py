@@ -642,7 +642,9 @@ class EFTLSSLeaf(HelperTheory):
         self.with_APeffect: bool = self.config.get("with_APeffect", False)
         if self.with_APeffect:
             self.plugins["_APeffect"] = Initializer(
-                pybird.APeffect, self.config.get("APeffect", {}), self.log
+                pybird.APeffect,
+                self.config.get("APeffect", {"z_AP": self.zeff}),
+                self.log,
             )
         self.with_window: bool = self.config.get("with_window", False)
         if self.with_window:
