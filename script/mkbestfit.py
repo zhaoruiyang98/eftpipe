@@ -1,17 +1,39 @@
-# FIXME: this script is not working
+# NOTE: this script has not been well tested
 from __future__ import annotations
 import argparse
+import itertools
 import os
 import pprint
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 from pathlib import Path
-from typing import Any
+from matplotlib.cm import tab10  # type: ignore
+from typing import Any, TYPE_CHECKING, Sequence
 from cobaya import get_model
 from cobaya.yaml import yaml_dump
 from cobaya.yaml import yaml_load_file
-from eftpipe.lssdata import Multipoles
+from eftpipe.likelihood import EFTLikeSingle
+from eftpipe.likelihood import EFTLikeDouble
+from eftpipe.likelihood import EFTLikeDoubleCross
+from eftpipe.likelihood import extract_multipole_info
+from eftpipe.likelihood import find_covariance_reader
+from eftpipe.tools import do_nothing
+from eftpipe.tools import disable_logging
+from eftpipe.tools import NOTFOUND
 from eftpipe.tools import PathContext
+
+if TYPE_CHECKING:
+    from matplotlib.axes import Axes
+    from cobaya.model import Model
+    from eftpipe.likelihood import MultipoleInfo
+    from eftpipe.theory import PlkInterpolator
+
+GRAY = tab10.colors[-3]
+BLUE = tab10.colors[0]
+ORANGE = tab10.colors[1]
+GREEN = tab10.colors[2]
+RED = tab10.colors[3]
 
 
 def extract_sampled_bestfit(file: str | os.PathLike) -> dict[str, float]:
@@ -32,46 +54,54 @@ def extract_sampled_bestfit(file: str | os.PathLike) -> dict[str, float]:
     return params
 
 
-def satisfy_prerequisite(yaml_file: Path) -> bool:
+def satisfy_prerequisite(yaml_file: str | os.PathLike) -> bool:
+    yaml_file = Path(yaml_file)
     if not yaml_file.name.endswith(".input.yaml"):
         print("ERROR: input file does not end with .input.yaml")
-        exit()
+        return False
     minimum_file = yaml_file.parent / (
         yaml_file.name.replace(".input.yaml", ".minimum")
     )
     if not minimum_file.exists():
+        print("ERROR: cannot find .minimum file")
         return False
     return True
 
 
-def compute_bG_bestfit(model, likelihoods: list[str]):
+def compute_bG_bestfit(model: Model, likelihoods: list[str]):
     ret: dict[str, float] = {}
     for l in likelihoods:
         ret.update(model.likelihood[l].bG_bestfit())
     return ret
 
 
-def get_bestfit_model(
-    yaml_file, bestfit: dict[str, float], requires: dict, base: Path | None = None
+def build_model(
+    yaml_file, params: dict[str, float], requires: dict, base: Path | None = None
 ):
     base = base or Path.cwd()
     info = yaml_load_file(str(yaml_file))
-    for name, value in bestfit.items():
-        if "value" in info["params"][name]:
+    for name, value in params.items():
+        if (v := info["params"].get(name, NOTFOUND)) is NOTFOUND:
+            info["params"][name] = value
+        elif isinstance(v, dict):
             info["params"][name]["value"] = value
+            info["params"][name].pop("prior", None)
+            info["params"][name].pop("ref", None)
+        else:
+            info["params"][name] = value
     info["likelihood"] = {"one": None}
     info = yaml_dump(info)
     with PathContext(base):
         model = get_model(info)
-    sampled_point = model.parameterization.sampled_params()
-    for name in sampled_point:
-        sampled_point[name] = bestfit[name]
-    model.add_requirements(requires)
+        sampled_point = model.parameterization.sampled_params()
+        for name in sampled_point:
+            sampled_point[name] = params[name]
+        model.add_requirements(requires)
     model.logpost(sampled_point)
     return model
 
 
-def generate_requires(tracers: list[str], hex: bool, chained: bool):
+def generate_requires(tracers: list[str], hex: list[str], chained: list[str]):
     common = {}
     if hex:
         common["ls"] = [0, 2, 4]
@@ -79,101 +109,216 @@ def generate_requires(tracers: list[str], hex: bool, chained: bool):
         common["ls"] = [0, 2]
     if chained:
         common["chained"] = True
-    ret = {"nonlinear_Plk_interpolator": {name: common for name in tracers}}
+    ret = {}
+    for tracer in tracers:
+        value = {}
+        value["ls"] = [0, 2, 4] if tracer in hex else [0, 2]
+        if tracer in chained:
+            value["chained"] = True
+        ret[tracer] = value
+    ret = {"nonlinear_Plk_interpolator": ret}
     return ret
 
 
+def get_cov(like: EFTLikeSingle | EFTLikeDouble | EFTLikeDoubleCross):
+    cov = find_covariance_reader(
+        like.cov.get("reader", "auto"),
+        like.cov.get("reader_kwargs", {}),
+    )(like.cov["path"])
+    cov /= like.cov.get("rescale", 1)
+    return cov
+
+
+def build_multipole_dataframe(minfo: MultipoleInfo, err):
+    df = minfo.df.copy(deep=True)
+    for ell, Perr in zip(minfo.ls_tot, np.split(err, len(minfo.ls_tot))):
+        df[minfo.symbol + f"{ell}err"] = Perr
+    return df
+
+
+def collect_multipole_dataframe(model, tracers: list[str], likelihoods: list[str]):
+    configdict: dict[str, tuple[MultipoleInfo, Any]] = {}
+    for like in (v for k, v in model.likelihood.items() if k in likelihoods):
+        if isinstance(like, EFTLikeSingle):
+            configdict[like.tracer] = (like.minfo, np.sqrt(get_cov(like).diagonal()))
+        elif isinstance(like, (EFTLikeDouble, EFTLikeDoubleCross)):
+            indices = itertools.accumulate(
+                (len(x.ls_tot) * x.df.index.size for x in like.minfodict.values()),
+                initial=0,
+            )
+            indices = list(indices)[1:-1]
+            for k, err in zip(like.tracer, np.split(get_cov(like).diagonal(), indices)):
+                configdict[k] = (like.minfodict[k], np.sqrt(err))
+        else:
+            raise TypeError(f"Unexpected likelihood type: {type(like)}")
+    configdict = {k: v for k, v in configdict.items() if k in tracers}
+    return {
+        tracer: build_multipole_dataframe(config[0], config[1])
+        for tracer, config in configdict.items()
+    }
+
+
 def paint_data_and_theory(
-    ax, m: Multipoles, interpfn, hex: bool = False, chained: bool = False
+    ax: Axes, df: pd.DataFrame, interpfn, hex: bool = False, chained: bool = False
 ):
+    P, _ = extract_multipole_info(df.columns.to_list())
+    x = df.index.to_numpy()
+    xx = np.geomspace(x.min(), x.max(), 1000)
     if hex:
-        ax.errorbar(m[4].x, m[4].x * m[4].y, yerr=m[4].x * m[4].yerr, fmt=".", c="g")
-        ax.plot(m[4].x, m[4].x * interpfn(4, m[4].x), c="g")
-    ax.errorbar(m[2].x, m[2].x * m[2].y, yerr=m[2].x * m[2].yerr, fmt=".", c="b")
-    ax.plot(m[2].x, m[2].x * interpfn(2, m[2].x), c="b")
-    ax.errorbar(m[0].x, m[0].x * m[0].y, yerr=m[0].x * m[0].yerr, fmt=".", c="k")
-    ax.plot(m[0].x, m[0].x * interpfn(0, m[0].x), c="k")
-    ax.set_xlabel(r"$k$ $[h\,\mathrm{Mpc}^{-1}]$")
-    if chained:
-        ax.set_ylabel(r"$kQ_\ell(k)$ $[h^{-1}\,\mathrm{Mpc}]^2$")
-    else:
-        ax.set_ylabel(r"$kP_\ell(k)$ $[h^{-1}\,\mathrm{Mpc}]^2$")
-
-
-def generate_data_like_theory(path, m: Multipoles, interpfn):
-    k = m.x_all
-    tmp = [k]
-    label = ["k"]
-    for ell in m.raw.keys():
-        tmp.append(interpfn(ell, k))
-        label.append(m.yname + str(ell))
-    out = np.vstack(tmp).T
-    np.savetxt(path, out, header=(5 * " ").join(label))
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        "mkbestfit", description="make best fit theory curve plot"
+        ax.errorbar(
+            x,
+            x * df[f"{P}4"],
+            yerr=x * df[f"{P}4err"],
+            fmt=".",
+            c=GREEN,
+            elinewidth=0.75,
+        )
+        ax.plot(xx, xx * interpfn(4, xx), c=GREEN)
+    ax.errorbar(
+        x, x * df[f"{P}2"], yerr=x * df[f"{P}2err"], fmt=".", c=BLUE, elinewidth=0.75
     )
-    parser.add_argument("yaml", type=Path)
-    parser.add_argument("--likelihoods", nargs="+", required=True)
-    parser.add_argument("--tracers", nargs="+", required=True)
-    parser.add_argument("-o", default="test.pdf")
+    ax.plot(xx, xx * interpfn(2, xx), c=BLUE)
+    ax.errorbar(
+        x, x * df[f"{P}0"], yerr=x * df[f"{P}0err"], fmt=".", c=GRAY, elinewidth=0.75
+    )
+    ax.plot(xx, xx * interpfn(0, xx), c=GRAY)
+    ax.set_xlabel(R"$k$ $[h\,\mathrm{Mpc}^{-1}]$")
+    if chained:
+        ax.set_ylabel(R"$kQ_\ell(k)$ $[h^{-1}\,\mathrm{Mpc}]^2$")
+    else:
+        ax.set_ylabel(R"$kP_\ell(k)$ $[h^{-1}\,\mathrm{Mpc}]^2$")
+    ax.set_ylim(-500, 1749)
+    ax.set_xlim(0, 0.3)
+
+
+def generate_data_like_theory(path: str, df: pd.DataFrame, interpfn: PlkInterpolator):
+    if Path(path).exists():
+        raise FileExistsError(f"File {path} already exists")
+    symbol, ells = extract_multipole_info(df.columns.to_list())
+    ells = [x for x in ells if x <= 4]
+    k = df.index.to_numpy()
+    try:
+        out = interpfn(ells, k)
+    except ValueError:
+        ells = [x for x in ells if x <= 2]
+        out = interpfn(ells, k)
+    out = np.vstack((k, *out)).T
+    header = (5 * " ").join(["k"] + [symbol + str(x) for x in ells])
+    np.savetxt(path, out, header=header)
+
+
+def get_argparser():
+    parser = argparse.ArgumentParser(
+        "mkbestfit",
+        description="make best fit theory curve plot",
+    )
+    parser.add_argument("input_yaml", type=Path)
     parser.add_argument(
-        "-th", nargs="+", default=None, help="generate theoretical 'data'"
+        "--likelihoods",
+        nargs="+",
+        required=True,
+        metavar="LIKELIHOOD",
+        help="likelihood list",
+    )
+    parser.add_argument(
+        "--tracers", nargs="+", required=True, metavar="TRACER", help="tracer list"
+    )
+    parser.add_argument("-o", "--output", default="test.pdf", help="(default test.pdf)")
+    parser.add_argument("-v", "--verbose", action="store_true", help="verbose logging")
+    parser.add_argument(
+        "--freeze",
+        nargs=2,
+        action="append",
+        metavar=("TRACER", "FILE"),
+        default=[],
+        help="freeze TRACER's theoretical output to FILE. "
+        "Note, computed power spectrum does not include the binning effect",
     )
     parser.add_argument(
         "--base",
         type=Path,
         default=Path.cwd(),
-        help="working path when loading yaml file, by default cwd",
+        help="working path when loading yaml file (default cwd)",
     )
-    parser.add_argument("--hex", action="store_true")
-    parser.add_argument("--chained", action="store_true")
-    args = parser.parse_args()
+    parser.add_argument(
+        "--hex",
+        nargs="*",
+        default=[],
+        metavar="TRACER",
+        help="compute and plot hexadecapole for specified tracers",
+    )
+    parser.add_argument(
+        "--chained",
+        nargs="*",
+        default=[],
+        metavar="TRACER",
+        help="compute and plot chained power spectrum for specified tracers",
+    )
+    parser.add_argument(
+        "--sharey", action="store_true", help="share ylim for all subplots"
+    )
+    return parser
 
-    yaml_file: Path = args.yaml
+
+def main(input_args: Sequence[str] | None = None, save: bool = False):
+    parser = get_argparser()
+    args = parser.parse_args(input_args)
+
+    yaml_file: Path = args.input_yaml.resolve()
+    base: Path = args.base.resolve()
+    verbose_guard = do_nothing if args.verbose else disable_logging
+
     if not satisfy_prerequisite(yaml_file):
-        print("ERROR: cannot find .minimum file")
         parser.exit()
     bestfit = extract_sampled_bestfit(
         yaml_file.parent / yaml_file.name.replace(".input.yaml", ".minimum")
     )
-    with PathContext(args.base):
-        model = get_model(yaml_file)
+    with PathContext(base):
+        with verbose_guard():
+            model = get_model(yaml_file)
     model.logpost(bestfit)
     bestfit.update(compute_bG_bestfit(model, args.likelihoods))
     print("bestfit:")
     pprint.pprint(bestfit)
+    with PathContext(base):
+        with verbose_guard():
+            mdict = collect_multipole_dataframe(model, args.tracers, args.likelihoods)
 
-    best_model = get_bestfit_model(
-        yaml_file,
-        bestfit,
-        requires=generate_requires(args.tracers, args.hex, args.chained),
-        base=args.base,
-    )
+    with verbose_guard():
+        best_model = build_model(
+            yaml_file,
+            bestfit,
+            requires=generate_requires(args.tracers, args.hex, args.chained),
+            base=base,
+        )
 
     width = 5 * len(args.tracers)
     height = 4
-    fig, axes = plt.subplots(1, len(args.tracers), figsize=(width, height))
+    fig, axes = plt.subplots(
+        1, len(args.tracers), figsize=(width, height), sharey=args.sharey
+    )
     if len(args.tracers) == 1:
         axes: Any = [axes]
-    for tracer, like, i in zip(
-        args.tracers,
-        args.likelihoods,
-        range(len(args.tracers)),
-    ):
+    freeze: dict[str, str] = {x[0]: x[1] for x in args.freeze}
+    mdict = {t: mdict[t] for t in args.tracers}
+    for i, (tracer, df) in enumerate(mdict.items()):
         fn = best_model.provider.get_nonlinear_Plk_interpolator(
-            tracer, chained=args.chained
+            tracer, chained=(True if tracer in args.chained else False)
         )
-        m = model.likelihood[like].lssdata.fullshape[0]
-        if args.th:
-            generate_data_like_theory(args.th[i], m, fn)
-        paint_data_and_theory(axes[i], m, fn, hex=args.hex, chained=args.chained)
+        if path := freeze.get(tracer):
+            generate_data_like_theory(path, df, fn)
+        paint_data_and_theory(
+            axes[i],
+            df,
+            fn,
+            hex=(True if tracer in args.hex else False),
+            chained=(True if tracer in args.chained else False),
+        )
         axes[i].set_title(tracer)
     fig.tight_layout()
-    plt.savefig(args.o)
+    if save:
+        plt.savefig(args.output)
 
 
 if __name__ == "__main__":
-    main()
+    main(save=True)
