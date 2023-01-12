@@ -1,11 +1,14 @@
 from __future__ import annotations
 import logging
+import os
 import numpy as np
 import pandas as pd
 from .tools import is_main_process
 
 
-def read_pkl(path: str, logger: logging.Logger | None = None) -> pd.DataFrame:
+def read_pkl(
+    path: str | os.PathLike, logger: logging.Logger | None = None
+) -> pd.DataFrame:
     """numpy compatible csv reader"""
     with open(path) as f:
         header = f.readline()

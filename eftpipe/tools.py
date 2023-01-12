@@ -1,6 +1,7 @@
 from __future__ import annotations
 import inspect
 import itertools
+import logging
 import os
 import sys
 import time
@@ -142,6 +143,20 @@ def timer(name: str = "", info: Callable = print):
         info(f"{name} took {end - start} seconds")
 
 
+@contextmanager
+def do_nothing(*args, **kwargs):
+    yield
+
+
+@contextmanager
+def disable_logging():
+    logging.disable()
+    try:
+        yield
+    finally:
+        logging.disable(logging.NOTSET)
+
+
 class Initializer(Generic[_T]):
     """delayed initialization"""
 
@@ -179,7 +194,7 @@ class Initializer(Generic[_T]):
 
 
 @contextmanager
-def PathContext(path):
+def PathContext(path: str | os.PathLike):
     current = Path.cwd()
     os.chdir(path)
     try:

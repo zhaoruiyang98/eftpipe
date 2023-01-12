@@ -227,7 +227,7 @@ class MultipoleInfo:
             reader_kwargs,
             logger=logger,
         )(path)
-        symbol, ls_tot = extract_multipole_info(df.columns)
+        symbol, ls_tot = extract_multipole_info(df.columns.to_list())
         ls = int_or_list(ls)
         if not_existed_ls := set(ls).difference(ls_tot):
             raise ValueError(f"ls {not_existed_ls} not found in data")

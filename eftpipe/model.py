@@ -6,23 +6,11 @@ import weakref
 from copy import deepcopy
 from typing import Any, Literal, TYPE_CHECKING
 from cobaya.model import get_model
+from .tools import disable_logging
+from .tools import do_nothing
 
 if TYPE_CHECKING:
     from .theory import PlkInterpolator
-
-
-@contextlib.contextmanager
-def do_nothing(*args, **kwargs):
-    yield
-
-
-@contextlib.contextmanager
-def disable_logging():
-    logging.disable()
-    try:
-        yield
-    finally:
-        logging.disable(logging.NOTSET)
 
 
 class EFTModel:
