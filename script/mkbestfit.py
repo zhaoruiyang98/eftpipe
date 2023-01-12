@@ -187,7 +187,6 @@ def paint_data_and_theory(
         ax.set_ylabel(R"$kQ_\ell(k)$ $[h^{-1}\,\mathrm{Mpc}]^2$")
     else:
         ax.set_ylabel(R"$kP_\ell(k)$ $[h^{-1}\,\mathrm{Mpc}]^2$")
-    ax.set_ylim(-500, 1749)
     ax.set_xlim(0, 0.3)
 
 
