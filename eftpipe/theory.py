@@ -652,7 +652,7 @@ class EFTLSSLeaf(HelperTheory):
                 pybird.Window, self.config.get("window", {}), self.log
             )
         self.with_fiber: bool = self.config.get("with_fiber", False)
-        if self.with_window:
+        if self.with_fiber:
             self.plugins["_fiber"] = Initializer(
                 pybird.FiberCollision, self.config.get("fiber", {}), self.log
             )
