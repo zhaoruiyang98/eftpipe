@@ -39,7 +39,7 @@ class BoltzmannInterface(Protocol):
             otherwise, compute the linear power spectrum of cdm + baryon + neutrino
         zextra : list[float]
             extra redshifts, maybe useful to build Pk interpolator,
-            since Pk_interpolator requires at least 4 redshift
+            since Pk_interpolator typically requires at least 4 redshifts.
         """
         ...
 
@@ -51,6 +51,7 @@ class BoltzmannInterface(Protocol):
         provider : Provider
             The provider object of cobaya
         """
+        ...
 
     def get_requirements(self) -> dict[str, Any]:
         """Cosmological requirements of this interface when used by eftlss"""
@@ -73,11 +74,11 @@ class BoltzmannInterface(Protocol):
         ...
 
     def DA(self) -> float:
-        """Angular diameter distance in Mpc/h unit"""
+        """Angular diameter distance in Mpc unit, divided by (c/H0)"""
         ...
 
     def H(self) -> float:
-        """Hubble rate in km/s/Mpc/h unit"""
+        """dimensionless Hubble rate"""
         ...
 
     def rdrag(self) -> float:

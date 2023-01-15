@@ -1,3 +1,4 @@
+# two tracers + cross
 tracer:  # [tracerA, tracerB, cross]
 data:
   # also support list

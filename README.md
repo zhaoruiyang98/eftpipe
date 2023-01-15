@@ -53,6 +53,8 @@ pip install -e .
 # or `pip install -e .[test]` for test
 # or `pip install -e .[dev]` for development
 ```
+# User guide
+Please have a look at configuration files in `example` folder.
 # Compare to upstream PyBird
 Since EFTPipe is developed based on PyBird, it is quite important to keep the modified codes consistent with upstream PyBird repository.
 

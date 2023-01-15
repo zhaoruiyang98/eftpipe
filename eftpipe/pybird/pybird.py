@@ -1502,7 +1502,7 @@ class Window(HasLogger):
     save: bool
         set it True to save fourier matrix to disk, default True
     check_meta: bool
-        set it True to check meta info when loading fourier matrix, default None
+        set it True to check meta info when loading fourier matrix, default True
         if meta info not exists, report deprecated warning (will raise Exception in the future),
         if meta info not match, raise MetaInfoError
     Na: int
@@ -1511,7 +1511,7 @@ class Window(HasLogger):
         input multipoles, default co.Nl
     Nq: int
         use Nq Qs, default 3, i.e. use Q0, Q2, Q4
-    pmax: float
+    pmax: float, default 0.3
         integrate window up to pmax
     accboost: int
         accboost x number of p grids, default 1
@@ -1530,7 +1530,7 @@ class Window(HasLogger):
     bias: float
         FFTLog bias, default -1.6
     window_param: float | None
-        window parameter, default 1
+        FFTLog window parameter, default 1
     window_st: bool
         set it True to apply window effect to stochastic terms
     name: str
@@ -2022,12 +2022,12 @@ class FiberCollision(HasLogger):
 
     Parameters
     ----------
-    ktrust: float
-        a UV cutoff, default 0.25
     fs: float
         fraction of the survey affected by fiber collisions, default 0.6
     Dfc: float
         angular distance of the fiber channel, default Dfc(z = 0.55) = 0.43 / 0.6777 Mpc/h
+    ktrust: float
+        a UV cutoff, default 0.25
     co: Common
         this class only uses co.k and co.Nl, default pybird.Common
     name: str
@@ -2038,9 +2038,9 @@ class FiberCollision(HasLogger):
 
     def __init__(
         self,
+        fs: float,
+        Dfc: float,  # = 0.43 / 0.6777,
         ktrust: float = 0.25,
-        fs: float = 0.6,
-        Dfc: float = 0.43 / 0.6777,
         co: Common = common,
         name: str = "pybird.fiber",
         snapshot: bool = False,

@@ -1,4 +1,4 @@
-# relative path
+# cache directory for nonlinear matrix, window matrix cache
 cache_dir_path: cache
-# specification per tracer
+# configurations per tracer
 tracers:

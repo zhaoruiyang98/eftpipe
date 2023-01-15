@@ -1,0 +1,187 @@
+# configuration file demo
+# all commented options are optional,
+# while uncommented lines are mandatory if the description does not mention it's default value
+# lines started with ## are descriptions
+theory:
+  eftpipe.classynu:
+    # extra_args:
+      ##specify neutrino hierarchy, support cosmological parameter mnu(total mass)
+      ##degenerate, normal, inverted
+      # neutrino_hierarchy: degenerate
+      ##neutrino species
+      ##N_ncdm = 3 and N_ur=3.046 if neutrino hierarchy=normal or inverted
+      ##N_ncdm = 1 and N_ur=2.0328 if neutrino hierarchy=degenerate (Planck18 baseline)
+      # N_ncdm:
+      # N_ur:
+      ##neutrino oscillation experiment parameters, default values are taken from 1907.12598
+      # delta_m32_square:
+      # delta_m21_square:
+      # delta_m31_square:
+  eftpipe.eftlss:
+    ##cache directory for nonlinear matrix, window matrix cache
+    # cache_dir_path: cache
+    ##configurations per tracer
+    tracers:
+      #tracer's name, e.g. LRG
+      #if name=="default", configurations in this section will be used as default for all tracers
+      [name]: # remove [] when using
+        ##prefix of eft parameters for this tracer, default "name_"
+        # prefix:
+        ##choose one of the following boltzmann provider:
+        ##classy(default), classynu, camb
+        ##in most cases, you should match the provider with the theory you choose
+        ##also support user defined provider, which should satisfy the eftpipe.interface.BoltzmannProvider interface
+        # provider: classy
+        ##extra key word arguments when initialize the provider
+        # provider_kwargs:
+        ##use linear power spectrum of cdm+baryon if true, otherwise compute the linear power spectrum of cdm+baryon+neutrino
+        # use_cb: false
+        ##this "tracer" is the cross between another two tracers
+        # cross: []
+        ##effective redshift
+        z:
+        ##EFT nonlinear scale and renormalization scale, don't check if cross
+        km:
+        ##default kr=km, may not be accurate for some tracers, don't check if cross
+        # kr:
+        ##number density, don't check if cross
+        nd:
+        ##do IR resummation, default true
+        with_IRresum: true
+        ##IR resummation configurations, default {}
+        IRresum:
+          ##number of FFTLog nodes
+          # NFFT: 192
+        ##apply Alcock-Paczynski effect, default false
+        with_APeffect: false
+        ##Alcock-Paczynski effect configurations, don't check if with_APeffect==false
+        APeffect:
+          ##**NOTE**: DA, H and Om_AP, z_AP are exclusive, should specify at least one pair, 
+          ##          DA and H will be preferred if both are provided
+          ##dimensionless Hubble rate, H(z) / H0
+          # H:
+          ##Angular diameter distance in Mpc unit, divided by (c/H0)
+          ##a∫1/(H(z)/H0)dz
+          # DA:
+          ##fiducial Omega0_m (matter + dark energy approximation when computing distance)
+          # Om_AP:
+          ##fiducial effective redshift, default to z
+          # z_AP:
+          ##fiducial rdrag and hubble parameter h
+          ##only used to compute alperp and alpara defined in BAO analysis
+          ##if not given, default to compute qperp and qpara (rescaling factor used in EFT analysis) instead
+          # rdrag_AP:
+          # h_AP:
+          ##boost the accuracy when doing integral
+          # accboost: 1
+          ##number of mu bins in [0, 1] when doing integral over mu
+          # nbinsmu: 200
+          ##approximate Pkmu using Nlmax multipoles, default to internal determined Nl
+          # Nlmax:
+          ##take a snapshot after applying AP effect
+          # snapshot: false
+        ##apply window function, default false
+        with_window: false
+        ##window effect configurations, don't check if with_window==false
+        window:
+          ##path to fourier transformed window matrix
+          ##if not given, always compute the window matrix using window_configspace_file
+          window_fourier_file:
+          ##path to configspace window file, the header should be s, Q0, Q2, Q4, ...
+          ##if not given, always load window_fourier_file from disk
+          window_configspace_file:
+          ##output multipoles, default to internal determined Nl
+          # Na:
+          ##input multipoles, default to internal determined Nl
+          # Nl:
+          ##use Nq Qs, default 3, i.e. use Q0, Q2, Q4 only
+          # Nq: 3
+          ##integrate window up to pmax
+          # pmax: 0.3
+          ##set it True to mask window
+          # withmask: true
+          ##mask width, default 0.05, i.e. when k=0.1, only p in [0.1-0.05, 0.1+0.05] will be integrated
+          # windowk: 0.05
+          ##FFTLog nodes
+          # Nmax: 4096
+          ##FFTLog xmin=smin * xmin_factor, where smin is determined by configuration file
+          # xmin_factor: 1.0
+          ##FFTLog xmax=smax * xmax_factor, where smax is determined by configuration file
+          # xmax_factor: 100.0
+          ##FFTLog bias
+          # bias: -1.6
+          ##FFTLog window parameter
+          # window_param: 1
+          ##set it true to apply window function to stochastic terms
+          # window_st: true
+          ##boost the accuracy when doing integral
+          # accboost: 1
+          ##set it true to check meta info when loading fourier matrix, default true
+          ##if meta info not exists, report deprecated warning (will raise Exception in the future),
+          ##if meta info not match, raise MetaInfoError
+          # check_meta: true
+          ##take a snapshot after applying window effect
+          # snapshot: false
+        ##fiber collision correction, default false
+        with_fiber: false
+        ##fiber collision correction configurations, don't check if with_fiber==false
+        fiber:
+          ##fraction of the survey affected by fiber collision
+          fs:
+          ##angular distance of the fiber channel
+          Dfc:
+          ##UV cutoff
+          # ktrust: 0.25
+          ##take a snapshot after applying fiber collision window
+          # snapshot: false
+        ##integral constraint correction, default false
+        with_icc: false
+        ##integral constraint correction configurations, don't check if with_icc==false
+        icc:
+          ##shot noise
+          Pshot:
+          ##path to fourier transformed icc npz file
+          ##if not given, always compute the icc matrix and will not save to disk
+          icc_fourier_file:
+          ##path to configspace PSN file, the header should be like s, W0^2, W2^2, W4^2, ...
+          ##if not given, load file from disk
+          icc_configspace_SN_file:
+          ##path to configspace IC file, the header should be like l1, l2, s1, s2, value
+          ##if not given, load file from disk
+          icc_configspace_IC_file:
+          ##whether the value column of icc_configspace_IC_file is in order
+          # inorder: false
+          ##output multipoles, default to internal determined Nl
+          # Na:
+          ##input multipoles, default to internal determined Nl
+          # Nl:
+          ##integrate window up to pmax
+          # pmax: 0.3
+          ##set it True to mask window
+          # withmask: true
+          ##mask width, default 0.05, i.e. when k=0.1, only p in [0.1-0.05, 0.1+0.05] will be integrated
+          # windowk: 0.05
+          ##FFTLog nodes for PSN
+          # Nmax: 4096
+          ##FFTLog bias for PSN
+          # bias: -2.1
+          ##FFTLog window parameter for PSN
+          # window_param: 1
+          ##FFTLog nodes for Wal, x-axis
+          # Nxmax: 4096
+          ##FFTLog nodes for Wal, y-axis
+          # Nymax: 4096
+          ##FFTLog bias for Wal, x-axis
+          # xbias: -2.0
+          ##FFTLog bias for Wal, y-axis
+          # ybias: -2.0
+          ##FFTLog window parameter for Wal
+          # windowxy_param: 1
+          ##boost the accuracy when doing integral
+          # accboost: 1
+          ##set it true to check meta info when loading fourier matrix, default true
+          ##if meta info not exists, report deprecated warning (will raise Exception in the future),
+          ##if meta info not match, raise MetaInfoError
+          # check_meta: true
+          ##take a snapshot after applying integral constraint correction
+          # snapshot: false

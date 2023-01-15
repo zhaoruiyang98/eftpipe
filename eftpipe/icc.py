@@ -127,7 +127,7 @@ class IntegralConstraint(HasLogger):
         shot noise
     icc_fourier_file : str | Path
         path to fourier transformed icc npz file
-        default None: always recompute the window and will not save to disk
+        default None: always compute the icc matrix and will not save to disk
     icc_configspace_SN_file : str | Path
         path to configspace PSN file, the header should be like s, W0^2, W2^2, W4^2, ...
         default None: load file from disk
@@ -164,17 +164,17 @@ class IntegralConstraint(HasLogger):
     bias : float
         FFTLog bias for PSN, default -2.1
     window_param : float | None
-        window parameter for PSN, default 1
+        FFTLog window parameter for PSN, default 1
     Nxmax : int
         FFTLog nodes for Wal, x-axis, default 4096
-    Nyxmax : int
+    Nymax : int
         FFTLog nodes for Wal, y-axis, default 4096
     xbias : float
         FFTLog bias for Wal, x-axis, default -2.0
     ybias : float
         FFTLog bias for Wal, y-axis, default -2.0
     windowxy_param : float | None
-        window parameter for Wal, default 1
+        FFTLog window parameter for Wal, default 1
     name : str
         logger name, default 'eftpipe.icc'
     snapshot : bool
