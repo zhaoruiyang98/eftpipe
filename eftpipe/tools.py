@@ -112,6 +112,10 @@ def int_or_list(x: int | Iterable[int]) -> list[int]:
     return [x] if isinstance(x, int) else list(x)
 
 
+def str_or_list(x: str | Iterable[str]) -> list[str]:
+    return [x] if isinstance(x, str) else list(x)
+
+
 def group_lists(*args: list[SupportsRichComparisonT]) -> list[SupportsRichComparisonT]:
     """sort and join lists"""
     out: set[SupportsRichComparisonT] = set()

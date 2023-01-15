@@ -1215,3 +1215,6 @@ class EFTLSSLeaf(HelperTheory):
         flag = self._not_reported[key]
         self._not_reported[key] = False
         return flag
+
+    def is_cross(self) -> bool:
+        return bool(self.config.get("cross", False))

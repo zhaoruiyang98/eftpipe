@@ -43,8 +43,8 @@ theory:
           h_AP: 0.6777
 likelihood:
   LRG_ELG_NGC:
-    class: eftpipe.eftlike_d
-    tracer: [LRG_NGC, ELG_NGC]
+    class: eftpipe.eftlike
+    tracers: [LRG_NGC, ELG_NGC]
     data:
       LRG_NGC:
         path: data/mock/noric_LRG_NGC.txt

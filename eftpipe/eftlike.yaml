@@ -1,0 +1,23 @@
+tracer:  # [tracerA, tracerB, tracerC, ...]
+data:
+  # also support list, or neglecting `tracerA` if there is only one tracer
+  # tracerA:
+    # reader: auto
+    # reader_kwargs: {}
+    # path: ''
+    # ls: [0, 2]
+    # kmin: 0.01
+    # kmax: 0.23
+  # tracerB:
+  # ...
+cov:
+  # also support cov: "path/to/cov"
+  # reader: auto
+  # reader_kwargs: {}
+  # path: ''
+  # Nreal: 1000
+  # rescale: 1
+chained: false  # also support list[bool] or dict[str, bool]
+with_binning: false  # also support list[bool] or dict[str, bool]
+binning:  # also support list[dict]
+marg:

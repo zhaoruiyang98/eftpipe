@@ -14,6 +14,7 @@ from cobaya.likelihood import Likelihood
 from .marginal import Marginalizable
 from .reader import read_pkl
 from .tools import int_or_list
+from .tools import str_or_list
 from .tools import pairwise
 
 FloatBound_T = Union[float, List[float], None]
@@ -127,7 +128,7 @@ def mask_covariance(cov, *args):
     ----------
     cov : ndarray, 2d
         covariance matrix
-    *args : ``ls``, ``ls_tot``, ``kall``, ``kmin``, ``kmax`` in sequence
+    *args : ``ls``, ``ls_tot``, ``kall``, ``kmin``, ``kmax`` in order
         ls : list[int]
             selected multipole order
         ls_tot : list[int]
@@ -844,6 +845,253 @@ class EFTLikeDoubleCross(Likelihood, Marginalizable):
     def PNG(self) -> Any:
         for t, minfo, with_binning, chained, (istart, iend) in zip(
             self.tracer,
+            self.minfodict.values(),
+            self.with_binning.values(),
+            self.chained.values(),
+            self._istart_iend_cache,
+        ):
+            if with_binning:
+                _, _, plk = self.provider.get_nonlinear_Plk_grid(
+                    t, chained=chained, binned=True
+                )
+            else:
+                fn = self.provider.get_nonlinear_Plk_interpolator(t, chained=chained)
+                plk = fn(minfo.ls, minfo.kout)
+            flatten(minfo.ls, plk, minfo.kout_mask, out=self._PNG_cache[istart:iend])
+        return self._PNG_cache
+
+    # override
+    def get_data_vector(self):
+        return self.data_vector
+
+    # override
+    def get_invcov(self):
+        return self.invcov
+
+    def calculate(self, state, want_derived=True, **params_values_dict):
+        if self.marg:
+            state["logp"] = self.marginalized_logp()
+        else:
+            res = self.data_vector - self.PNG()
+            chi2 = res @ self.invcov @ res
+            state["logp"] = -0.5 * chi2
+
+
+class EFTLike(Likelihood, Marginalizable):
+    """EFT likelihood for arbitrary number of tracers and cross-correlations."""
+
+    file_base_name = "eftlike"
+    # fmt: off
+    tracers: list[str]  # also support str
+    data: dict[str, dict[str, Any]]  # also support dict[str, Any] | list[dict[str, Any]]
+    cov: dict[str, Any]  # also support str for path
+    chained: dict[str, bool]  # also support bool | list[bool]
+    with_binning: dict[str, bool]  # also support bool | list[bool]
+    binning: dict[str, dict[str, Any]]  # also support dict[str, Any] | list[dict[str, Any]]
+    marg: dict[str, dict[str, Any]]
+    # fmt: on
+
+    def initialize(self) -> None:
+        super().initialize()
+        self.regularize_attributes()
+        self.minfodict = {
+            t: MultipoleInfo.load(**self.data[t], logger=self.log) for t in self.tracers
+        }
+        self.data_vector = np.hstack(
+            [minfo.data_vector for minfo in self.minfodict.values()]
+        )
+        self.ndata = self.data_vector.size
+        for t, minfo in self.minfodict.items():
+            self.binning[t]["kout"] = minfo.kout
+
+        self.set_invcov()
+        self.log_data_loading_info()
+
+    def regularize_attributes(self):
+        self.tracers = str_or_list(self.tracers)
+        ntracer = len(self.tracers)
+
+        if ntracer == 1:
+
+            def to_nested_dict(x: Any) -> Any:
+                if isinstance(x, dict) and [*x.keys()][0] != self.tracers[0]:
+                    return {self.tracers[0]: x}
+                return x
+
+            self.data = to_nested_dict(self.data)
+            self.binning = to_nested_dict(self.binning)
+
+        def or_list_to_dict(x: Any) -> Any:
+            if not isinstance(x, (dict, list)):
+                x = [x] * ntracer
+            if isinstance(x, list):
+                return {t: x[i] for i, t in enumerate(self.tracers)}
+            return x
+
+        self.data: dict[str, dict[str, Any]] = or_list_to_dict(self.data)
+        self.chained: dict[str, bool] = or_list_to_dict(self.chained)
+        self.with_binning: dict[str, bool] = or_list_to_dict(self.with_binning)
+        self.binning = self.binning or {t: {} for t in self.tracers}
+        self.binning: dict[str, dict[str, Any]] = or_list_to_dict(self.binning)
+
+    def set_invcov(self) -> None:
+        if not isinstance(self.cov, dict):
+            self.cov = {"path": self.cov}
+        cov = find_covariance_reader(
+            self.cov.get("reader", "auto"), self.cov.get("reader_kwargs", {})
+        )(self.cov["path"])
+        args: Any = ()
+        for minfo in self.minfodict.values():
+            args += (
+                minfo.ls,
+                minfo.ls_tot,
+                minfo.df.index,
+                minfo.kmin,
+                minfo.kmax,
+            )
+        cov = mask_covariance(cov, *args)
+        cov /= self.cov.get("rescale", 1)
+        self.invcov = np.linalg.inv(cov)
+        self.hartlap: float | None = None
+        if (Nreal := self.cov.get("Nreal")) is not None:
+            self.hartlap = hartlap(Nreal, self.ndata)
+            self.invcov *= self.hartlap
+
+    def log_data_loading_info(self) -> None:
+        for t, minfo in self.minfodict.items():
+            self.mpi_info("tracer %s:", t)
+            for ell in minfo.ls:
+                kmasked = minfo.kout[minfo.kout_mask[ell]]
+                self.mpi_info(
+                    "ell=%d, kmin=%.3e, kmax=%.3e, ndata=%d",
+                    ell,
+                    kmasked[0],
+                    kmasked[-1],
+                    kmasked.size,
+                )
+        self.mpi_info("data vector size=%d", self.ndata)
+        self.mpi_info(
+            "Hartlap correction: %s",
+            "off" if not self.hartlap else f"{self.hartlap:.3f}",
+        )
+        self.mpi_info("covariance rescale: %.3e", self.cov.get("rescale", 1))
+
+    def get_requirements(self):
+        reqs = {
+            "nonlinear_Plk_grid": {},
+            "nonlinear_Plk_interpolator": {},
+            "nonlinear_Plk_gaussian_grid": {},
+        }
+        for t, minfo, chained, with_binning, binning in zip(
+            self.tracers,
+            self.minfodict.values(),
+            self.chained.values(),
+            self.with_binning.values(),
+            self.binning.values(),
+        ):
+            if with_binning:
+                reqs["nonlinear_Plk_grid"][t] = {
+                    "ls": minfo.ls,
+                    "chained": chained,
+                    "binned": True,
+                    "binning": binning,
+                }
+            else:
+                reqs["nonlinear_Plk_interpolator"][t] = {
+                    "ls": minfo.ls,
+                    "chained": chained,
+                }
+            # XXX: require gaussian grid for all tracers, which may not be necessary,
+            # but I don't know how to fix this, because tracers' prefixes are not known
+            if self.marg:
+                reqs["nonlinear_Plk_gaussian_grid"][t] = {
+                    "ls": minfo.ls,
+                    "chained": chained,
+                    "binned": with_binning,
+                    **({"binning": binning} if with_binning else {}),
+                }
+        reqs = {k: v for k, v in reqs.items() if v}
+        return reqs
+
+    def initialize_with_provider(self, provider):
+        super().initialize_with_provider(provider)
+        self.prefix: list[str] = [
+            self.provider.model.theory["eftpipe.eftlss." + t].prefix
+            for t in self.tracers
+        ]
+        self._is_cross: list[bool] = [
+            self.provider.model.theory["eftpipe.eftlss." + t].is_cross()
+            for t in self.tracers
+        ]
+        # setup prior after prefix is set
+        if self.marg:
+            self.setup_prior(self.marg)
+            self.report_marginalized()
+        self.set_cache()
+
+    def set_cache(self) -> None:
+        self._PNG_cache = np.zeros(self.data_vector.size)
+        sizelist: list[int] = [
+            minfo.data_vector.size for minfo in self.minfodict.values()
+        ]
+        self._istart_iend_cache: list[tuple[int, int]] = list(
+            pairwise(itertools.accumulate(sizelist, initial=0))
+        )
+        if self.marg:
+            self._PG_cache = np.zeros((len(self.valid_prior), self.data_vector.size))
+            bG_group: list[list[str]] = [list() for _ in self.tracers]
+            for name in self.valid_prior.keys():
+                for i, prefix in enumerate(self.prefix):
+                    if name.startswith(prefix):
+                        bG_group[i].append(name)
+            self._bG_group_cache = bG_group
+
+    # override
+    def marginalizable_params(self) -> list[str]:
+        params = []
+        for i, prefix in enumerate(self.prefix):
+            # FIXME: cross can marginalize not only itself
+            if self._is_cross[i]:
+                params += [prefix + name for name in ("ce0", "cemono", "cequad")]
+            else:
+                params += [
+                    prefix + name
+                    for name in ("b3", "cct", "cr1", "cr2", "ce0", "cemono", "cequad")
+                ]
+        return params
+
+    # override
+    def PG(self):
+        for t, minfo, chained, with_binning, bGlist, shift, (istart, iend) in zip(
+            self.tracers,
+            self.minfodict.values(),
+            self.chained.values(),
+            self.with_binning.values(),
+            self._bG_group_cache,
+            itertools.accumulate([len(x) for x in self._bG_group_cache], initial=0),
+            self._istart_iend_cache,
+        ):
+            _, kgrid, table = self.provider.get_nonlinear_Plk_gaussian_grid(
+                t,
+                chained=chained,
+                binned=with_binning,
+            )
+            for i, bG in enumerate(bGlist):
+                plk = table[bG]
+                if not with_binning:
+                    interpfn = interp1d(kgrid, kgrid * plk, kind="cubic", axis=-1)
+                    fn = lambda k: interpfn(k) / k
+                    plk = fn(minfo.kout)
+                i += shift
+                flatten(
+                    minfo.ls, plk, minfo.kout_mask, out=self._PG_cache[i, istart:iend]
+                )
+        return self._PG_cache
+
+    # override
+    def PNG(self) -> Any:
+        for t, minfo, with_binning, chained, (istart, iend) in zip(
+            self.tracers,
             self.minfodict.values(),
             self.with_binning.values(),
             self.chained.values(),

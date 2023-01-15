@@ -30,8 +30,8 @@ theory:
           window_configspace_file: data/window/ELG_NGC_interp.dat
 likelihood:
   ELG_NGC:
-    class: eftpipe.eftlike_s
-    tracer: ELG_NGC
+    class: eftpipe.eftlike
+    tracers: ELG_NGC
     data:
       path: data/mock/noric_ELG_NGC.txt
       ls: [0, 2, 4]
