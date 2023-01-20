@@ -537,14 +537,19 @@ class EFTLSS(Theory):
 
     def get_helper_theories(self) -> dict[str, Theory]:
         out = {}
-        for name in self.names:
+        for i, name in enumerate(self.names):
+            # Pk_interpolator requires at least 4 redshift
+            zextra = []
+            if i == 0 and len(self.names) < 4:
+                zeff = self.tracers[name]["z"]
+                zextra = [zeff + i * 0.1 for i in range(1, 5 - len(out))]
             out["eftpipe.eftlss." + name] = EFTLSSLeaf(
-                self, name, dict(stop_at_error=self.stop_at_error), timing=self.timer
+                self,
+                name,
+                dict(stop_at_error=self.stop_at_error),
+                timing=self.timer,
+                zextra=zextra,
             )
-        # Pk_interpolator requires at least 4 redshift
-        if len(out) < 4:
-            first: EFTLSSLeaf = out["eftpipe.eftlss." + self.names[0]]
-            first._zextra = [first.zeff + i * 0.1 for i in range(1, 5 - len(out))]
         return out
 
 
@@ -597,9 +602,16 @@ class PlkInterpolator:
 
 
 class EFTLSSLeaf(HelperTheory):
-    def __init__(self, eftlss: EFTLSS, name: str, info, timing=None) -> None:
-        # append extra redshifts if using classy (classy's bug)
-        self._zextra: list[float] = []
+    def __init__(
+        self,
+        eftlss: EFTLSS,
+        name: str,
+        info,
+        timing=None,
+        zextra: list[float] | None = None,
+    ) -> None:
+        # append extra redshifts when using classy (classy's bug)
+        self._zextra: list[float] = zextra or []
         self.name = name
         self.eftlss = eftlss
         # EFTLSSChild always initialized after EFTLSS, safe to use config
