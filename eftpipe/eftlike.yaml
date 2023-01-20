@@ -1,3 +1,5 @@
+likelihood_prefix: ''
+nparams: 1
 tracer:  # [tracerA, tracerB, tracerC, ...]
 data:
   # also support list, or neglecting `tracerA` if there is only one tracer

@@ -881,6 +881,8 @@ class EFTLike(Likelihood, Marginalizable):
 
     file_base_name = "eftlike"
     # fmt: off
+    likelihood_prefix: str
+    nparams: int
     tracers: list[str]  # also support str
     data: dict[str, dict[str, Any]]  # also support dict[str, Any] | list[dict[str, Any]]
     cov: dict[str, Any]  # also support str for path
@@ -1144,3 +1146,12 @@ class EFTLike(Likelihood, Marginalizable):
             res = self.data_vector - self.PNG()
             chi2 = res @ self.invcov @ res
             state["logp"] = -0.5 * chi2
+            if want_derived:
+                state[self.likelihood_prefix + "reduced_chi2"] = chi2 / (
+                    self.ndata - self.nparams
+                )
+
+    def get_can_provide_params(self) -> list[str]:
+        if self.marg:
+            return []
+        return [self.likelihood_prefix + "reduced_chi2"]
