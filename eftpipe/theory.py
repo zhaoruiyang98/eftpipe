@@ -607,7 +607,7 @@ class EFTLSSLeaf(HelperTheory):
         super().__init__(info, self.eftlss.get_name() + "." + name, timing=timing)
 
     def setup_prefix(self) -> None:
-        if not (prefix := self.config.get("prefix")):
+        if (prefix := self.config.get("prefix")) is None:
             prefix = self.name + "_"
         self.prefix: str = prefix
         # write back
