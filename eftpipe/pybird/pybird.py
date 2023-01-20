@@ -1369,7 +1369,6 @@ class Resum(object):
     def IRnWithCoef(self, Coef):
         # CoefkPow = np.einsum("n,nk->nk", Coef, self.kPow)
         # return np.real(np.einsum("nk,ln->lk", CoefkPow, self.M[: self.co.Na]))
-        # TODO: unroll the loop
         # precomputed np.einsum_path does not improve the performance
         return np.real(self.M[: self.co.Na] @ (Coef[:, newaxis] * self.kPow))
 
@@ -1431,6 +1430,7 @@ class Resum(object):
 
         extracted_C11 = self.extractBAO(bird.C11)
         CoefArray = self.precomputedCoef(XpYp, extracted_C11, window=window)
+        # TODO: unroll the loop
         for l, cl in enumerate(extracted_C11):
             for j, xy in enumerate(XpYp):
                 IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(CoefArray[l, j, :])

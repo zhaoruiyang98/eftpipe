@@ -1,4 +1,3 @@
-# TODO: extract the common part of EFTLikeDouble and EFTLikeDoubleCross
 from __future__ import annotations
 import importlib
 import itertools
@@ -1015,14 +1014,14 @@ class EFTLike(Likelihood, Marginalizable):
 
     def initialize_with_provider(self, provider):
         super().initialize_with_provider(provider)
-        self.prefix: list[str] = [
-            self.provider.model.theory["eftpipe.eftlss." + t].prefix
-            for t in self.tracers
-        ]
-        self._is_cross: list[bool] = [
-            self.provider.model.theory["eftpipe.eftlss." + t].is_cross()
-            for t in self.tracers
-        ]
+        self.prefix: list[str] = []
+        self.related_prefix: list[list[str]] = []
+        self.is_cross: list[bool] = []
+        for t in self.tracers:
+            theory = self.provider.model.theory["eftpipe.eftlss." + t]
+            self.prefix.append(theory.prefix)
+            self.related_prefix.append(theory.related_prefix)
+            self.is_cross.append(theory.is_cross)
         # setup prior after prefix is set
         if self.marg:
             self.setup_prior(self.marg)
@@ -1038,27 +1037,46 @@ class EFTLike(Likelihood, Marginalizable):
             pairwise(itertools.accumulate(sizelist, initial=0))
         )
         if self.marg:
-            self._PG_cache = np.zeros((len(self.valid_prior), self.data_vector.size))
             bG_group: list[list[str]] = [list() for _ in self.tracers]
-            for name in self.valid_prior.keys():
-                for i, prefix in enumerate(self.prefix):
+            for bGlist, prefix, related in zip(
+                bG_group, self.prefix, self.related_prefix
+            ):
+                # XXX: building bG_group according to prefix may not be reliable
+                if prefix and not prefix.endswith("_"):
+                    msg = (
+                        "prefix '%s' does not end with '_', "
+                        "this may induce ambiguity when doing marginalization."
+                    )
+                    self.mpi_warning(msg, self.prefix)
+                for extra in related:
+                    # cross
+                    for name in self.valid_prior.keys():
+                        if name.startswith(extra) and name[len(extra) :] not in (
+                            "ce0",
+                            "cemono",
+                            "cequad",
+                        ):
+                            bGlist.append(name)
+                for name in self.valid_prior.keys():
                     if name.startswith(prefix):
-                        bG_group[i].append(name)
+                        bGlist.append(name)
             self._bG_group_cache = bG_group
+            number_of_bG = sum(len(_) for _ in bG_group)
+            self._PG_cache = np.zeros((number_of_bG, self.data_vector.size))
 
     # override
     def marginalizable_params(self) -> list[str]:
         params = []
+        names = ("b3", "cct", "cr1", "cr2")
+        stnames = ("ce0", "cemono", "cequad")
         for i, prefix in enumerate(self.prefix):
-            # FIXME: cross can marginalize not only itself
-            if self._is_cross[i]:
-                params += [prefix + name for name in ("ce0", "cemono", "cequad")]
+            if self.is_cross[i]:
+                for related in self.related_prefix[i]:
+                    params += [related + name for name in names]
+                params += [prefix + name for name in stnames]
             else:
-                params += [
-                    prefix + name
-                    for name in ("b3", "cct", "cr1", "cr2", "ce0", "cemono", "cequad")
-                ]
-        return params
+                params += [prefix + name for name in names + stnames]
+        return list(dict.fromkeys(params))
 
     # override
     def PG(self):
@@ -1068,7 +1086,7 @@ class EFTLike(Likelihood, Marginalizable):
             self.chained.values(),
             self.with_binning.values(),
             self._bG_group_cache,
-            itertools.accumulate([len(x) for x in self._bG_group_cache], initial=0),
+            itertools.accumulate([len(_) for _ in self._bG_group_cache], initial=0),
             self._istart_iend_cache,
         ):
             _, kgrid, table = self.provider.get_nonlinear_Plk_gaussian_grid(
@@ -1082,10 +1100,13 @@ class EFTLike(Likelihood, Marginalizable):
                     interpfn = interp1d(kgrid, kgrid * plk, kind="cubic", axis=-1)
                     fn = lambda k: interpfn(k) / k
                     plk = fn(minfo.kout)
-                i += shift
                 flatten(
-                    minfo.ls, plk, minfo.kout_mask, out=self._PG_cache[i, istart:iend]
+                    minfo.ls,
+                    plk,
+                    minfo.kout_mask,
+                    out=self._PG_cache[i + shift, istart:iend],
                 )
+        # be careful, return a reference
         return self._PG_cache
 
     # override
@@ -1105,6 +1126,7 @@ class EFTLike(Likelihood, Marginalizable):
                 fn = self.provider.get_nonlinear_Plk_interpolator(t, chained=chained)
                 plk = fn(minfo.ls, minfo.kout)
             flatten(minfo.ls, plk, minfo.kout_mask, out=self._PNG_cache[istart:iend])
+        # be careful, return a reference
         return self._PNG_cache
 
     # override

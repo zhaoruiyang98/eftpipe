@@ -14,7 +14,8 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
 
     Notes
     -----
-    Marginalizable should be inherited (indirectly) from HasLogger
+    * Marginalizable should be inherited (indirectly) from HasLogger
+    * valid_prior will be sorted according to the order of parameters appearing in marginalizable_params
     """
 
     valid_prior: dict[str, dict[str, float]]

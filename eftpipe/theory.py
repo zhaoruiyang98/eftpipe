@@ -606,16 +606,25 @@ class EFTLSSLeaf(HelperTheory):
         self.config = self.eftlss.tracers[name]
         super().__init__(info, self.eftlss.get_name() + "." + name, timing=timing)
 
-    def initialize(self) -> None:
-        super().initialize()
-        self._not_reported = defaultdict(lambda: True)
-        # allow empty string
-        prefix = self.config.get("prefix", None)
-        if prefix is None:
+    def setup_prefix(self) -> None:
+        if not (prefix := self.config.get("prefix")):
             prefix = self.name + "_"
         self.prefix: str = prefix
         # write back
         self.config["prefix"] = prefix
+        # find related prefix
+        self.related_prefix: list[str] = []
+        if cross := self.config.get("cross"):
+            for name in cross:
+                config = self.eftlss.tracers[name]
+                self.related_prefix.append(
+                    config["prefix"] if config.get("prefix") else name + "_"
+                )
+
+    def initialize(self) -> None:
+        super().initialize()
+        self.setup_prefix()
+        self._not_reported = defaultdict(lambda: True)
         try:
             self.zeff: float = self.config["z"]
         except KeyError:
@@ -669,22 +678,7 @@ class EFTLSSLeaf(HelperTheory):
 
         self.boltzmann.initialize_with_provider(provider)
         cross = self.config.get("cross", [])
-        if not cross:
-            try:
-                kmA, krA, ndA = (
-                    self.config["km"],
-                    self.config.get("kr"),
-                    self.config["nd"],
-                )
-                if krA is None:
-                    self.mpi_warning(
-                        "kr not specified, assuming kr=km, will raise exception in the future"
-                    )
-                    krA = kmA
-                kmB, krB, ndB = kmA, krA, ndA
-            except KeyError:
-                raise LoggedError(self.log, "must specify km, kr and nd")
-        else:
+        if cross:
             try:
                 tracerA, tracerB = (self.eftlss.tracers[_] for _ in cross)
                 kmA, krA, ndA = tracerA["km"], tracerA.get("kr"), tracerA["nd"]
@@ -703,6 +697,21 @@ class EFTLSSLeaf(HelperTheory):
                     krB = kmB
             except KeyError:
                 raise LoggedError(self.log, "missing km, kr or nd for tracer %s", cross)
+        else:
+            try:
+                kmA, krA, ndA = (
+                    self.config["km"],
+                    self.config.get("kr"),
+                    self.config["nd"],
+                )
+                if krA is None:
+                    self.mpi_warning(
+                        "kr not specified, assuming kr=km, will raise exception in the future"
+                    )
+                    krA = kmA
+                kmB, krB, ndB = kmA, krA, ndA
+            except KeyError:
+                raise LoggedError(self.log, "must specify km, kr and nd")
 
         # do not initialize if no power spectrum requested
         if not self.need_power:
@@ -799,12 +808,10 @@ class EFTLSSLeaf(HelperTheory):
         # XXX: dependency on cosmology may be dynamically updated
         requires = self.boltzmann.get_requirements()
 
-        # TODO: the following lines are reused by ``_params_reader``, possible to combine?
         names = ("b1", "b2", "b4")
-        if cross := self.config.get("cross", []):
-            cross_prefix = [self.eftlss.tracers[_]["prefix"] for _ in cross]
+        if self.is_cross:
             eft_params = []
-            for prefix in cross_prefix:
+            for prefix in self.related_prefix:
                 eft_params += [prefix + name for name in names]
         else:
             eft_params = [self.prefix + name for name in names]
@@ -815,10 +822,9 @@ class EFTLSSLeaf(HelperTheory):
     def get_can_support_params(self):
         names = ("b3", "cct", "cr1", "cr2")
         stnames = ("ce0", "cemono", "cequad")
-        if cross := self.config.get("cross", []):
+        if self.is_cross:
             ret = [self.prefix + name for name in stnames]
-            cross_prefix = [self.eftlss.tracers[_]["prefix"] for _ in cross]
-            for prefix in cross_prefix:
+            for prefix in self.related_prefix:
                 ret += [prefix + name for name in names]
         else:
             ret = [self.prefix + name for name in names + stnames]
@@ -994,8 +1000,8 @@ class EFTLSSLeaf(HelperTheory):
     def _params_reader(self):
         stnames = ("ce0", "cemono", "cequad")
         names = ("b1", "b2", "b3", "b4", "cct", "cr1", "cr2")
-        if cross := self.config.get("cross", []):
-            A, B = (self.eftlss.tracers[name]["prefix"] for name in cross)
+        if self.is_cross:
+            A, B = self.related_prefix
             default = {self.prefix + name: 0 for name in stnames}
             for prefix in (A, B):
                 for name in ("b3", "cct", "cr1", "cr2"):
@@ -1032,9 +1038,8 @@ class EFTLSSLeaf(HelperTheory):
         names = ("b3", "cct", "cr1", "cr2")
         stnames = ("ce0", "cemono", "cequad")
         alias = {prefix + k: k for k in stnames}
-        cross = self.config.get("cross", [])
-        if cross:
-            A, B = (self.eftlss.tracers[name]["prefix"] for name in cross)
+        if self.is_cross:
+            A, B = self.related_prefix
             for name in names:
                 alias[A + name] = name + "A"
                 alias[B + name] = name + "B"
@@ -1216,5 +1221,6 @@ class EFTLSSLeaf(HelperTheory):
         self._not_reported[key] = False
         return flag
 
+    @cached_property
     def is_cross(self) -> bool:
         return bool(self.config.get("cross", False))
