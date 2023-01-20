@@ -13,6 +13,7 @@ from typing import Any, TYPE_CHECKING, Sequence
 from cobaya import get_model
 from cobaya.yaml import yaml_dump
 from cobaya.yaml import yaml_load_file
+from eftpipe.likelihood import EFTLike
 from eftpipe.likelihood import EFTLikeSingle
 from eftpipe.likelihood import EFTLikeDouble
 from eftpipe.likelihood import EFTLikeDoubleCross
@@ -36,14 +37,14 @@ GREEN = tab10.colors[2]
 RED = tab10.colors[3]
 
 
-def extract_sampled_bestfit(file: str | os.PathLike) -> dict[str, float]:
+def extract_sampled_bestfit(file: str | os.PathLike, sampled_only: bool = True) -> dict[str, float]:
     file = Path(file)
     params: dict[str, float] = {}
     with file.open() as f:
         n = 0
         for line in f:
             if line.strip() == "":
-                if n == 1:
+                if n == 1 and sampled_only:
                     break
                 n += 1
             elif n == 0:
@@ -120,7 +121,7 @@ def generate_requires(tracers: list[str], hex: list[str], chained: list[str]):
     return ret
 
 
-def get_cov(like: EFTLikeSingle | EFTLikeDouble | EFTLikeDoubleCross):
+def get_cov(like: EFTLikeSingle | EFTLikeDouble | EFTLikeDoubleCross | EFTLike):
     cov = find_covariance_reader(
         like.cov.get("reader", "auto"),
         like.cov.get("reader_kwargs", {}),
@@ -148,6 +149,16 @@ def collect_multipole_dataframe(model, tracers: list[str], likelihoods: list[str
             )
             indices = list(indices)[1:-1]
             for k, err in zip(like.tracer, np.split(get_cov(like).diagonal(), indices)):
+                configdict[k] = (like.minfodict[k], np.sqrt(err))
+        elif isinstance(like, EFTLike):
+            indices = itertools.accumulate(
+                (len(x.ls_tot) * x.df.index.size for x in like.minfodict.values()),
+                initial=0,
+            )
+            indices = list(indices)[1:-1]
+            for k, err in zip(
+                like.tracers, np.split(get_cov(like).diagonal(), indices)
+            ):
                 configdict[k] = (like.minfodict[k], np.sqrt(err))
         else:
             raise TypeError(f"Unexpected likelihood type: {type(like)}")
