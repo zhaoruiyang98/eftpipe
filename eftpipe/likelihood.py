@@ -1147,7 +1147,7 @@ class EFTLike(Likelihood, Marginalizable):
             chi2 = res @ self.invcov @ res
             state["logp"] = -0.5 * chi2
             if want_derived:
-                state[self.likelihood_prefix + "reduced_chi2"] = chi2 / (
+                state["derived"][self.likelihood_prefix + "reduced_chi2"] = chi2 / (
                     self.ndata - self.nparams
                 )
 
