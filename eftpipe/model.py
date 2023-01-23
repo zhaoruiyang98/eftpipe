@@ -83,7 +83,7 @@ class EFTModel:
         }
         d = self.params
         if self.cross:
-            common = {"prior": {"min": -10, "max": 10}, "ref": 0.0}
+            common = {"prior": {"min": -10000, "max": 10000}, "ref": 0.0}
             d["A_b2"] = {"value": "lambda A_c2, A_c4: (A_c2 + A_c4) / np.sqrt(2.)"}
             d["A_b4"] = {"value": "lambda A_c2, A_c4: (A_c2 - A_c4) / np.sqrt(2.)"}
             d["B_b2"] = {"value": "lambda B_c2, B_c4: (B_c2 + B_c4) / np.sqrt(2.)"}
@@ -99,7 +99,7 @@ class EFTModel:
                     d[name]["drop"] = True
             # fmt: on
         else:
-            common = {"prior": {"min": -10, "max": 10}, "ref": 0.0}
+            common = {"prior": {"min": -10000, "max": 10000}, "ref": 0.0}
             d["x_b2"] = {"value": "lambda x_c2, x_c4: (x_c2 + x_c4) / np.sqrt(2.)"}
             d["x_b4"] = {"value": "lambda x_c2, x_c4: (x_c2 - x_c4) / np.sqrt(2.)"}
             for name in [
