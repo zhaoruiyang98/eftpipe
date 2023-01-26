@@ -3,9 +3,12 @@ boltzmann interface used by eftlss
 """
 from __future__ import annotations
 import importlib
+import os
 import numpy as np
+from abc import abstractmethod
 from copy import deepcopy
 from typing import Any, cast, Protocol, TYPE_CHECKING
+from scipy.interpolate import interp1d
 from cobaya.log import HasLogger
 
 if TYPE_CHECKING:
@@ -41,7 +44,7 @@ class BoltzmannInterface(Protocol):
             extra redshifts, maybe useful to build Pk interpolator,
             since Pk_interpolator typically requires at least 4 redshifts.
         """
-        ...
+        pass
 
     def initialize_with_provider(self, provider: Provider) -> None:
         """This function would be invocked by eftlss in ``initialize_with_provider`` method
@@ -51,39 +54,57 @@ class BoltzmannInterface(Protocol):
         provider : Provider
             The provider object of cobaya
         """
-        ...
+        pass
 
     def get_requirements(self) -> dict[str, Any]:
         """Cosmological requirements of this interface when used by eftlss"""
-        ...
+        return {}
 
     def updated(self) -> bool:
         """Whether the Boltzmann code has been updated, compared to the last time it was invoked"""
-        ...
+        return True
 
+    @abstractmethod
     def Pkh(self, kh: NDArray[np.floating]) -> NDArray[np.floating]:
         """Linear power spectrum, accept k in Mpc/h unit, returns in (Mpc/h)^3 unit"""
         ...
 
+    @abstractmethod
     def f(self) -> float:
         """Scale-independent linear growth rate"""
         ...
 
-    def h(self) -> float:
-        """Hubble parameter H0 / 100"""
-        ...
-
+    @abstractmethod
     def DA(self) -> float:
-        """Angular diameter distance in Mpc unit, divided by (c/H0)"""
+        """Angular diameter distance in Mpc unit, divided by (c/H0)
+
+        used in APeffect
+        """
         ...
 
+    @abstractmethod
     def H(self) -> float:
-        """dimensionless Hubble rate"""
+        """dimensionless Hubble rate
+
+        used in APeffect
+        """
         ...
 
-    def rdrag(self) -> float:
-        """Sound horizon at baryon drag epoch in Mpc unit"""
-        ...
+    def h(self) -> float | None:
+        """Hubble parameter H0 / 100
+
+        only used when computing alperp and alpara,
+        return None if only want to use qperp and qpara
+        """
+        return None
+
+    def rdrag(self) -> float | None:
+        """Sound horizon at baryon drag epoch in Mpc unit
+
+        only used when computing alperp and alpara,
+        return None if only want to use qperp and qpara
+        """
+        return None
 
     def fsigma8_z(self) -> float:
         R"""
@@ -91,10 +112,10 @@ class BoltzmannInterface(Protocol):
         `Planck 2015 results. XIII.
         Cosmological parameters <https://arxiv.org/pdf/1502.01589.pdf>`_.
         """
-        ...
+        return -1
 
 
-class InternalBoltzmannInterface(HasLogger):
+class InternalBoltzmannInterface(HasLogger, BoltzmannInterface):
     def __init__(self) -> None:
         self.set_logger()
 
@@ -138,9 +159,6 @@ class InternalBoltzmannInterface(HasLogger):
     def f(self) -> float:
         raise NotImplementedError
 
-    def h(self) -> float:
-        return float(self.provider.get_Hubble(0.0)) / 100.0
-
     def DA(self) -> float:
         return (
             float(self.provider.get_angular_diameter_distance(self.zeff))
@@ -150,6 +168,9 @@ class InternalBoltzmannInterface(HasLogger):
 
     def H(self) -> float:
         return float(self.provider.get_Hubble(self.zeff)) / (self.h() * 100)
+
+    def h(self) -> float:
+        return float(self.provider.get_Hubble(0.0)) / 100.0
 
     def rdrag(self) -> float:
         return float(self.provider.get_param("rdrag"))
@@ -273,6 +294,83 @@ class CobayaClassyInterface(InternalBoltzmannInterface):
             raise
 
 
+class LinearPowerFile(HasLogger, BoltzmannInterface):
+    def __init__(
+        self, path: str | os.PathLike, gz: float = 1, prefix: str = ""
+    ) -> None:
+        self.set_logger()
+        k, pk = np.loadtxt(path, unpack=True)
+        self.mpi_info("loading linear power spectrum from %s", path)
+        self.mpi_info("growth factor assumed to be %f", gz)
+        pk *= gz**2
+        self.mpi_info(
+            "require parameter %s, %s and %s",
+            prefix + "f",
+            prefix + "alperp",
+            prefix + "alpara",
+        )
+        self.prefix = prefix
+        if k[0] > 1e-5:
+            print(k[1], k[0])
+            ns = (np.log(pk[1]) - np.log(pk[0])) / (np.log(k[1]) - np.log(k[0]))
+            lowk = np.geomspace(1e-5, k[0], 100, endpoint=False)
+            lowpk = pk[0] * (lowk / k[0]) ** ns
+            k = np.hstack((lowk, k))
+            pk = np.hstack((lowpk, pk))
+            self.mpi_info("extrapolating linear power spectrum to k=1e-5, ns=%f", ns)
+        fn = interp1d(np.log(k), np.log(pk), kind="cubic")
+        self.plin = lambda k: np.exp(fn(np.log(k)))
+        # klim = np.logspace(-5, 1, 200)
+        # plim = self.plin(klim)
+        # from matplotlib import pyplot as plt
+        # plt.loglog(klim, plim)
+        # plt.show()
+        # exit()
+        self._returned_DA = False
+        self._returned_H = False
+
+    def initialize(self, zeff: float, use_cb: bool, zextra: list[float]) -> None:
+        if use_cb:
+            self.mpi_warning("use_cb is ignored for LinearPowerFile")
+
+    def initialize_with_provider(self, provider: Provider) -> None:
+        self.provider = provider
+
+    def get_requirements(self) -> dict[str, Any]:
+        return {
+            self.prefix + "f": None,
+            self.prefix + "alperp": None,
+            self.prefix + "alpara": None,
+        }
+
+    def updated(self) -> bool:
+        return False
+
+    def Pkh(self, kh: NDArray[np.floating]) -> NDArray[np.floating]:
+        return self.plin(kh)
+
+    def f(self) -> float:
+        return self.provider.get_param(self.prefix + "f")  # type: ignore
+
+    def DA(self) -> float:
+        if self._returned_DA:
+            return self.provider.get_param(self.prefix + "alperp")  # type: ignore
+        self._returned_DA = True
+        return 1
+
+    def H(self) -> float:
+        if self._returned_H:
+            return 1 / self.provider.get_param(self.prefix + "alpara")  # type: ignore
+        self._returned_H = True
+        return 1
+
+    def h(self) -> float:
+        return 1
+
+    def rdrag(self) -> float:
+        return 1
+
+
 def find_boltzmann_interface(name: str, kwargs: dict[str, Any]) -> BoltzmannInterface:
     if name == "camb":
         ret = CobayaCambInterface()
@@ -292,3 +390,4 @@ if TYPE_CHECKING:
 
     assert_protocol(CobayaClassyInterface())
     assert_protocol(CobayaCambInterface())
+    assert_protocol(LinearPowerFile(""))
