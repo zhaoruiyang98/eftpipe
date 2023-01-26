@@ -1214,8 +1214,8 @@ class EFTLSSLeaf(HelperTheory):
                     state["derived"][self.prefix + "alperp"] = alperp
                     state["derived"][self.prefix + "alpara"] = alpara
             else:
-                state["derived"][self.prefix + "alperp"] = 1
-                state["derived"][self.prefix + "alpara"] = 1
+                state["derived"][self.prefix + "alperp"] = -1
+                state["derived"][self.prefix + "alpara"] = -1
             state["derived"][self.prefix + "fz"] = boltzmann.f()
             state["derived"][self.prefix + "fsigma8_z"] = boltzmann.fsigma8_z()
             # TODO: fsigma8_cb_z
