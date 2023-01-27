@@ -9,7 +9,7 @@ from scipy.interpolate import interp1d
 from scipy.special import legendre, j1, spherical_jn, loggamma
 from scipy.integrate import quad
 from pathlib import Path
-from typing import Any, cast, TYPE_CHECKING, Union
+from typing import Any, cast, Iterable, Protocol, TYPE_CHECKING, Union
 
 # local
 from .fftlog import FFTLog
@@ -20,7 +20,6 @@ from ..tools import root_only
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
-    from ..theory import BirdPlus
 
 
 def cH(Om, a):
@@ -604,6 +603,46 @@ class Common(object):
 common = Common()
 
 
+class BirdHook(Protocol):
+    """accept a Bird object, and then do postprocessing"""
+
+    def setreducePslb(self, bird: Bird) -> None:
+        """automatically invoked when Bird.setreducePslb is called"""
+        pass
+
+    def setreducePG(self, bird: Bird) -> None:
+        """automatically invoked when Bird.setreducePG is called"""
+        pass
+
+
+class BirdSnapshot(BirdHook):
+    """
+    created by Bird.create_snapshot, do not use this class directly
+    """
+
+    def __init__(self, bird: Bird) -> None:
+        self.k = bird.co.k.copy()
+        self.ls = [2 * i for i in range(bird.co.Nl)]
+        self.P11l = bird.P11l.copy()
+        self.Ploopl = bird.Ploopl.copy()
+        self.Pctl = bird.Pctl.copy()
+        self.Pstl = bird.Pstl.copy()
+        self.Picc = bird.Picc.copy()
+
+    def setreducePslb(self, bird: Bird) -> None:
+        self.fullPs = bird.reducePslb(
+            b11AB=bird.b11AB,
+            bloopAB=bird.bloopAB,
+            bctAB=bird.bctAB,
+            bstAB=bird.bstAB,
+            P11l=self.P11l,
+            Ploopl=self.Ploopl,
+            Pctl=self.Pctl,
+            Pstl=self.Pstl,
+            Picc=self.Picc,
+        )
+
+
 class Bird(object):
     """
     Main class which contains the power spectrum and correlation function, given a cosmology and a set of EFT parameters.
@@ -715,10 +754,25 @@ class Bird(object):
         # The rationale is, pixelation is performed after fiber collision and affects typically large-scale modes
         self.Picc = np.zeros(shape=(self.co.Nl, self.co.Nk))
 
-        self.initialize()
+        self._hooks: list[BirdHook] = []
+        self.snapshots: dict[str, BirdSnapshot] = {}
 
-    def initialize(self):
-        pass
+    def attach_hook(self, *args: BirdHook) -> None:
+        self._hooks.extend(args)
+
+    def clear_hook(self) -> None:
+        self._hooks = []
+
+    def create_snapshot(self, name: str) -> None:
+        """
+        Notes
+        -----
+        be careful with the name, because name confliction not checked
+        """
+        # XXX: name confliction not checked
+        snapshot = BirdSnapshot(self)
+        self.snapshots[name] = snapshot
+        self.attach_hook(snapshot)
 
     def setPsCfl(self):
         """Creates multipoles for each term weighted accordingly"""
@@ -830,6 +884,7 @@ class Bird(object):
         self.subtractShotNoise()
 
     def setPstl(self, ks: NDArray | None = None):
+        """stochastic terms"""
         if ks is None:
             Nk = self.co.Nk
             ks2 = self.co.k**2
@@ -843,49 +898,113 @@ class Bird(object):
         if Nl >= 2:
             self.Pstl[1, 2, :] = ks2
 
-    def setreducePslb(self, bs):
-        """Given an array of EFT parameters, multiply them accordingly to the power spectrum multipole regrouped terms and adds the resulting terms together per loop order.
+    def setreducePslb(
+        self,
+        bsA: Iterable[float],
+        bsB: Iterable[float] | None = None,
+        es: Iterable[float] = (0.0, 0.0, 0.0),
+    ) -> None:
+        """apply counter terms and bind fullPs to self
 
         Parameters
         ----------
-        bs : array
-            An array of 7 EFT parameters: b_1, b_2, b_3, b_4, c_{ct}/k_{m}^2, c_{r,1}/k_{r}^2, c_{r,2}/k_{r}^2
+        bsA : Iterable[float]
+            b_1, b_2, b_3, b_4, c_{ct}, c_{r,1}, c{r,2}
+        bsB : Iterable[float], optional
+            the same as bsA, but for tracer B, by default None,
+            and will compute auto power spectrum
+        es : Iterable[float], optional
+            c_{e,0}, c_{mono}, c_{quad}, by default zeros
         """
-        b1, b2, b3, b4, b5, b6, b7 = bs
+        kmA, krA, ndA, kmB, krB, ndB = (
+            self.co.kmA,
+            self.co.krA,
+            self.co.ndA,
+            self.co.kmB,
+            self.co.krB,
+            self.co.ndB,
+        )
+        b1A, b2A, b3A, b4A, cctA, cr1A, cr2A = bsA
+        if bsB is None:
+            bsB = bsA
+        b1B, b2B, b3B, b4B, cctB, cr1B, cr2B = bsB
         f = self.f
+        ce0, cemono, cequad = es
 
-        b11 = np.array([b1**2, 2.0 * b1 * f, f**2])
-        bct = np.array(
+        # cct -> cct / km**2, cr1 -> cr1 / kr**2, cr2 -> cr2 / kr**2
+        # ce0 -> ce0 / nd, cemono -> cemono / nd / km**2, cequad -> cequad / nd / km**2
+        b11AB = np.array([b1A * b1B, (b1A + b1B) * f, f**2])
+        bctAB = np.array(
             [
-                2.0 * b1 * b5,
-                2.0 * b1 * b6,
-                2.0 * b1 * b7,
-                2.0 * f * b5,
-                2.0 * f * b6,
-                2.0 * f * b7,
+                b1A * cctB / kmB**2 + b1B * cctA / kmA**2,
+                b1B * cr1A / krA**2 + b1A * cr1B / krB**2,
+                b1B * cr2A / krA**2 + b1A * cr2B / krB**2,
+                (cctA / kmA**2 + cctB / kmB**2) * f,
+                (cr1A / krA**2 + cr1B / krB**2) * f,
+                (cr2A / krA**2 + cr2B / krB**2) * f,
             ]
         )
-        bloop = np.array(
+        bloopAB = np.array(
             [
                 1.0,
-                b1,
-                b2,
-                b3,
-                b4,
-                b1 * b1,
-                b1 * b2,
-                b1 * b3,
-                b1 * b4,
-                b2 * b2,
-                b2 * b4,
-                b4 * b4,
+                1.0 / 2.0 * (b1A + b1B),
+                1.0 / 2.0 * (b2A + b2B),
+                1.0 / 2.0 * (b3A + b3B),
+                1.0 / 2.0 * (b4A + b4B),
+                b1A * b1B,
+                1.0 / 2.0 * (b1A * b2B + b1B * b2A),
+                1.0 / 2.0 * (b1A * b3B + b1B * b3A),
+                1.0 / 2.0 * (b1A * b4B + b1B * b4A),
+                b2A * b2B,
+                1.0 / 2.0 * (b2A * b4B + b2B * b4A),
+                b4A * b4B,
             ]
         )
-        Ps0 = np.einsum("b,lbx->lx", b11, self.P11l)
-        Ps1 = np.einsum("b,lbx->lx", bloop, self.Ploopl) + np.einsum(
-            "b,lbx->lx", bct, self.Pctl
+        xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
+        xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
+        bstAB = np.array([ce0 * xfactor1, cemono * xfactor2, cequad * xfactor2])
+
+        self.b11AB = b11AB
+        self.bctAB = bctAB
+        self.bloopAB = bloopAB
+        self.bstAB = bstAB
+        self.fullPs = self.reducePslb(
+            b11AB=b11AB,
+            bloopAB=bloopAB,
+            bctAB=bctAB,
+            bstAB=bstAB,
+            P11l=self.P11l,
+            Ploopl=self.Ploopl,
+            Pctl=self.Pctl,
+            Pstl=self.Pstl,
+            Picc=self.Picc,
         )
-        self.fullPs = Ps0 + Ps1
+        for viewer in self._hooks:
+            viewer.setreducePslb(self)
+
+    def reducePslb(
+        self, *, b11AB, bloopAB, bctAB, bstAB, P11l, Ploopl, Pctl, Pstl, Picc
+    ) -> NDArray:
+        Ps0 = np.einsum("b,lbx->lx", b11AB, P11l)
+        Ps1 = np.einsum("b,lbx->lx", bloopAB, Ploopl) + np.einsum(
+            "b,lbx->lx", bctAB, Pctl
+        )
+        Ps2 = np.einsum("b,lbx->lx", bstAB, Pstl)
+        # from matplotlib import pyplot as plt
+        # k = self.co.k
+        # plt.plot(k, k * Ps0[0], "k-", label="kaiser")
+        # plt.plot(k, k * Ps0[1], "b-")
+        # _Ploop = np.einsum("b,lbx->lx", bloopAB, Ploopl)
+        # _Pct = np.einsum("b,lbx->lx", bctAB, Pctl)
+        # plt.plot(k, k * _Ploop[0], "k--", label="loop")
+        # plt.plot(k, k * _Ploop[1], "b--")
+        # plt.plot(k, k * _Pct[0], "k:", label="counter")
+        # plt.plot(k, k * _Pct[1], "b:")
+        # plt.legend(frameon=False)
+        # plt.xlim(0, 0.3)
+        # plt.ylim(-300, 450)
+        # plt.show()
+        return Ps0 + Ps1 + Ps2 + Picc
 
     def subtractShotNoise(self):
         """Subtract the constant stochastic term from the (22-)loop"""
@@ -893,6 +1012,46 @@ class Bird(object):
             for n in range(self.co.Nloop):
                 shotnoise = self.Ploopl[l, n, 0]
                 self.Ploopl[l, n] -= shotnoise
+
+    def setreducePG(self, b1A: float, b1B: float) -> None:
+
+        self.b1A = b1A
+        self.b1B = b1B
+
+        self.PG = self.reducePG(
+            b1A=b1A, b1B=b1B, Ploopl=self.Ploopl, Pctl=self.Pctl, Pstl=self.Pstl
+        )
+
+        for viewer in self._hooks:
+            viewer.setreducePG(self)
+
+    def reducePG(
+        self, b1A: float, b1B: float, Ploopl: NDArray, Pctl: NDArray, Pstl: NDArray
+    ) -> dict[str, NDArray]:
+        f = self.f
+        kmA, krA, ndA, kmB, krB, ndB = (
+            self.co.kmA,
+            self.co.krA,
+            self.co.ndA,
+            self.co.kmB,
+            self.co.krB,
+            self.co.ndB,
+        )
+        PG: dict[str, Any] = {}
+        PG["b3A"] = 1 / 2 * Ploopl[:, 3, :] + 1 / 2 * b1B * Ploopl[:, 7, :]
+        PG["cctA"] = b1B / kmA**2 * Pctl[:, 0, :] + f / kmA**2 * Pctl[:, 3, :]
+        PG["cr1A"] = b1B / krA**2 * Pctl[:, 1, :] + f / krA**2 * Pctl[:, 4, :]
+        PG["cr2A"] = b1B / krA**2 * Pctl[:, 2, :] + f / krA**2 * Pctl[:, 5, :]
+        PG["b3B"] = 1 / 2 * Ploopl[:, 3, :] + 1 / 2 * b1A * Ploopl[:, 7, :]
+        PG["cctB"] = b1A / kmB**2 * Pctl[:, 0, :] + f / kmB**2 * Pctl[:, 3, :]
+        PG["cr1B"] = b1A / krB**2 * Pctl[:, 1, :] + f / krB**2 * Pctl[:, 4, :]
+        PG["cr2B"] = b1A / krB**2 * Pctl[:, 2, :] + f / krB**2 * Pctl[:, 5, :]
+        xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
+        xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
+        PG["ce0"] = Pstl[:, 0, :] * xfactor1
+        PG["cemono"] = Pstl[:, 1, :] * xfactor2
+        PG["cequad"] = Pstl[:, 2, :] * xfactor2
+        return PG
 
 
 # TODO: support snapshot
@@ -1484,7 +1643,7 @@ Location = Union[str, Path]
 
 
 class Window(HasLogger):
-    r"""Window effect
+    R"""Window effect
 
     Parameters
     ----------
@@ -1834,7 +1993,7 @@ class Window(HasLogger):
         # (multipole l, multipole ' p, k, k' m) , (multipole ', power pectra s, k' m)
         return np.einsum("alkp,lsp->ask", self.Waldk, Pk, optimize=True)
 
-    def Window(self, bird: BirdPlus):
+    def Window(self, bird: Bird):
         """
         Apply the survey window function to the bird power spectrum
         """
@@ -1845,10 +2004,7 @@ class Window(HasLogger):
             bird.setPstl(self.p)
             bird.Pstl = self.integrWindow(bird.Pstl, interp=False)
         if self.snapshot:
-            try:
-                bird.create_snapshot("window")
-            except AttributeError:
-                pass
+            bird.create_snapshot("window")
 
 
 class APeffect(HasLogger):
@@ -1986,7 +2142,7 @@ class APeffect(HasLogger):
         )
         return 2 * np.trapz(Integrandmu, x=self.mugrid, axis=-1)
 
-    def AP(self, bird: BirdPlus, q=None):
+    def AP(self, bird: Bird, q=None):
         """
         Apply the AP effect to the bird power spectrum
         Credit: Jerome Gleyzes
@@ -2006,10 +2162,7 @@ class APeffect(HasLogger):
         bird.Pctl = coef * self.integrAP(bird.Pctl, kp, arrayLegendremup)
         bird.Ploopl = coef * self.integrAP(bird.Ploopl, kp, arrayLegendremup)
         if self.snapshot:
-            try:
-                bird.create_snapshot("APeffect")
-            except AttributeError:
-                pass
+            bird.create_snapshot("APeffect")
 
     def logstate(self):
         self.mpi_info("fiducial DA=%.5f, H=%.5f", self.DA, self.H)
@@ -2139,7 +2292,7 @@ class FiberCollision(HasLogger):
         return dPcorr
 
     # TODO: stochastic terms? uncorrelated contribution?
-    def fibcolWindow(self, bird: BirdPlus):
+    def fibcolWindow(self, bird: Bird):
         """
         Apply window effective method correction to fiber collisions to the bird power spectrum
         """
@@ -2169,7 +2322,4 @@ class FiberCollision(HasLogger):
             Dfc=Dfc,
         )
         if self.snapshot:
-            try:
-                bird.create_snapshot("fiber")
-            except AttributeError:
-                pass
+            bird.create_snapshot("fiber")

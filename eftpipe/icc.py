@@ -19,7 +19,7 @@ from .tools import root_only
 
 if TYPE_CHECKING:
     from numpy import ndarray as NDArray
-    from .theory import BirdPlus
+    from .pybird.pybird import Bird
     from .pybird.pybird import Common
 
 try:
@@ -496,7 +496,7 @@ class IntegralConstraint(HasLogger):
         # (multipole l, multipole ' p, k, k' m) , (multipole ', power pectra s, k' m)
         return np.einsum("alkp,lsp->ask", self.Waldk, Pk, optimize=True)
 
-    def icc(self, bird: BirdPlus):
+    def icc(self, bird: Bird):
         bird.P11l -= self.integrWindow(bird.P11l)
         bird.Pctl -= self.integrWindow(bird.Pctl)
         bird.Ploopl -= self.integrWindow(bird.Ploopl)
@@ -504,7 +504,4 @@ class IntegralConstraint(HasLogger):
         assert self.PSN is not None
         bird.Picc -= self.PSN
         if self.snapshot:
-            try:
-                bird.create_snapshot("icc")
-            except AttributeError:
-                pass
+            bird.create_snapshot("icc")

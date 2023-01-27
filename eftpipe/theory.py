@@ -8,7 +8,14 @@ from collections import defaultdict
 from copy import deepcopy
 from functools import cached_property
 from pathlib import Path
-from typing import Any, cast, Iterable, NamedTuple, TypedDict, TYPE_CHECKING
+from typing import (
+    Any,
+    cast,
+    Iterable,
+    NamedTuple,
+    TypedDict,
+    TYPE_CHECKING,
+)
 from scipy.integrate import quad
 from scipy.interpolate import interp1d
 from scipy.special import legendre
@@ -20,11 +27,13 @@ from cobaya.theory import Theory
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
     from cobaya.theory import Provider
+    from .pybird.pybird import BirdSnapshot
 
 # local
 from .icc import IntegralConstraint
 from .interface import find_boltzmann_interface
 from .pybird import pybird
+from .pybird.pybird import BirdHook
 from .tools import bool_or_list
 from .tools import group_lists
 from .tools import int_or_list
@@ -50,217 +59,6 @@ def chain_coeff(l: int) -> float:
     return ((2 * l + 1) * legendre(l)(0)) / ((2 * l + 5) * legendre(l + 2)(0))
 
 
-class BirdPlus(pybird.Bird):
-    """enhanced version of pybird.Bird, support multi-tracer, hook and snapshot"""
-
-    _hooks: list[BirdHook]
-    b1A: float
-    b1B: float
-    b11AB: NDArray[np.float64]
-    bctAB: NDArray[np.float64]
-    bloopAB: NDArray[np.float64]
-    bstAB: NDArray[np.float64]
-    fullPs: NDArray[np.float64]
-    PG: dict[str, NDArray[np.float64]]
-
-    # override
-    def initialize(self) -> None:
-        self._hooks: list[BirdHook] = []
-        self.snapshots: dict[str, BirdSnapshot] = {}
-
-    def attach_hook(self, *args: BirdHook) -> None:
-        self._hooks.extend(args)
-
-    def clear_hook(self) -> None:
-        self._hooks = []
-
-    def create_snapshot(self, name: str) -> None:
-        """
-        Notes
-        -----
-        be careful with the name, because name confliction not checked
-        """
-        # XXX: name confliction not checked
-        snapshot = BirdSnapshot(self)
-        self.snapshots[name] = snapshot
-        self.attach_hook(snapshot)
-
-    # override
-    def setreducePslb(
-        self,
-        bsA: Iterable[float],
-        bsB: Iterable[float] | None = None,
-        es: Iterable[float] = (0.0, 0.0, 0.0),
-    ) -> None:
-        """apply counter terms and bind fullPs to self
-
-        Parameters
-        ----------
-        bsA : Iterable[float]
-            b_1, b_2, b_3, b_4, c_{ct}, c_{r,1}, c{r,2}
-        bsB : Iterable[float], optional
-            the same as bsA, but for tracer B, by default None,
-            and will compute auto power spectrum
-        es : Iterable[float], optional
-            c_{e,0}, c_{mono}, c_{quad}, by default zeros
-        """
-        kmA, krA, ndA, kmB, krB, ndB = (
-            self.co.kmA,
-            self.co.krA,
-            self.co.ndA,
-            self.co.kmB,
-            self.co.krB,
-            self.co.ndB,
-        )
-        b1A, b2A, b3A, b4A, cctA, cr1A, cr2A = bsA
-        if bsB is None:
-            bsB = bsA
-        b1B, b2B, b3B, b4B, cctB, cr1B, cr2B = bsB
-        f = self.f
-        ce0, cemono, cequad = es
-
-        # cct -> cct / km**2, cr1 -> cr1 / kr**2, cr2 -> cr2 / kr**2
-        # ce0 -> ce0 / nd, cemono -> cemono / nd / km**2, cequad -> cequad / nd / km**2
-        b11AB = np.array([b1A * b1B, (b1A + b1B) * f, f**2])
-        bctAB = np.array(
-            [
-                b1A * cctB / kmB**2 + b1B * cctA / kmA**2,
-                b1B * cr1A / krA**2 + b1A * cr1B / krB**2,
-                b1B * cr2A / krA**2 + b1A * cr2B / krB**2,
-                (cctA / kmA**2 + cctB / kmB**2) * f,
-                (cr1A / krA**2 + cr1B / krB**2) * f,
-                (cr2A / krA**2 + cr2B / krB**2) * f,
-            ]
-        )
-        bloopAB = np.array(
-            [
-                1.0,
-                1.0 / 2.0 * (b1A + b1B),
-                1.0 / 2.0 * (b2A + b2B),
-                1.0 / 2.0 * (b3A + b3B),
-                1.0 / 2.0 * (b4A + b4B),
-                b1A * b1B,
-                1.0 / 2.0 * (b1A * b2B + b1B * b2A),
-                1.0 / 2.0 * (b1A * b3B + b1B * b3A),
-                1.0 / 2.0 * (b1A * b4B + b1B * b4A),
-                b2A * b2B,
-                1.0 / 2.0 * (b2A * b4B + b2B * b4A),
-                b4A * b4B,
-            ]
-        )
-        xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
-        xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
-        bstAB = np.array([ce0 * xfactor1, cemono * xfactor2, cequad * xfactor2])
-
-        self.b11AB = b11AB
-        self.bctAB = bctAB
-        self.bloopAB = bloopAB
-        self.bstAB = bstAB
-        self.fullPs = self.reducePslb(
-            b11AB=b11AB,
-            bloopAB=bloopAB,
-            bctAB=bctAB,
-            bstAB=bstAB,
-            P11l=self.P11l,
-            Ploopl=self.Ploopl,
-            Pctl=self.Pctl,
-            Pstl=self.Pstl,
-            Picc=self.Picc,
-        )
-        for viewer in self._hooks:
-            viewer.setreducePslb(self)
-
-    def reducePslb(
-        self, *, b11AB, bloopAB, bctAB, bstAB, P11l, Ploopl, Pctl, Pstl, Picc
-    ) -> NDArray:
-        Ps0 = np.einsum("b,lbx->lx", b11AB, P11l)
-        Ps1 = np.einsum("b,lbx->lx", bloopAB, Ploopl) + np.einsum(
-            "b,lbx->lx", bctAB, Pctl
-        )
-        Ps2 = np.einsum("b,lbx->lx", bstAB, Pstl)
-        return Ps0 + Ps1 + Ps2 + Picc
-
-    def setreducePG(self, b1A: float, b1B: float) -> None:
-
-        self.b1A = b1A
-        self.b1B = b1B
-
-        self.PG = self.reducePG(
-            b1A=b1A, b1B=b1B, Ploopl=self.Ploopl, Pctl=self.Pctl, Pstl=self.Pstl
-        )
-
-        for viewer in self._hooks:
-            viewer.setreducePG(self)
-
-    def reducePG(
-        self, b1A: float, b1B: float, Ploopl: NDArray, Pctl: NDArray, Pstl: NDArray
-    ) -> dict[str, NDArray]:
-        f = self.f
-        kmA, krA, ndA, kmB, krB, ndB = (
-            self.co.kmA,
-            self.co.krA,
-            self.co.ndA,
-            self.co.kmB,
-            self.co.krB,
-            self.co.ndB,
-        )
-        PG: dict[str, Any] = {}
-        PG["b3A"] = 1 / 2 * Ploopl[:, 3, :] + 1 / 2 * b1B * Ploopl[:, 7, :]
-        PG["cctA"] = b1B / kmA**2 * Pctl[:, 0, :] + f / kmA**2 * Pctl[:, 3, :]
-        PG["cr1A"] = b1B / krA**2 * Pctl[:, 1, :] + f / krA**2 * Pctl[:, 4, :]
-        PG["cr2A"] = b1B / krA**2 * Pctl[:, 2, :] + f / krA**2 * Pctl[:, 5, :]
-        PG["b3B"] = 1 / 2 * Ploopl[:, 3, :] + 1 / 2 * b1A * Ploopl[:, 7, :]
-        PG["cctB"] = b1A / kmB**2 * Pctl[:, 0, :] + f / kmB**2 * Pctl[:, 3, :]
-        PG["cr1B"] = b1A / krB**2 * Pctl[:, 1, :] + f / krB**2 * Pctl[:, 4, :]
-        PG["cr2B"] = b1A / krB**2 * Pctl[:, 2, :] + f / krB**2 * Pctl[:, 5, :]
-        xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
-        xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
-        PG["ce0"] = Pstl[:, 0, :] * xfactor1
-        PG["cemono"] = Pstl[:, 1, :] * xfactor2
-        PG["cequad"] = Pstl[:, 2, :] * xfactor2
-        return PG
-
-
-class BirdHook:
-    """accept a BirdPlus object, and then do postprocessing"""
-
-    def setreducePslb(self, bird: BirdPlus) -> None:
-        """automatically invoked when BirdPlus.setreducePslb is called"""
-        pass
-
-    def setreducePG(self, bird: BirdPlus) -> None:
-        """automatically invoked when BirdPlus.setreducePG is called"""
-        pass
-
-
-class BirdSnapshot(BirdHook):
-    """
-    created by BridPlus.create_snapshot, do not use this class directly
-    """
-
-    def __init__(self, bird: BirdPlus) -> None:
-        self.k = bird.co.k.copy()
-        self.ls = [2 * i for i in range(bird.co.Nl)]
-        self.P11l = bird.P11l.copy()
-        self.Ploopl = bird.Ploopl.copy()
-        self.Pctl = bird.Pctl.copy()
-        self.Pstl = bird.Pstl.copy()
-        self.Picc = bird.Picc.copy()
-
-    def setreducePslb(self, bird: BirdPlus) -> None:
-        self.fullPs = bird.reducePslb(
-            b11AB=bird.b11AB,
-            bloopAB=bird.bloopAB,
-            bctAB=bird.bctAB,
-            bstAB=bird.bstAB,
-            P11l=self.P11l,
-            Ploopl=self.Ploopl,
-            Pctl=self.Pctl,
-            Pstl=self.Pstl,
-            Picc=self.Picc,
-        )
-
-
 class Binning(BirdHook, HasLogger):
     """Match the theoretical output to data, doing binning
 
@@ -280,7 +78,7 @@ class Binning(BirdHook, HasLogger):
 
     Methods
     -------
-    kbinning(bird: BirdPlus): apply binning
+    kbinning(bird: Bird): apply binning
 
     Notes
     -----
@@ -365,7 +163,7 @@ class Binning(BirdHook, HasLogger):
         res = np.trapz(Pkint(self.points) * self.points**2, x=self.points, axis=-1)
         return res / self.binvol
 
-    def kbinning(self, bird: BirdPlus) -> None:
+    def kbinning(self, bird: pybird.Bird) -> None:
         """
         Apply binning in k-space for linear-spaced data k-array
         """
@@ -376,7 +174,7 @@ class Binning(BirdHook, HasLogger):
         self.Picc = self.integrBinning(bird.Picc)
 
     # override
-    def setreducePslb(self, bird: BirdPlus) -> None:
+    def setreducePslb(self, bird: pybird.Bird) -> None:
         self.fullPs = bird.reducePslb(
             b11AB=bird.b11AB,
             bloopAB=bird.bloopAB,
@@ -390,7 +188,7 @@ class Binning(BirdHook, HasLogger):
         )
 
     # override
-    def setreducePG(self, bird: BirdPlus) -> None:
+    def setreducePG(self, bird: pybird.Bird) -> None:
         self.PG = bird.reducePG(
             b1A=bird.b1A,
             b1B=bird.b1B,
@@ -768,7 +566,7 @@ class EFTLSSLeaf(HelperTheory):
             krB=krB,
             ndB=ndB,
         )
-        self.bird: BirdPlus | None = None
+        self.bird: pybird.Bird | None = None
         self.nonlinear = pybird.NonLinear(
             load=True,
             save=True,
@@ -1048,7 +846,7 @@ class EFTLSSLeaf(HelperTheory):
 
     @cached_property
     def _build_PG_table(self):
-        """depending on BirdPlus.reducePG"""
+        """depending on pybird.Bird.reducePG"""
         prefix = self.prefix
         names = ("b3", "cct", "cr1", "cr2")
         stnames = ("ce0", "cemono", "cequad")
@@ -1103,7 +901,7 @@ class EFTLSSLeaf(HelperTheory):
                 H, DA, f = boltzmann.H(), boltzmann.DA(), boltzmann.f()
                 rdrag, h = boltzmann.rdrag(), boltzmann.h()
                 # fmt: off
-                bird = BirdPlus(
+                bird = pybird.Bird(
                     kh, pkh, f, DA, H, self.zeff, co=self.co, rdrag=rdrag, h=h)
                 # fmt: on
                 self.nonlinear.PsCf(bird)
