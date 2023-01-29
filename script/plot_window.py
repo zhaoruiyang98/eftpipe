@@ -4,6 +4,7 @@ import json
 import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
+from scipy.interpolate import interp1d
 from eftpipe.pybird.pybird import Common, kbird, Window, window_kgrid
 
 
@@ -31,14 +32,14 @@ def plot_window(
             axes.plot(p, window[2, 1, i, :], ls="--", c="g", label=r"$W_{42}$")
             axes.plot(p, window[2, 2, i, :], ls=":", c="g", label=r"$W_{44}$")
     axes.axhline(y=0.0, lw=1, c="c")
-    axes.set_xlabel(r"$k'\ [h\;\mathrm{Mpc}^{-1}]$")
-    axes.set_ylabel(r"$W(k,k')_{\ell,\ell'}\ [h\;\mathrm{Mpc}^{-1}]$")
+    axes.set_xlabel(R"$k'\ [h\;\mathrm{Mpc}^{-1}]$")
+    axes.set_ylabel(R"$W(k,k')_{\ell,\ell'}\ [h\;\mathrm{Mpc}^{-1}]$")
     axes.legend(frameon=False)
     if xlim is not None:
         axes.set_xlim(xlim)
     if ylim is not None:
         axes.set_ylim(ylim)
-    axes.set_title(fr"$k={kbird[i]}$")
+    axes.set_title(Rf"$k={kbird[i]}$")
 
 
 def main():
@@ -50,12 +51,17 @@ def main():
     parser.add_argument("-xmax", type=float, default=None, help="xmax")
     parser.add_argument("-ymin", type=float, default=None, help="ymin")
     parser.add_argument("-ymax", type=float, default=None, help="ymax")
-    parser.add_argument(
+    group = parser.add_mutually_exclusive_group()
+    group.add_argument(
         "--regen",
         nargs="+",
         default=None,
         help="pass arg=value sequence to regenerate window",
     )
+    group.add_argument(
+        "--icc", action="store_true", help="extract window from icc file"
+    )
+    parser.add_argument("--PSN", action="store_true", help="plot PSN from icc file")
     args = parser.parse_args()
 
     plt.rcParams["text.usetex"] = True
@@ -64,12 +70,26 @@ def main():
         plot_window(
             plt.gca(),
             args.k,
-            window,
+            window["Wal"] if args.icc else window,
             args.hex,
             xlim=(args.xmin, args.xmax),
             ylim=(args.ymin, args.ymax),
         )
         plt.show()
+        if args.icc and args.PSN:
+            # XXX: may not be correct
+            k = kbird
+            PSN = window["PSN"]
+            fn = interp1d(k, PSN, kind="cubic", axis=-1)
+            k = np.geomspace(k[0], k[-1], 1000)
+            PSN = fn(k)
+            plt.semilogx(k, PSN[0], c="k", label=R"$\ell=0$")
+            plt.semilogx(k, PSN[1], c="b", label=R"$\ell=2$")
+            if args.hex:
+                plt.semilogx(k, PSN[2], c="g", label=R"$\ell=4$")
+            plt.title(R"$P_\mathrm{SN}$")
+            plt.show()
+
         parser.exit()
 
     override = {}
