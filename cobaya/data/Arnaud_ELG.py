@@ -19,7 +19,7 @@ def extract_covariance():
             names=names,
             delim_whitespace=True,
         )
-        df = df.query("catalogue_i == 'post-recon' and catalogue_j == 'post-recon'")
+        df = df.query("catalogue_i == 'pre-recon' and catalogue_j == 'pre-recon'")
         cov1d = df["Covij"].to_numpy()
         nk = df["k_i"].unique().size
         nells = df["ell_i"].unique().size
