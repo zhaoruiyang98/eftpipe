@@ -62,7 +62,7 @@ def extract_window():
         fn = interp1d(np.log(s), win[:, 1:].T, kind="cubic", axis=-1)
         sinterp = np.geomspace(s[0], s[-1], 10000)
         win = np.vstack([sinterp, fn(np.log(sinterp))]).T
-        np.savetxt(f"data/window/Arnaud_ELG_{cap}.txt", win, header=header)
+        np.savetxt(f"data/window/Arnaud_ELG_{cap}_interp.txt", win, header=header)
 
 
 def main():
