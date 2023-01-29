@@ -106,7 +106,7 @@ def main():
     finally:
         if remains:
             with Path(".subjob.cache").open("w") as f:
-                yaml.safe_dump(list(remains), f)
+                yaml.safe_dump([str(_) for _ in remains], f)
 
 
 if __name__ == "__main__":
