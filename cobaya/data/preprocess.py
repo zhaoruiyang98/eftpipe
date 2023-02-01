@@ -5,6 +5,7 @@ import numpy as np
 from pathlib import Path
 
 DATA_ROOT = Path(__file__).parent
+WINDOW_ROOT = DATA_ROOT / "window"
 DR16_ROOT = DATA_ROOT / "raw" / "pk_measurement" / "DR16"
 NORIC_ROOT = DATA_ROOT / "raw" / "pk_measurement" / "noric"
 RIC_ROOT = DATA_ROOT / "raw" / "pk_measurement" / "ric"
@@ -48,6 +49,26 @@ def generate_noric_mean():
                     continue
                 suffix = "_Q" if is_Q else ""
                 save_path = DATA_ROOT / "mock" / f"noric_{tracer}_{cap}{suffix}.txt"
+                ks = data[Col.K]
+                columns = [ks, data[Col.L0] / ks, data[Col.L2] / ks, data[Col.L4] / ks]
+                out = np.vstack(columns).T
+                if is_Q:
+                    header = (5 * " ").join(["k", "Q0", "Q2", "Q4"])
+                else:
+                    header = (5 * " ").join(["k", "P0", "P2", "P4"])
+                np.savetxt(save_path, out, header=header)
+
+
+def generate_ric_mean():
+    for cap in ("NGC", "SGC"):
+        data_PPP = np.loadtxt(RIC_ROOT / f"pk_PPP_mean_sigma_{cap}.dat").T
+        data_QQP = np.loadtxt(RIC_ROOT / f"pk_QQP_mean_sigma_{cap}.dat").T
+        for tracer, Col in zip(("LRG", "ELG", "x"), (Lcol, Ecol, Xcol)):
+            for is_Q, data in zip((True, False), (data_QQP, data_PPP)):
+                if tracer == "x" and is_Q:
+                    continue
+                suffix = "_Q" if is_Q else ""
+                save_path = DATA_ROOT / "mock" / f"ric_{tracer}_{cap}{suffix}.txt"
                 ks = data[Col.K]
                 columns = [ks, data[Col.L0] / ks, data[Col.L2] / ks, data[Col.L4] / ks]
                 out = np.vstack(columns).T
@@ -150,12 +171,37 @@ def generate_data():
                 np.savetxt(save_path, out, header=header)
 
 
+def generate_noric_window():
+    # window was normalized to match data, instead of noric
+    template = "{tracer}_{cap}_interp.dat"
+    for tracer in ("LRG", "ELG"):
+        for cap in ("NGC", "SGC"):
+            if tracer == "LRG" and cap == "NGC":
+                alpha = 6.178544 / 6.196691
+            elif tracer == "LRG" and cap == "SGC":
+                alpha = 3.001546 / 2.949184
+            elif tracer == "ELG" and cap == "NGC":
+                alpha = 5.420129 / 5.724765
+            elif tracer == "ELG" and cap == "SGC":
+                alpha = 5.929721 / 5.981650
+            else:
+                raise ValueError
+            filename = template.format(tracer=tracer, cap=cap)
+            if tracer == "LRG":
+                filename = f"{tracer}_{cap}_GB_interp.dat"
+            win = np.loadtxt(WINDOW_ROOT / filename)
+            win[:, 1:] *= alpha
+            np.savetxt(WINDOW_ROOT / ("noric_" + filename), win)
+
+
 def main():
     generate_data()
     generate_ric_data()
     generate_noric_mean()
+    generate_ric_mean()
     generate_standard_mean()
     generate_corrected_standard_mean()
+    generate_noric_window()
     for cap in ("NGC", "SGC"):
         # order: LRG ELG X
         cov_PPP = np.loadtxt(NORIC_ROOT / f"cov_PPP_{cap}.dat")
