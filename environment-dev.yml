@@ -1,4 +1,4 @@
-name: eftpipe-test
+name: eftpipe-dev
 channels:
   - conda-forge
   - nodefaults
@@ -33,6 +33,7 @@ dependencies:
   - ipython
   - line_profiler
   - numba
+  - cython
   # end
   - pip
   - pip:
