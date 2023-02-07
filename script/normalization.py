@@ -65,8 +65,10 @@ def compute_complete():
             norm_ric = [alpha * r.norm for alpha, r in zip(alpha_ric, ran_ric)]
             results[f"{tracer}.{cap}.noric"] = np.mean(norm_noric)
             results[f"{tracer}.{cap}.noric.std"] = np.std(norm_noric)
+            results[f"{tracer}.{cap}.noric.alpha"] = np.mean(alpha_noric)
             results[f"{tracer}.{cap}.ric"] = np.mean(norm_ric)
             results[f"{tracer}.{cap}.ric.std"] = np.std(norm_ric)
+            results[f"{tracer}.{cap}.ric.alpha"] = np.mean(alpha_ric)
 
 
 def compute_standard():
@@ -93,6 +95,7 @@ def compute_standard():
             norm = [a * r.norm for a, r in zip(alpha, ran)]
             results[f"{tracer}.{cap}.standard"] = np.mean(norm)
             results[f"{tracer}.{cap}.standard.std"] = np.std(norm)
+            results[f"{tracer}.{cap}.standard.alpha"] = np.mean(alpha)
 
 
 def compute():
