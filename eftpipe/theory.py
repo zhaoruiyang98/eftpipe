@@ -21,6 +21,7 @@ from scipy.special import legendre
 from cobaya.log import LoggedError
 from cobaya.theory import HelperTheory
 from cobaya.theory import Theory
+from .parambasis import EastCoastBasis
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
@@ -425,6 +426,8 @@ class EFTLSSLeaf(HelperTheory):
                 kmB, krB, ndB = kmA, krA, ndA
             except KeyError:
                 raise LoggedError(self.log, "must specify km, kr and nd")
+        if isinstance(self.basis, EastCoastBasis) and kmA != krA:
+            raise LoggedError(self.log, "eastcoast basis is usually used with km=kr")
         return kmA, krA, ndA, kmB, krB, ndB
 
     def initialize_with_provider(self, provider: Provider):
