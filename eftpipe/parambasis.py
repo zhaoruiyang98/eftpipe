@@ -294,13 +294,16 @@ class EastCoastBasis(EFTBasis):
     def reduce_Pk(self, bird: Bird, params_values_dict: dict[str, float]) -> None:
         param_values = self.default()
         param_values.update(params_values_dict)
-        b1, b2, bG2, bGamma3, *csA = [param_values[p] for p in self.bsA()]
+        b1, b2, bG2, bGamma3, c0, c2, c4 = [param_values[p] for p in self.bsA()]
+        f = bird.f
         bsA = [
             b1,
             b1 + 7 / 2 * bG2,
             b1 + 15 * bG2 + 6 * bGamma3,
             1 / 2 * b2 - 7 / 2 * bG2,
-            *csA,
+            c0 - f / 3 * c2 + 3 / 35 * f**2 * c4,
+            c2 - 6 / 7 * f * c4,
+            c4,
         ]
         bsB = None
         Pshot, a0, a2 = (param_values[p] for p in self.es())
@@ -378,9 +381,13 @@ class EastCoastBasis(EFTBasis):
         if (p := self.prefix + "c0") in requires:
             PG[p] = -2.0 * Pctl[:, 0, :]
         if (p := self.prefix + "c2") in requires:
-            PG[p] = -2.0 * f * Pctl[:, 1, :]
+            PG[p] = 2 / 3 * f * Pctl[:, 0, :] - 2.0 * f * Pctl[:, 1, :]
         if (p := self.prefix + "c4") in requires:
-            PG[p] = -2.0 * f**2 * Pctl[:, 2, :]
+            PG[p] = (
+                -6 / 35 * f**2 * Pctl[:, 0, :]
+                + 12 / 7 * f**2 * Pctl[:, 1, :]
+                - 2.0 * f**2 * Pctl[:, 2, :]
+            )
         xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
         xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
         if (p := self.prefix + "Pshot") in requires:

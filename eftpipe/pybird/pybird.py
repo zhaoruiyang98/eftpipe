@@ -908,12 +908,14 @@ class Bird(object):
         bsB: Iterable[float] | None = None,
         es: Iterable[float] = (0.0, 0.0, 0.0),
     ) -> None:
-        """apply counter terms and bind fullPs to self
+        R"""apply counter terms and bind fullPs to self
 
         Parameters
         ----------
         bsA : Iterable[float]
             b_1, b_2, b_3, b_4, c_{ct}, c_{r,1}, c{r,2}
+            if counterform="eastcoast", c_{ct}, c_{r,1}, c{r,2} are interpreted as
+            \tilde{c}_0, \tilde{c}_2, \tilde{c}_4
         bsB : Iterable[float], optional
             the same as bsA, but for tracer B, by default None,
             and will compute auto power spectrum
