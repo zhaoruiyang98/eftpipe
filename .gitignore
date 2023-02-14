@@ -146,3 +146,5 @@ dmypy.json
 # vscode
 /.vscode/
 /debug*
+/cobaya/yamls/
+Arnaud_ELG_data/

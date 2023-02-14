@@ -30,10 +30,14 @@ theory:
         ##choose one of the following boltzmann provider:
         ##classy(default), classynu, camb
         ##in most cases, you should match the provider with the theory you choose
-        ##also support user defined provider, which should satisfy the eftpipe.interface.BoltzmannProvider interface
+        ##also support user defined provider, which should satisfy the eftpipe.interface.BoltzmannProvider protocol
         # provider: classy
         ##extra key word arguments when initialize the provider
         # provider_kwargs:
+        ##choose one of the following parameter basis:
+        ##westcoast, eastcoast
+        ##also support user defined basis, which should satisfy eftpipe.parambasis.EFTBasis protocol
+        # basis: west_coast
         ##use linear power spectrum of cdm+baryon if true, otherwise compute the linear power spectrum of cdm+baryon+neutrino
         # use_cb: false
         ##this "tracer" is the cross between another two tracers

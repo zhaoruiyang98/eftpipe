@@ -16,10 +16,8 @@ from typing import (
     TypedDict,
     TYPE_CHECKING,
 )
-from scipy.integrate import quad
 from scipy.interpolate import interp1d
 from scipy.special import legendre
-from cobaya.log import HasLogger
 from cobaya.log import LoggedError
 from cobaya.theory import HelperTheory
 from cobaya.theory import Theory
@@ -30,10 +28,11 @@ if TYPE_CHECKING:
     from .pybird.pybird import BirdSnapshot
 
 # local
+from .binning import Binning
 from .icc import IntegralConstraint
 from .interface import find_boltzmann_interface
+from .parambasis import find_param_basis
 from .pybird import pybird
-from .pybird.pybird import BirdHook
 from .tools import bool_or_list
 from .tools import group_lists
 from .tools import int_or_list
@@ -57,145 +56,6 @@ def chain_coeff(l: int) -> float:
     .. math:: \frac{(2\ell+1)\mathcal{L}_{\ell}(0)}{(2\ell+5)\mathcal{L}_{\ell+2}(0)}
     """
     return ((2 * l + 1) * legendre(l)(0)) / ((2 * l + 5) * legendre(l + 2)(0))
-
-
-class Binning(BirdHook, HasLogger):
-    """Match the theoretical output to data, doing binning
-
-    Parameters
-    ----------
-    kout: ArrayLike, 1d
-        k of data
-    accboost: int
-        accuracy boost, default 1, do integration using 100 points per bin
-    decimals: int
-        compute delta_k by rounding the difference of last two kout.
-        Default is 2 and this works well when delta_k = 0.01
-    co: Common
-        this class only uses co.k, default pybird.Common
-    name: str
-        logger name, by default 'pybird.binning'
-
-    Methods
-    -------
-    kbinning(bird: Bird): apply binning
-
-    Notes
-    -----
-    kbins will be constructed using kout[-1] - kout[-2]
-    """
-
-    def __init__(
-        self,
-        kout,
-        accboost: int = 1,
-        decimals: int = 2,
-        co: pybird.Common = pybird.common,
-        name: str = "pybird.binning",
-    ) -> None:
-        self.set_logger(name=name)
-        self.kout = np.array(kout)
-        self.co = co
-        self.accboost = accboost
-        self.decimals = decimals
-        self.mpi_info("binning correction: on")
-        self.mpi_info(
-            "%d data points, from %.3f to %.3f",
-            self.kout.size,
-            self.kout[0],
-            self.kout[-1],
-        )
-        kspaces = np.around(self.kout[1:] - self.kout[:-1], decimals=decimals)  # type: ignore
-        kspace_diff = kspaces[1:] - kspaces[:-1]
-        if not np.allclose(kspace_diff, 0, rtol=0, atol=1e-6):
-            self.mpi_warning(
-                "binning correction on, "
-                "but given kout seems not linearly spaced, "
-                "be careful because the constructed kbins may be wrong, "
-                "especially when 'kmax' is small",
-            )
-        self.loadBinning(self.kout)
-        self.mpi_info("num of kgrids in each bin: %d", self.points[0].size)
-        self.mpi_info(
-            "round the difference of last two kout to %d decimal places",
-            self.decimals,
-        )
-
-    def loadBinning(self, setkout) -> None:
-        """
-        Create the bins of the data k's
-        """
-        delta_k = np.round(setkout[-1] - setkout[-2], self.decimals)
-        kcentral = (setkout[-1] - delta_k * np.arange(len(setkout)))[::-1]
-        binmin = kcentral - delta_k / 2
-        binmax = kcentral + delta_k / 2
-        self.binvol = np.array(
-            [
-                quad(lambda k: k**2, kbinmin, kbinmax)[0]
-                for (kbinmin, kbinmax) in zip(binmin, binmax)
-            ]
-        )
-        self.keff = np.array(
-            [
-                quad(lambda k: k * k**2, kbinmin, kbinmax)[0]
-                for (kbinmin, kbinmax) in zip(binmin, binmax)
-            ]
-        )
-        self.keff = self.keff / self.binvol
-        points = [
-            np.linspace(kbinmin, kbinmax, 100 * self.accboost)
-            for (kbinmin, kbinmax) in zip(binmin, binmax)
-        ]
-        self.points = np.array(points)
-
-    def integrBinning(self, P: NDArray) -> NDArray:
-        """
-        Integrate over each bin of the data k's
-        """
-        Pkint = interp1d(
-            self.co.k,
-            P,
-            axis=-1,
-            kind="cubic",
-            bounds_error=False,
-            fill_value="extrapolate",
-        )
-        res = np.trapz(Pkint(self.points) * self.points**2, x=self.points, axis=-1)
-        return res / self.binvol
-
-    def kbinning(self, bird: pybird.Bird) -> None:
-        """
-        Apply binning in k-space for linear-spaced data k-array
-        """
-        self.P11l = self.integrBinning(bird.P11l)
-        self.Pctl = self.integrBinning(bird.Pctl)
-        self.Ploopl = self.integrBinning(bird.Ploopl)
-        self.Pstl = self.integrBinning(bird.Pstl)
-        self.Picc = self.integrBinning(bird.Picc)
-
-    # override
-    def setreducePslb(self, bird: pybird.Bird) -> None:
-        self.fullPs = bird.reducePslb(
-            b11AB=bird.b11AB,
-            bloopAB=bird.bloopAB,
-            bctAB=bird.bctAB,
-            bstAB=bird.bstAB,
-            P11l=self.P11l,
-            Ploopl=self.Ploopl,
-            Pctl=self.Pctl,
-            Pstl=self.Pstl,
-            Picc=self.Picc,
-        )
-
-    # override
-    def setreducePG(self, bird: pybird.Bird) -> None:
-        self.PG = bird.reducePG(
-            b1A=bird.b1A,
-            b1B=bird.b1B,
-            Ploopl=self.Ploopl,
-            Pctl=self.Pctl,
-            Pstl=self.Pstl,
-        )
 
 
 class EFTLSS(Theory):
@@ -293,6 +153,7 @@ class EFTLSS(Theory):
         redirected_reqs = {}
         for tracer, config_dict in redirected_reqs_tmp.items():
             redirected_reqs[tracer + "_results"] = deepcopy(config_dict)
+        # apply default settings
         if default := redirected_reqs_tmp.pop("default", {}):
             for tracer, config_dict in redirected_reqs.items():
                 ref = deepcopy(default)
@@ -345,7 +206,7 @@ class EFTLSS(Theory):
                 self,
                 name,
                 dict(stop_at_error=self.stop_at_error),
-                timing=self.timer,
+                timing=self.timer,  # type: ignore
                 zextra=zextra,
             )
         return out
@@ -400,21 +261,59 @@ class PlkInterpolator:
 
 
 class EFTLSSLeaf(HelperTheory):
+    """EFT theory for single tracer
+
+    Parameters
+    ----------
+    eftlss : EFTLSS
+        parent EFTLSS theory
+    name : str
+        tracer's name
+    info : dict
+    timing : bool, optional
+    zextra : list[float], optional
+        append extra redshifts to satisfy Pk_interpolator's requirement
+    """
+
     def __init__(
         self,
         eftlss: EFTLSS,
         name: str,
         info,
-        timing=None,
+        timing: bool | None = None,
         zextra: list[float] | None = None,
     ) -> None:
-        # append extra redshifts when using classy (classy's bug)
         self._zextra: list[float] = zextra or []
         self.name = name
         self.eftlss = eftlss
         # EFTLSSChild always initialized after EFTLSS, safe to use config
         self.config = self.eftlss.tracers[name]
         super().__init__(info, self.eftlss.get_name() + "." + name, timing=timing)
+
+    @cached_property
+    def is_cross(self) -> bool:
+        return bool(self.config.get("cross", False))
+
+    @cached_property
+    def cross_tracers(self) -> tuple[str, str]:
+        return tuple(self.config.get("cross", ()))
+
+    @property
+    def need_power(self):
+        return any(
+            item in self._must_provide
+            for item in ("nonlinear_Plk_grid", "nonlinear_Plk_gaussian_grid")
+        )
+
+    @property
+    def need_marg(self):
+        return "nonlinear_Plk_gaussian_grid" in self._must_provide
+
+    @property
+    def need_binning(self):
+        return True in self._must_provide.get("nonlinear_Plk_grid", {}).get(
+            "binned", [False]
+        )
 
     def setup_prefix(self) -> None:
         if (prefix := self.config.get("prefix")) is None:
@@ -434,20 +333,22 @@ class EFTLSSLeaf(HelperTheory):
     def initialize(self) -> None:
         super().initialize()
         self.setup_prefix()
+        self.basis = find_param_basis(self.config.get("basis", "westcoast"))(
+            self.prefix, self.related_prefix
+        )
+        self.mpi_info("EFT parameter basis: %s", self.basis.get_name())
         self._not_reported = defaultdict(lambda: True)
         try:
             self.zeff: float = self.config["z"]
         except KeyError:
             raise LoggedError(self.log, "must specify effective redshift z")
-        # provider, use_cb and optiresum should be determined at initialization
-        self.use_cb: bool = self.config.get("use_cb", False)
-        self.optiresum: bool = self.config.get("IRresum", {}).pop("optiresum", False)
+        # provider hould be determined at initialization (requirements from boltzmann interface)
         self.boltzmann = find_boltzmann_interface(
             self.config.get("provider", "classy"),
             self.config.get("provider_kwargs", {}),
         )
         self.boltzmann.initialize(
-            zeff=self.zeff, use_cb=self.use_cb, zextra=self._zextra
+            zeff=self.zeff, use_cb=self.config.get("use_cb", False), zextra=self._zextra
         )
         # delayed initialization in initialize_with_provider,
         # so that all dependencies can be quickly checked
@@ -486,30 +387,29 @@ class EFTLSSLeaf(HelperTheory):
         self.binning: Binning | None = None
         self._must_provide: defaultdict[str, dict[str, Any]] = defaultdict(dict)
 
-    def initialize_with_provider(self, provider: Provider):
-        super().initialize_with_provider(provider)
-
-        self.boltzmann.initialize_with_provider(provider)
-        cross = self.config.get("cross", [])
-        if cross:
+    def extract_km_kr_nd(self):
+        cross_tracers = self.cross_tracers
+        if cross_tracers:
             try:
-                tracerA, tracerB = (self.eftlss.tracers[_] for _ in cross)
+                tracerA, tracerB = (self.eftlss.tracers[_] for _ in cross_tracers)
                 kmA, krA, ndA = tracerA["km"], tracerA.get("kr"), tracerA["nd"]
                 kmB, krB, ndB = tracerB["km"], tracerB.get("kr"), tracerB["nd"]
                 if krA is None:
                     self.mpi_warning(
                         "%s: kr not specified, assuming kr=km, will raise exception in the future",
-                        cross[0],
+                        cross_tracers[0],
                     )
                     krA = kmA
                 if krB is None:
                     self.mpi_warning(
                         "%s: kr not specified, assuming kr=km, will raise exception in the future",
-                        cross[1],
+                        cross_tracers[1],
                     )
                     krB = kmB
             except KeyError:
-                raise LoggedError(self.log, "missing km, kr or nd for tracer %s", cross)
+                raise LoggedError(
+                    self.log, "missing km, kr or nd for tracer %s", cross_tracers
+                )
         else:
             try:
                 kmA, krA, ndA = (
@@ -525,21 +425,29 @@ class EFTLSSLeaf(HelperTheory):
                 kmB, krB, ndB = kmA, krA, ndA
             except KeyError:
                 raise LoggedError(self.log, "must specify km, kr and nd")
+        return kmA, krA, ndA, kmB, krB, ndB
+
+    def initialize_with_provider(self, provider: Provider):
+        super().initialize_with_provider(provider)
+
+        self.boltzmann.initialize_with_provider(provider)
+        kmA, krA, ndA, kmB, krB, ndB = self.extract_km_kr_nd()
 
         # do not initialize if no power spectrum requested
         if not self.need_power:
             return
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-        if cross:
-            self.mpi_info("%s: km=%.3f kr=%.3f nd=%.3e", cross[0], kmA, krA, ndA)
-            self.mpi_info("%s: km=%.3f kr=%.3f nd=%.3e", cross[1], kmB, krB, ndB)
+        if self.cross_tracers:
+            _A, _B = self.cross_tracers
+            self.mpi_info("%s: km=%.3f kr=%.3f nd=%.3e", _A, kmA, krA, ndA)
+            self.mpi_info("%s: km=%.3f kr=%.3f nd=%.3e", _B, kmB, krB, ndB)
         else:
             self.mpi_info("km=%.3f kr=%.3f nd=%.3e", kmA, krA, ndA)
         self.mpi_info("effective redshift: %.3f", self.zeff)
-        if cross:
+        if self.cross_tracers:
             self.mpi_info(
-                "computing cross power spectrum between %s and %s", cross[0], cross[1]
+                "computing cross power spectrum between %s and %s", *self.cross_tracers
             )
         ls_group = []
         for name in (
@@ -550,15 +458,20 @@ class EFTLSSLeaf(HelperTheory):
             if name not in self._must_provide:
                 continue
             ls_group.append(self._must_provide[name]["ls"])
-        # XXX: pybird actually does not support computing, e.g. P4 only
+        # pybird actually does not support computing, e.g. P4 only
         lmax = max(group_lists(*ls_group))
         ls = list(range(0, lmax + 2, 2))
         Nl = len(ls)
         self.mpi_info("compute power spectrum multipoles (internal): %s", ls)
 
+        optiresum: bool = self.config.get("IRresum", {}).pop("optiresum", False)
+        if optiresum:
+            self.mpi_warning(
+                "no test on ``optiresum = true``, use it only if you know what you are doing"
+            )
         self.co = pybird.Common(
             Nl=Nl,
-            optiresum=self.optiresum,
+            optiresum=optiresum,
             kmA=kmA,
             krA=krA,
             ndA=ndA,
@@ -575,16 +488,18 @@ class EFTLSSLeaf(HelperTheory):
             name=self.get_name() + ".nonlinear",
         )
 
-        if self.use_cb:
+        if self.config.get("use_cb", False):
             self.mpi_info("using P_cb as input linear power spectrum")
         else:
             self.mpi_info("using P_m as input linear power spectrum")
 
         msg_pool = []
         if self.with_IRresum:
-            self.plugins["IRresum"] = self.plugins["_IRresum"].initialize(co=self.co)
+            self.plugins["IRresum"] = self.plugins["_IRresum"].initialize(
+                co=self.co, name=self.get_name() + ".IRresum"
+            )
             msg_pool.append(
-                ("IRresum enabled: %s", "optimized" if self.optiresum else "full")
+                ("IRresum enabled: %s", "optimized" if optiresum else "full")
             )
         if self.with_APeffect:
             self.plugins["APeffect"] = self.plugins["_APeffect"].initialize(
@@ -602,6 +517,11 @@ class EFTLSSLeaf(HelperTheory):
             )
             msg_pool.append(("fiber enabled",))
         if self.with_icc:
+            if self.is_cross:
+                raise LoggedError(
+                    self.log,
+                    "integral constraint correction (icc) not yet supported for cross power spectrum",
+                )
             self.plugins["icc"] = self.plugins["_icc"].initialize(
                 co=self.co, name=self.get_name() + ".icc"
             )
@@ -620,28 +540,12 @@ class EFTLSSLeaf(HelperTheory):
         # requirements should be known after initialization especially EFT parameters
         # XXX: dependency on cosmology may be dynamically updated
         requires = self.boltzmann.get_requirements()
-
-        names = ("b1", "b2", "b4")
-        if self.is_cross:
-            eft_params = []
-            for prefix in self.related_prefix:
-                eft_params += [prefix + name for name in names]
-        else:
-            eft_params = [self.prefix + name for name in names]
-        eft_requires = {param: None for param in eft_params}
-        requires.update(eft_requires)
+        eft_params = {param: None for param in self.basis.non_gaussian_params()}
+        requires.update(eft_params)
         return requires
 
     def get_can_support_params(self):
-        names = ("b3", "cct", "cr1", "cr2")
-        stnames = ("ce0", "cemono", "cequad")
-        if self.is_cross:
-            ret = [self.prefix + name for name in stnames]
-            for prefix in self.related_prefix:
-                ret += [prefix + name for name in names]
-        else:
-            ret = [self.prefix + name for name in names + stnames]
-        return ret
+        return self.basis.gaussian_params()
 
     def _config_ls(
         self,
@@ -792,6 +696,7 @@ class EFTLSSLeaf(HelperTheory):
 
                 check_unsupported(k, v)
             elif k == "nonlinear_Plk_gaussian_grid":
+                # TODO: ``requires`` option to select which gaussian parameters are needed
                 stored = self._must_provide[k]
                 chained: list[bool] = stored.get("chained", [])
                 chained_get = bool_or_list(v.pop("chained", False))  # default False
@@ -809,101 +714,20 @@ class EFTLSSLeaf(HelperTheory):
                 )
         self.mpi_debug("updated must_provide: %s", self._must_provide)
 
-    @cached_property
-    def _params_reader(self):
-        stnames = ("ce0", "cemono", "cequad")
-        names = ("b1", "b2", "b3", "b4", "cct", "cr1", "cr2")
-        if self.is_cross:
-            A, B = self.related_prefix
-            default = {self.prefix + name: 0 for name in stnames}
-            for prefix in (A, B):
-                for name in ("b3", "cct", "cr1", "cr2"):
-                    default[prefix + name] = 0
-
-            def reader(params: dict[str, float]):
-                ps = {**default, **params}
-                es = [ps[self.prefix + name] for name in stnames]
-                bsA = [ps[A + name] for name in names]
-                bsB = [ps[B + name] for name in names]
-                b1A, b1B = bsA[0], bsB[0]
-                return bsA, bsB, es, b1A, b1B
-
-        else:
-            default = {
-                self.prefix + name: 0
-                for name in ("b3", "cct", "cr1", "cr2", "ce0", "cemono", "cequad")
-            }
-
-            def reader(params: dict[str, float]):
-                ps = {**default, **params}
-                es = [ps[self.prefix + name] for name in stnames]
-                bsA = [ps[self.prefix + name] for name in names]
-                bsB = bsA.copy()
-                b1A, b1B = bsA[0], bsB[0]
-                return bsA, bsB, es, b1A, b1B
-
-        return reader
-
-    @cached_property
-    def _build_PG_table(self):
-        """depending on pybird.Bird.reducePG"""
-        prefix = self.prefix
-        names = ("b3", "cct", "cr1", "cr2")
-        stnames = ("ce0", "cemono", "cequad")
-        alias = {prefix + k: k for k in stnames}
-        if self.is_cross:
-            A, B = self.related_prefix
-            for name in names:
-                alias[A + name] = name + "A"
-                alias[B + name] = name + "B"
-
-            def builder(PG: dict[str, NDArray]) -> dict[str, NDArray]:
-                out = {k: PG[v] for k, v in alias.items()}
-                return {**PG, **out}
-
-        else:
-
-            def builder(PG: dict[str, NDArray]) -> dict[str, NDArray]:
-                out = {k: PG[v] for k, v in alias.items()}
-                for name in names:
-                    out[prefix + name] = 2 * PG[name + "A"]
-                return {**PG, **out}
-
-        return builder
-
-    @property
-    def need_power(self):
-        return any(
-            item in self._must_provide
-            for item in ("nonlinear_Plk_grid", "nonlinear_Plk_gaussian_grid")
-        )
-
-    @property
-    def need_marg(self):
-        return "nonlinear_Plk_gaussian_grid" in self._must_provide
-
-    @property
-    def need_binning(self):
-        return True in self._must_provide.get("nonlinear_Plk_grid", {}).get(
-            "binned", [False]
-        )
-
     def calculate(self, state, want_derived=True, **params_values_dict: float):
         start = time.perf_counter()
         boltzmann = self.boltzmann
         # the main computation pipeline
         if self.need_power:
-            bsA, bsB, es, b1A, b1B = self._params_reader(params_values_dict)
             if boltzmann.updated() or self.bird is None:
                 # TODO: make kmin, kmax configurable
                 kh = np.logspace(-5, 0, 200)
                 pkh = boltzmann.Pkh(kh)
                 H, DA, f = boltzmann.H(), boltzmann.DA(), boltzmann.f()
                 rdrag, h = boltzmann.rdrag(), boltzmann.h()
-                # fmt: off
                 bird = pybird.Bird(
-                    kh, pkh, f, DA, H, self.zeff, co=self.co, rdrag=rdrag, h=h)
-                # fmt: on
+                    kh, pkh, f, DA, H, self.zeff, co=self.co, rdrag=rdrag, h=h
+                )
                 self.nonlinear.PsCf(bird)
                 bird.setPsCfl()
                 plugins = cast(PluginsDict, self.plugins)
@@ -920,14 +744,9 @@ class EFTLSSLeaf(HelperTheory):
                 if self.binning:
                     self.binning.kbinning(bird)
                     bird.attach_hook(self.binning)
-                bird.setreducePslb(bsA=bsA, bsB=bsB, es=es)
-                if self.need_marg:
-                    bird.setreducePG(b1A, b1B)
                 self.bird = bird
-            else:
-                self.bird.setreducePslb(bsA=bsA, bsB=bsB, es=es)
-                if self.need_marg:
-                    self.bird.setreducePG(b1A, b1B)
+            # use basis to compute power spectrum
+            self.basis.reduce_Pk(self.bird, params_values_dict)
 
         products: dict[str, Any] = {}
         if self.need_power:
@@ -978,19 +797,23 @@ class EFTLSSLeaf(HelperTheory):
                 ):
                     if binned:
                         assert self.binning
-                        PG = self.binning.PG
+                        PG_table = self.basis.create_binned_PG_table(
+                            self.binning,
+                            self.bird,
+                            params_values_dict,
+                        )
                         kreturn = self.binning.keff.copy()
                     else:
-                        PG = self.bird.PG
+                        PG_table = self.basis.create_PG_table(
+                            self.bird,
+                            params_values_dict,
+                        )
                         kreturn = kgrid.copy()
-                    PG = PG.copy()
                     if chained:
-                        for kk, vv in PG.items():
-                            PG[kk] = to_chained(ls_tot, vv)
-                        PG_table = self._build_PG_table(PG)
+                        for kk, vv in PG_table.items():
+                            PG_table[kk] = to_chained(ls_tot, vv)
                         tup = (ls_tot[:-1], kreturn, PG_table)
                     else:
-                        PG_table = self._build_PG_table(PG)
                         tup = (ls_tot.copy(), kreturn, PG_table)
                     key = PlkKey(chained=chained, binned=binned)
                     out[key] = tup
@@ -1033,7 +856,3 @@ class EFTLSSLeaf(HelperTheory):
         flag = self._not_reported[key]
         self._not_reported[key] = False
         return flag
-
-    @cached_property
-    def is_cross(self) -> bool:
-        return bool(self.config.get("cross", False))

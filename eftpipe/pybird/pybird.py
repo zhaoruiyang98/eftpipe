@@ -604,15 +604,16 @@ common = Common()
 
 
 class BirdHook(Protocol):
-    """accept a Bird object, and then do postprocessing"""
+    """accept a Bird object, and then do postprocessing.
+
+    Typically, a BirdHook will be automatically invoked by Bird.setreducePslb,
+    it means there is no need to manually call the hook and hook's status is
+    automatically updated by Bird.
+    """
 
     def setreducePslb(self, bird: Bird) -> None:
         """automatically invoked when Bird.setreducePslb is called"""
-        pass
-
-    def setreducePG(self, bird: Bird) -> None:
-        """automatically invoked when Bird.setreducePG is called"""
-        pass
+        ...
 
 
 class BirdSnapshot(BirdHook):
@@ -770,9 +771,10 @@ class Bird(object):
         be careful with the name, because name confliction not checked
         """
         # XXX: name confliction not checked
-        snapshot = BirdSnapshot(self)
-        self.snapshots[name] = snapshot
-        self.attach_hook(snapshot)
+        if name not in self.snapshots:
+            snapshot = BirdSnapshot(self)
+            self.snapshots[name] = snapshot
+            self.attach_hook(snapshot)
 
     def setPsCfl(self):
         """Creates multipoles for each term weighted accordingly"""
@@ -1012,46 +1014,6 @@ class Bird(object):
             for n in range(self.co.Nloop):
                 shotnoise = self.Ploopl[l, n, 0]
                 self.Ploopl[l, n] -= shotnoise
-
-    def setreducePG(self, b1A: float, b1B: float) -> None:
-
-        self.b1A = b1A
-        self.b1B = b1B
-
-        self.PG = self.reducePG(
-            b1A=b1A, b1B=b1B, Ploopl=self.Ploopl, Pctl=self.Pctl, Pstl=self.Pstl
-        )
-
-        for viewer in self._hooks:
-            viewer.setreducePG(self)
-
-    def reducePG(
-        self, b1A: float, b1B: float, Ploopl: NDArray, Pctl: NDArray, Pstl: NDArray
-    ) -> dict[str, NDArray]:
-        f = self.f
-        kmA, krA, ndA, kmB, krB, ndB = (
-            self.co.kmA,
-            self.co.krA,
-            self.co.ndA,
-            self.co.kmB,
-            self.co.krB,
-            self.co.ndB,
-        )
-        PG: dict[str, Any] = {}
-        PG["b3A"] = 1 / 2 * Ploopl[:, 3, :] + 1 / 2 * b1B * Ploopl[:, 7, :]
-        PG["cctA"] = b1B / kmA**2 * Pctl[:, 0, :] + f / kmA**2 * Pctl[:, 3, :]
-        PG["cr1A"] = b1B / krA**2 * Pctl[:, 1, :] + f / krA**2 * Pctl[:, 4, :]
-        PG["cr2A"] = b1B / krA**2 * Pctl[:, 2, :] + f / krA**2 * Pctl[:, 5, :]
-        PG["b3B"] = 1 / 2 * Ploopl[:, 3, :] + 1 / 2 * b1A * Ploopl[:, 7, :]
-        PG["cctB"] = b1A / kmB**2 * Pctl[:, 0, :] + f / kmB**2 * Pctl[:, 3, :]
-        PG["cr1B"] = b1A / krB**2 * Pctl[:, 1, :] + f / krB**2 * Pctl[:, 4, :]
-        PG["cr2B"] = b1A / krB**2 * Pctl[:, 2, :] + f / krB**2 * Pctl[:, 5, :]
-        xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
-        xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
-        PG["ce0"] = Pstl[:, 0, :] * xfactor1
-        PG["cemono"] = Pstl[:, 1, :] * xfactor2
-        PG["cequad"] = Pstl[:, 2, :] * xfactor2
-        return PG
 
 
 # TODO: support snapshot
@@ -1363,8 +1325,7 @@ class NonLinear(HasLogger):
         self.makeC13(coefsPow, bird)
 
 
-# TODO: support snapshot
-class Resum(object):
+class Resum(HasLogger):
     """
     given a Bird() object, performs the IR-resummation of the power spectrum.
     There are two options:
@@ -1420,8 +1381,15 @@ class Resum(object):
         s's to the powers on which to perform the FFTLog to evaluate the IR-filters X and Y
     """
 
-    def __init__(self, LambdaIR=1.0, NFFT=192, co: Common = common):
-
+    def __init__(
+        self,
+        LambdaIR: float = 1.0,
+        NFFT: int = 192,
+        co: Common = common,
+        name: str = "pybird.IRresum",
+        snapshot: bool = False,
+    ):
+        self.set_logger(name=name)
         self.co = co
 
         if self.co.optiresum is True:
@@ -1481,6 +1449,9 @@ class Resum(object):
         self.Xfft = FFTLog(**self.Xfftsettings)
         self.setXM()
         self.setXsPow()
+        self.snapshot = snapshot
+        if self.snapshot:
+            self.mpi_info("snapshot is enabled")
 
     def setXsPow(self):
         """Multiply the coefficients with the s's to the powers of the FFTLog to evaluate the IR-filters X and Y."""
@@ -1624,6 +1595,8 @@ class Resum(object):
         bird.P11l += self.IR11resum
         bird.Pctl += self.IRctresum
         bird.Ploopl += self.IRloopresum
+        if self.snapshot:
+            bird.create_snapshot("IRresum")
 
 
 def window_kgrid(kmax: float = 0.3, accboost: int = 1) -> NDArray:
@@ -1905,7 +1878,7 @@ class Window(HasLogger):
              [     0,      0,     5/11,    14/55],
              [     0,   5/11,    20/99,   28/187],
              [     1,  14/55,   28/187, 400/3553]],
-        ])[..., :Nq]
+        ])[..., :Nq]  # type: ignore
         # fmt: on
 
         sw = swindow_config_space[:, 0]

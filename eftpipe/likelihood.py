@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 from copy import copy
 from dataclasses import dataclass, field
-from typing import Any, Iterable, List, Union
+from typing import Any, Iterable, List, TYPE_CHECKING, Union
 from scipy.interpolate import interp1d
 from cobaya.likelihood import Likelihood
 from .marginal import Marginalizable
@@ -15,6 +15,9 @@ from .reader import read_pkl
 from .tools import int_or_list
 from .tools import str_or_list
 from .tools import pairwise
+
+if TYPE_CHECKING:
+    from .parambasis import EFTBasis
 
 FloatBound_T = Union[float, List[float], None]
 
@@ -1004,6 +1007,7 @@ class EFTLike(Likelihood, Marginalizable):
                 }
             # XXX: require gaussian grid for all tracers, which may not be necessary,
             # but I don't know how to fix this, because tracers' prefixes are not known
+            # and it's not possible to find out which tracer is marginalized given ``self.marg``
             if self.marg:
                 reqs["nonlinear_Plk_gaussian_grid"][t] = {
                     "ls": minfo.ls,
@@ -1016,14 +1020,10 @@ class EFTLike(Likelihood, Marginalizable):
 
     def initialize_with_provider(self, provider):
         super().initialize_with_provider(provider)
-        self.prefix: list[str] = []
-        self.related_prefix: list[list[str]] = []
-        self.is_cross: list[bool] = []
-        for t in self.tracers:
-            theory = self.provider.model.theory["eftpipe.eftlss." + t]
-            self.prefix.append(theory.prefix)
-            self.related_prefix.append(theory.related_prefix)
-            self.is_cross.append(theory.is_cross)
+        self.eft_bases: list[EFTBasis] = [
+            self.provider.model.theory["eftpipe.eftlss." + t].basis
+            for t in self.tracers
+        ]
         # setup prior after prefix is set
         if self.marg:
             self.setup_prior(self.marg)
@@ -1040,47 +1040,24 @@ class EFTLike(Likelihood, Marginalizable):
         )
         if self.marg:
             bG_group: list[list[str]] = [list() for _ in self.tracers]
-            for bGlist, prefix, related in zip(
-                bG_group, self.prefix, self.related_prefix
-            ):
-                # XXX: building bG_group according to prefix may not be reliable
-                if prefix and not prefix.endswith("_"):
-                    msg = (
-                        "prefix '%s' does not end with '_', "
-                        "this may induce ambiguity when doing marginalization."
-                    )
-                    self.mpi_warning(msg, self.prefix)
-                for extra in related:
-                    # cross
-                    for name in self.valid_prior.keys():
-                        if name.startswith(extra) and name[len(extra) :] not in (
-                            "ce0",
-                            "cemono",
-                            "cequad",
-                        ):
-                            bGlist.append(name)
-                for name in self.valid_prior.keys():
-                    if name.startswith(prefix):
+            to_assign = self.valid_prior.keys()
+            for bGlist, basis in zip(bG_group, self.eft_bases):
+                allowed = basis.gaussian_params()
+                for name in to_assign:
+                    if name in allowed:
                         bGlist.append(name)
             self._bG_group_cache = bG_group
             number_of_bG = sum(len(_) for _ in bG_group)
             self._PG_cache = np.zeros((number_of_bG, self.data_vector.size))
 
-    # override
+    # impl
     def marginalizable_params(self) -> list[str]:
         params = []
-        names = ("b3", "cct", "cr1", "cr2")
-        stnames = ("ce0", "cemono", "cequad")
-        for i, prefix in enumerate(self.prefix):
-            if self.is_cross[i]:
-                for related in self.related_prefix[i]:
-                    params += [related + name for name in names]
-                params += [prefix + name for name in stnames]
-            else:
-                params += [prefix + name for name in names + stnames]
+        for basis in self.eft_bases:
+            params += basis.gaussian_params()
         return list(dict.fromkeys(params))
 
-    # override
+    # impl
     def PG(self):
         for t, minfo, chained, with_binning, bGlist, shift, (istart, iend) in zip(
             self.tracers,
@@ -1111,7 +1088,7 @@ class EFTLike(Likelihood, Marginalizable):
         # be careful, return a reference
         return self._PG_cache
 
-    # override
+    # impl
     def PNG(self) -> Any:
         for t, minfo, with_binning, chained, (istart, iend) in zip(
             self.tracers,
@@ -1131,11 +1108,11 @@ class EFTLike(Likelihood, Marginalizable):
         # be careful, return a reference
         return self._PNG_cache
 
-    # override
+    # impl
     def get_data_vector(self):
         return self.data_vector
 
-    # override
+    # impl
     def get_invcov(self):
         return self.invcov
 
