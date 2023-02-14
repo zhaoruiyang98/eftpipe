@@ -9,7 +9,7 @@ from scipy.interpolate import interp1d
 from scipy.special import legendre, j1, spherical_jn, loggamma
 from scipy.integrate import quad
 from pathlib import Path
-from typing import Any, cast, Iterable, Protocol, TYPE_CHECKING, Union
+from typing import Any, cast, Iterable, Literal, Protocol, TYPE_CHECKING, Union
 
 # local
 from .fftlog import FFTLog
@@ -521,6 +521,7 @@ class Common(object):
         kmB: float | None = None,
         krB: float | None = None,
         ndB: float | None = None,
+        counterform: Literal["westcoast", "eastcoast"] = "westcoast",
     ):
         self.optiresum = optiresum
         # set kmB and ndB when computing cross power spectrum
@@ -533,6 +534,7 @@ class Common(object):
         self.kmB = kmB
         self.krB = krB
         self.ndB = ndB
+        self.counterform = counterform  # reuse self.lct
         self.Nl = Nl
         self.N11 = 3
         self.Nct = 6
@@ -936,16 +938,28 @@ class Bird(object):
         # cct -> cct / km**2, cr1 -> cr1 / kr**2, cr2 -> cr2 / kr**2
         # ce0 -> ce0 / nd, cemono -> cemono / nd / km**2, cequad -> cequad / nd / km**2
         b11AB = np.array([b1A * b1B, (b1A + b1B) * f, f**2])
-        bctAB = np.array(
-            [
-                b1A * cctB / kmB**2 + b1B * cctA / kmA**2,
-                b1B * cr1A / krA**2 + b1A * cr1B / krB**2,
-                b1B * cr2A / krA**2 + b1A * cr2B / krB**2,
-                (cctA / kmA**2 + cctB / kmB**2) * f,
-                (cr1A / krA**2 + cr1B / krB**2) * f,
-                (cr2A / krA**2 + cr2B / krB**2) * f,
-            ]
-        )
+        if self.co.counterform == "westcoast":
+            bctAB = np.array(
+                [
+                    b1A * cctB / kmB**2 + b1B * cctA / kmA**2,
+                    b1B * cr1A / krA**2 + b1A * cr1B / krB**2,
+                    b1B * cr2A / krA**2 + b1A * cr2B / krB**2,
+                    (cctA / kmA**2 + cctB / kmB**2) * f,
+                    (cr1A / krA**2 + cr1B / krB**2) * f,
+                    (cr2A / krA**2 + cr2B / krB**2) * f,
+                ]
+            )
+        else:
+            bctAB = np.array(
+                [
+                    -cctA - cctB,
+                    -(cr1A + cr1B) * f,
+                    -(cr2A + cr2B) * f**2,
+                    0.0,
+                    0.0,
+                    0.0,
+                ]
+            )
         bloopAB = np.array(
             [
                 1.0,

@@ -37,7 +37,11 @@ theory:
         ##choose one of the following parameter basis:
         ##westcoast, eastcoast
         ##also support user defined basis, which should satisfy eftpipe.parambasis.EFTBasis protocol
-        # basis: west_coast
+        # basis: westcoast
+        ##choose one of the following form of counter terms:
+        ##"westcoast", "eastcoast", None
+        ##default None, which automatically matches the basis
+        # counterform: None
         ##use linear power spectrum of cdm+baryon if true, otherwise compute the linear power spectrum of cdm+baryon+neutrino
         # use_cb: false
         ##this "tracer" is the cross between another two tracers

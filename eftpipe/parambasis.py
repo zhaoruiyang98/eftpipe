@@ -2,7 +2,7 @@ from __future__ import annotations
 import importlib
 from dataclasses import dataclass
 from dataclasses import field
-from typing import Any, Protocol, Type, TYPE_CHECKING
+from typing import Any, Literal, Protocol, Type, TYPE_CHECKING
 
 if TYPE_CHECKING:
     from collections.abc import Container
@@ -25,6 +25,10 @@ class EFTBasis(Protocol):
     @classmethod
     def get_name(cls) -> str:
         return cls.__class__.__name__
+
+    @classmethod
+    def counterform(cls) -> Literal["westcoast", "eastcoast"]:
+        ...
 
     def non_gaussian_params(self) -> list[str]:
         ...
@@ -82,6 +86,11 @@ class WestCoastBasis(EFTBasis):
     # override
     @classmethod
     def get_name(cls) -> str:
+        return "westcoast"
+
+    # impl
+    @classmethod
+    def counterform(cls):
         return "westcoast"
 
     # impl

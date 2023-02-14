@@ -438,6 +438,13 @@ class EFTLSSLeaf(HelperTheory):
             return
         # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
+        counterform = self.config.get("counterform") or self.basis.counterform()
+        if counterform != self.basis.counterform():
+            self.mpi_warning(
+                "specified counterform %s is different from the one in basis %s",
+                counterform,
+                self.basis.counterform(),
+            )
         if self.cross_tracers:
             _A, _B = self.cross_tracers
             self.mpi_info("%s: km=%.3f kr=%.3f nd=%.3e", _A, kmA, krA, ndA)
@@ -478,6 +485,7 @@ class EFTLSSLeaf(HelperTheory):
             kmB=kmB,
             krB=krB,
             ndB=ndB,
+            counterform=counterform,
         )
         self.bird: pybird.Bird | None = None
         self.nonlinear = pybird.NonLinear(
