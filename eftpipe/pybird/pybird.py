@@ -887,14 +887,10 @@ class Bird(object):
 
         self.subtractShotNoise()
 
-    def setPstl(self, ks: NDArray | None = None):
+    def setPstl(self):
         """stochastic terms"""
-        if ks is None:
-            Nk = self.co.Nk
-            ks2 = self.co.k**2
-        else:
-            Nk = ks.shape[0]
-            ks2 = ks**2
+        Nk = self.co.Nk
+        ks2 = self.co.k**2
         Nl = self.co.Nl
         self.Pstl = np.zeros(shape=(Nl, 3, Nk), dtype=np.float64)
         self.Pstl[0, 0, :] = np.ones(shape=(Nk,), dtype=np.float64)
@@ -1990,8 +1986,7 @@ class Window(HasLogger):
         bird.Pctl = self.integrWindow(bird.Pctl)
         bird.Ploopl = self.integrWindow(bird.Ploopl)
         if self.window_st:
-            bird.setPstl(self.p)
-            bird.Pstl = self.integrWindow(bird.Pstl, interp=False)
+            bird.Pstl = self.integrWindow(bird.Pstl)
         if self.snapshot:
             bird.create_snapshot("window")
 
@@ -2043,12 +2038,14 @@ class APeffect(HasLogger):
         nbinsmu: int = 200,
         accboost: int = 1,
         Nlmax: int | None = None,
+        APst: bool = False,
         co: Common = common,
         name: str = "pybird.apeffect",
         snapshot: bool = False,
     ):
         self.set_logger(name=name)
         self.co = co
+        self.APst = APst
         if (DA is not None) and (H is not None):
             self.DA, self.H = DA, H
         elif (Om_AP is not None) and (z_AP is not None):
@@ -2146,10 +2143,11 @@ class APeffect(HasLogger):
         arrayLegendremup = np.array([legendre(2 * i)(mup) for i in range(self.Nlmax)])
         coef = 1.0 / (qperp**2 * qpar)
 
-        # no effect on bird.Pstl, since the AP effect can be absorbed into coefficients
         bird.P11l = coef * self.integrAP(bird.P11l, kp, arrayLegendremup)
         bird.Pctl = coef * self.integrAP(bird.Pctl, kp, arrayLegendremup)
         bird.Ploopl = coef * self.integrAP(bird.Ploopl, kp, arrayLegendremup)
+        if self.APst:
+            bird.Pstl = coef * self.integrAP(bird.Pstl, kp, arrayLegendremup)
         if self.snapshot:
             bird.create_snapshot("APeffect")
 
@@ -2157,6 +2155,8 @@ class APeffect(HasLogger):
         self.mpi_info("fiducial DA=%.5f, H=%.5f", self.DA, self.H)
         self.mpi_info("nbinsmu=%d", self.nbinsmu)
         self.mpi_info("Nlmax=%d", self.Nlmax)
+        if self.APst:
+            self.mpi_info("applying AP effect to stochastic terms")
 
 
 class FiberCollision(HasLogger):
