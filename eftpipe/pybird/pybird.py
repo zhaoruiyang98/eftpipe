@@ -522,6 +522,7 @@ class Common(object):
         krB: float | None = None,
         ndB: float | None = None,
         counterform: Literal["westcoast", "eastcoast"] = "westcoast",
+        with_NNLO: bool = False,
     ):
         self.optiresum = optiresum
         # set kmB and ndB when computing cross power spectrum
@@ -535,9 +536,11 @@ class Common(object):
         self.krB = krB
         self.ndB = ndB
         self.counterform = counterform  # reuse self.lct
+        self.with_NNLO = with_NNLO
         self.Nl = Nl
         self.N11 = 3
         self.Nct = 6
+        self.NctNNLO = 3
         self.N22 = 28  # number of 22-loops
         self.N13 = 10  # number of 13-loops
         self.Nloop = 12  # number of bias-independent loops
@@ -568,6 +571,7 @@ class Common(object):
 
         self.l11 = np.empty(shape=(self.Nl, self.N11))
         self.lct = np.empty(shape=(self.Nl, self.Nct))
+        self.lctNNLO = np.empty(shape=(self.Nl, self.NctNNLO))
         self.l22 = np.empty(shape=(self.Nl, self.N22))
         self.l13 = np.empty(shape=(self.Nl, self.N13))
 
@@ -577,6 +581,7 @@ class Common(object):
             self.lct[i] = np.array(
                 [mu[0][l], mu[2][l], mu[4][l], mu[2][l], mu[4][l], mu[6][l]]
             )
+            self.lctNNLO[i] = np.array([mu[4][l], mu[6][l], mu[8][l]])
             self.l22[i] = np.array(
                 [
                     6 * [mu[0][l]]
@@ -631,16 +636,21 @@ class BirdSnapshot(BirdHook):
         self.Pctl = bird.Pctl.copy()
         self.Pstl = bird.Pstl.copy()
         self.Picc = bird.Picc.copy()
+        self.PctNNLOl = None
+        if bird.co.with_NNLO:
+            self.PctNNLOl = bird.PctNNLOl.copy()
 
     def setreducePslb(self, bird: Bird) -> None:
         self.fullPs = bird.reducePslb(
             b11AB=bird.b11AB,
             bloopAB=bird.bloopAB,
             bctAB=bird.bctAB,
+            bctNNLOAB=bird.bctNNLOAB,
             bstAB=bird.bstAB,
             P11l=self.P11l,
             Ploopl=self.Ploopl,
             Pctl=self.Pctl,
+            PctNNLOl=self.PctNNLOl,
             Pstl=self.Pstl,
             Picc=self.Picc,
         )
@@ -735,6 +745,7 @@ class Bird(object):
         self.Cloopl = np.empty(shape=(self.co.Nl, self.co.Nloop, self.co.Ns))
         self.P11l = np.empty(shape=(self.co.Nl, self.co.N11, self.co.Nk))
         self.Pctl = np.empty(shape=(self.co.Nl, self.co.Nct, self.co.Nk))
+        self.PctNNLOl = np.empty(shape=(self.co.Nl, self.co.NctNNLO, self.co.Nk))
         self.P22l = np.empty(shape=(self.co.Nl, self.co.N22, self.co.Nk))
         self.P13l = np.empty(shape=(self.co.Nl, self.co.N13, self.co.Nk))
         self.Pb3 = np.empty(shape=(self.co.Nl, self.co.Nk))
@@ -745,6 +756,7 @@ class Bird(object):
         self.C22 = np.empty(shape=(self.co.Nl, self.co.N22, self.co.Ns))
         self.C13 = np.empty(shape=(self.co.Nl, self.co.N13, self.co.Ns))
         self.Cct = np.empty(shape=(self.co.Nl, self.co.Ns))
+        self.CctNNLO = np.empty(shape=(self.co.Nl, self.co.Ns))
         self.b11 = np.empty(shape=(self.co.Nl))
         self.b13 = np.empty(shape=(self.co.Nl, self.co.N13))
         self.b22 = np.empty(shape=(self.co.Nl, self.co.N22))
@@ -780,13 +792,21 @@ class Bird(object):
 
     def setPsCfl(self):
         """Creates multipoles for each term weighted accordingly"""
-        self.P11l = np.einsum("x,ln->lnx", self.P11, self.co.l11)
-        self.Pctl = np.einsum("x,x,ln->lnx", self.co.k**2, self.P11, self.co.lct)
-        self.P22l = np.einsum("nx,ln->lnx", self.P22, self.co.l22)
-        self.P13l = np.einsum("nx,ln->lnx", self.P13, self.co.l13)
+        np.einsum("x,ln->lnx", self.P11, self.co.l11, out=self.P11l)
+        np.einsum("x,x,ln->lnx", self.co.k**2, self.P11, self.co.lct, out=self.Pctl)
+        if self.co.with_NNLO:
+            np.einsum(
+                "x,x,ln->lnx",
+                self.co.k**4,
+                self.P11,
+                self.co.lctNNLO,
+                out=self.PctNNLOl,
+            )
+        np.einsum("nx,ln->lnx", self.P22, self.co.l22, out=self.P22l)
+        np.einsum("nx,ln->lnx", self.P13, self.co.l13, out=self.P13l)
 
-        self.C22 = np.einsum("lnx,ln->lnx", self.C22, self.co.l22)
-        self.C13 = np.einsum("lnx,ln->lnx", self.C13, self.co.l13)
+        np.einsum("lnx,ln->lnx", self.C22, self.co.l22, out=self.C22)
+        np.einsum("lnx,ln->lnx", self.C13, self.co.l13, out=self.C13)
 
         self.reducePsCfl()
         self.setPstl()
@@ -903,6 +923,8 @@ class Bird(object):
         bsA: Iterable[float],
         bsB: Iterable[float] | None = None,
         es: Iterable[float] = (0.0, 0.0, 0.0),
+        cnnloA: Iterable[float] = (0.0, 0.0),
+        cnnloB: Iterable[float] | None = None,
     ) -> None:
         R"""apply counter terms and bind fullPs to self
 
@@ -917,6 +939,11 @@ class Bird(object):
             and will compute auto power spectrum
         es : Iterable[float], optional
             c_{e,0}, c_{mono}, c_{quad}, by default zeros
+        cnnloA : Iterable[float]
+            c_{r,4}, c_{r,6} or ctilde for eastcoast
+        cnnloB : Iterable[float], optional
+            the same as cnnloA, but for tracer B, by default None,
+            and will compute auto power spectrum
         """
         kmA, krA, ndA, kmB, krB, ndB = (
             self.co.kmA,
@@ -927,9 +954,7 @@ class Bird(object):
             self.co.ndB,
         )
         b1A, b2A, b3A, b4A, cctA, cr1A, cr2A = bsA
-        if bsB is None:
-            bsB = bsA
-        b1B, b2B, b3B, b4B, cctB, cr1B, cr2B = bsB
+        b1B, b2B, b3B, b4B, cctB, cr1B, cr2B = bsB or bsA
         f = self.f
         ce0, cemono, cequad = es
 
@@ -947,6 +972,17 @@ class Bird(object):
                     (cr2A / krA**2 + cr2B / krB**2) * f,
                 ]
             )
+            if self.co.with_NNLO:
+                cr4, cr6 = cnnloA
+                bctNNLOAB = np.array(
+                    [
+                        1 / 4 * b1A**2 / krA**4 * cr4,
+                        1 / 4 * b1A / krA**4 * cr6,
+                        0.0,
+                    ]
+                )
+            else:
+                bctNNLOAB = np.zeros(3)
         else:
             bctAB = np.array(
                 [
@@ -958,6 +994,13 @@ class Bird(object):
                     0.0,
                 ]
             )
+            if self.co.with_NNLO:
+                ctilde, *_ = cnnloA
+                bctNNLOAB = ctilde * np.array(
+                    [-(b1A**2) * f**4, -2 * b1A * f**5, -(f**6)]
+                )
+            else:
+                bctNNLOAB = np.zeros(3)
         bloopAB = np.array(
             [
                 1.0,
@@ -980,29 +1023,33 @@ class Bird(object):
 
         self.b11AB = b11AB
         self.bctAB = bctAB
+        self.bctNNLOAB = bctNNLOAB
         self.bloopAB = bloopAB
         self.bstAB = bstAB
         self.fullPs = self.reducePslb(
             b11AB=b11AB,
             bloopAB=bloopAB,
             bctAB=bctAB,
+            bctNNLOAB=bctNNLOAB,
             bstAB=bstAB,
             P11l=self.P11l,
             Ploopl=self.Ploopl,
             Pctl=self.Pctl,
+            PctNNLOl=self.PctNNLOl,
             Pstl=self.Pstl,
             Picc=self.Picc,
         )
         for viewer in self._hooks:
             viewer.setreducePslb(self)
 
+    # fmt: off
     def reducePslb(
-        self, *, b11AB, bloopAB, bctAB, bstAB, P11l, Ploopl, Pctl, Pstl, Picc
+        self, *, b11AB, bloopAB, bctAB, bctNNLOAB, bstAB, P11l, Ploopl, Pctl, PctNNLOl, Pstl, Picc
     ) -> NDArray:
         Ps0 = np.einsum("b,lbx->lx", b11AB, P11l)
-        Ps1 = np.einsum("b,lbx->lx", bloopAB, Ploopl) + np.einsum(
-            "b,lbx->lx", bctAB, Pctl
-        )
+        Ps1 = np.einsum("b,lbx->lx", bloopAB, Ploopl) + np.einsum("b,lbx->lx", bctAB, Pctl)
+        if self.co.with_NNLO:
+            Ps1 += np.einsum("b,lbx->lx", bctNNLOAB, PctNNLOl)
         Ps2 = np.einsum("b,lbx->lx", bstAB, Pstl)
         # from matplotlib import pyplot as plt
         # k = self.co.k
@@ -1019,6 +1066,7 @@ class Bird(object):
         # plt.ylim(-300, 450)
         # plt.show()
         return Ps0 + Ps1 + Ps2 + Picc
+    # fmt: on
 
     def subtractShotNoise(self):
         """Subtract the constant stochastic term from the (22-)loop"""
@@ -1081,10 +1129,14 @@ class NonLinear(HasLogger):
         self.fftsettings = dict(Nmax=NFFT, xmin=1.5e-5, xmax=1000.0, bias=-1.6)
 
         self.fft = FFTLog(**self.fftsettings)
+        if self.co.with_NNLO:
+            eggpath = os.path.join(path, f"pyegg{NFFT}_Nl{co.Nl}_NNLO.npz")
+        else:
+            eggpath = os.path.join(path, f"pyegg{NFFT}_Nl{co.Nl}.npz")
 
         if load is True:
             try:
-                L = np.load(os.path.join(path, f"pyegg{NFFT}_Nl{co.Nl}.npz"))
+                L = np.load(eggpath)
                 if (self.fft.Pow - L["Pow"]).any():
                     self.mpi_warning(
                         "Loaded loop matrices do not correspond to asked FFTLog configuration, computing new matrices."
@@ -1098,6 +1150,7 @@ class NonLinear(HasLogger):
                         self.Mcf22,
                         self.Mcf13,
                         self.Mcfct,
+                        self.McfctNNLO,
                     ) = (
                         L["M22"],
                         L["M13"],
@@ -1105,6 +1158,7 @@ class NonLinear(HasLogger):
                         L["Mcf22"],
                         L["Mcf13"],
                         L["Mcfct"],
+                        L["McfctNNLO"],
                     )
                     save = False
             except:
@@ -1121,12 +1175,13 @@ class NonLinear(HasLogger):
             self.setMcf22()
             self.setMcf13()
             self.setMcfct()
+            self.setMcfctNNLO()
 
         if save is True:
             try:
                 if is_main_process():
                     np.savez(
-                        os.path.join(path, f"pyegg{NFFT}_Nl{co.Nl}.npz"),
+                        eggpath,
                         Pow=self.fft.Pow,
                         M22=self.M22,
                         M13=self.M13,
@@ -1134,6 +1189,7 @@ class NonLinear(HasLogger):
                         Mcf22=self.Mcf22,
                         Mcf13=self.Mcf13,
                         Mcfct=self.Mcfct,
+                        McfctNNLO=self.McfctNNLO,
                     )
             except:
                 self.mpi_warning("Can't save loop matrices at %s.", path)
@@ -1153,6 +1209,9 @@ class NonLinear(HasLogger):
         )[0]
         self.optipathCct = np.einsum_path(
             "ns,ln->ls", self.sPow, self.Mcfct, optimize="optimal"
+        )[0]
+        self.optipathCctNNLO = np.einsum_path(
+            "ns,ln->ls", self.sPow, self.McfctNNLO, optimize="optimal"
         )[0]
         self.optipathC13 = np.einsum_path(
             "ns,ms,blnm->bls", self.sPow, self.sPow, self.Mcf22, optimize="optimal"
@@ -1210,6 +1269,12 @@ class NonLinear(HasLogger):
         ns = -0.5 * self.fft.Pow
         self.Mcfct = MPC(2 * np.arange(self.co.Nl)[:, None], ns - 1.0)  # * 1j**(2*l)
 
+    def setMcfctNNLO(self):
+        ns = -0.5 * self.fft.Pow
+        self.McfctNNLO = MPC(
+            2 * np.arange(self.co.Nl)[:, None], ns - 2.0
+        )  # * 1j**(2*l)
+
     def setkPow(self):
         """Compute the k's to the powers of the FFTLog to evaluate the loop power spectrum. Called at the instantiation of the class."""
         self.kPow = exp(np.einsum("n,k->nk", self.fft.Pow, log(self.co.k)))
@@ -1254,6 +1319,13 @@ class NonLinear(HasLogger):
         """Perform the counterterm correlation function matrix multiplications"""
         bird.Cct = self.co.s**-2 * np.real(
             np.einsum("ns,ln->ls", CoefsPow, self.Mcfct, optimize=self.optipathCct)
+        )
+
+    def makeCctNNLO(self, CoefsPow, bird):
+        bird.CctNNLO = self.co.s**-4 * np.real(
+            np.einsum(
+                "ns,ln->ls", CoefsPow, self.McfctNNLO, optimize=self.optipathCctNNLO
+            )
         )
 
     def makeC22(self, CoefsPow, bird):
@@ -1333,6 +1405,8 @@ class NonLinear(HasLogger):
         self.makeP13(coefkPow, bird)
         self.makeC11(coefsPow, bird)
         self.makeCct(coefsPow, bird)
+        if self.co.with_NNLO:
+            self.makeCctNNLO(coefsPow, bird)
         self.makeC22(coefsPow, bird)
         self.makeC13(coefsPow, bird)
 
@@ -1435,6 +1509,7 @@ class Resum(HasLogger):
         self.Q = np.zeros(shape=(2, self.co.Nl, self.co.Nl, self.co.Nn))
         self.IR11 = np.zeros(shape=(self.co.Nl, self.co.Nn, self.co.Nk))
         self.IRct = np.zeros(shape=(self.co.Nl, self.co.Nn, self.co.Nk))
+        self.IRctNNLO = np.zeros(shape=(self.co.Nl, self.co.Nn, self.co.Nk))
         self.IRloop = np.zeros(
             shape=(self.co.Nl, self.co.Nloop, self.co.Nn, self.co.Nk)
         )
@@ -1606,6 +1681,23 @@ class Resum(HasLogger):
         self.IRloopresum = np.einsum("lpn,pink->lik", self.Q[1], self.IRloop)
         bird.P11l += self.IR11resum
         bird.Pctl += self.IRctresum
+        if self.co.with_NNLO:
+            extracted_CctNNLO = self.extractBAO(bird.CctNNLO)
+            CoefArray = self.precomputedCoef(XpYp, extracted_CctNNLO, window=window)
+            for l, cl in enumerate(extracted_CctNNLO):
+                for j, xy in enumerate(XpYp):
+                    IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(CoefArray[l, j, :])
+                    for v in range(self.co.Na):
+                        self.IRct[
+                            l, j * self.co.Na + v, self.co.Nklow :
+                        ] = IRcorrUnsorted[v]
+            self.IRctNNLOresum = np.einsum(
+                "lpn,pnk,pi->lik", self.Q[1], self.IRctNNLO, self.co.lctNNLO
+            )
+            bird.PctNNLOl += self.IRctNNLOresum
+        # stochastic term doesn't matter, it appears at very small scale
+        # and the constant term is delta function in configuration space, so
+        # it does not contribute
         bird.Ploopl += self.IRloopresum
         if self.snapshot:
             bird.create_snapshot("IRresum")
@@ -1984,6 +2076,8 @@ class Window(HasLogger):
         """
         bird.P11l = self.integrWindow(bird.P11l)
         bird.Pctl = self.integrWindow(bird.Pctl)
+        if bird.co.with_NNLO:
+            bird.PctNNLOl = self.integrWindow(bird.PctNNLOl)
         bird.Ploopl = self.integrWindow(bird.Ploopl)
         if self.window_st:
             bird.Pstl = self.integrWindow(bird.Pstl)
@@ -2145,6 +2239,8 @@ class APeffect(HasLogger):
 
         bird.P11l = coef * self.integrAP(bird.P11l, kp, arrayLegendremup)
         bird.Pctl = coef * self.integrAP(bird.Pctl, kp, arrayLegendremup)
+        if bird.co.with_NNLO:
+            bird.PctNNLOl = coef * self.integrAP(bird.PctNNLOl, kp, arrayLegendremup)
         bird.Ploopl = coef * self.integrAP(bird.Ploopl, kp, arrayLegendremup)
         if self.APst:
             bird.Pstl = coef * self.integrAP(bird.Pstl, kp, arrayLegendremup)
@@ -2200,6 +2296,8 @@ class FiberCollision(HasLogger):
         self.mpi_info("ktrust: %.3f", self.ktrust)
         self.mpi_info("fs: %.3f", self.fs)
         self.mpi_info("Dfc: %.3f", self.Dfc)
+        if self.fiberst:
+            self.mpi_info("applying fiber collision correction to stochastic terms")
         self.snapshot = snapshot
         if self.snapshot:
             self.mpi_info("snapshot is enabled")
@@ -2306,6 +2404,15 @@ class FiberCollision(HasLogger):
             fs=fs,
             Dfc=Dfc,
         )
+        if bird.co.with_NNLO:
+            bird.PctNNLOl += self.dPcorr(
+                self.co.k,
+                self.co.k,
+                bird.PctNNLOl,
+                ktrust=ktrust,
+                fs=fs,
+                Dfc=Dfc,
+            )
         bird.Ploopl += self.dPcorr(
             self.co.k,
             self.co.k,

@@ -500,6 +500,8 @@ class IntegralConstraint(HasLogger):
         bird.P11l -= self.integrWindow(bird.P11l)
         bird.Pctl -= self.integrWindow(bird.Pctl)
         bird.Ploopl -= self.integrWindow(bird.Ploopl)
+        if bird.co.with_NNLO:
+            bird.PctNNLOl -= self.integrWindow(bird.PctNNLOl)
         bird.Pstl -= self.integrWindow(bird.Pstl)
         assert self.PSN is not None
         bird.Picc -= self.PSN

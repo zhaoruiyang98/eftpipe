@@ -334,10 +334,12 @@ class EFTLSSLeaf(HelperTheory):
     def initialize(self) -> None:
         super().initialize()
         self.setup_prefix()
+        with_NNLO = self.config.get("with_NNLO", False)
         self.basis = find_param_basis(self.config.get("basis", "westcoast"))(
-            self.prefix, self.related_prefix
+            self.prefix, self.related_prefix, with_NNLO
         )
         self.mpi_info("EFT parameter basis: %s", self.basis.get_name())
+        self.mpi_info("with_NNLO: %s", with_NNLO)
         self._not_reported = defaultdict(lambda: True)
         try:
             self.zeff: float = self.config["z"]
@@ -489,6 +491,7 @@ class EFTLSSLeaf(HelperTheory):
             krB=krB,
             ndB=ndB,
             counterform=counterform,
+            with_NNLO=self.config.get("with_NNLO", False),
         )
         self.bird: pybird.Bird | None = None
         self.nonlinear = pybird.NonLinear(

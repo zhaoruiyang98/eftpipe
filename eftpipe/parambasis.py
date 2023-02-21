@@ -19,7 +19,7 @@ EVERYTHING = Everything()
 
 
 class EFTBasis(Protocol):
-    def __init__(self, prefix: str, cross_prefix: list[str]):
+    def __init__(self, prefix: str, cross_prefix: list[str], with_NNLO: bool = False):
         ...
 
     @classmethod
@@ -61,6 +61,13 @@ class EFTBasis(Protocol):
 class WestCoastBasis(EFTBasis):
     prefix: str = ""
     cross_prefix: list[str] = field(default_factory=list)
+    with_NNLO: bool = False
+
+    def __post_init__(self):
+        if self.is_cross() and self.with_NNLO:
+            raise NotImplementedError(
+                "cross power spectrum with NNLO terms are not implemented"
+            )
 
     def default(self) -> dict[str, float]:
         return {p: 0.0 for p in self.gaussian_params()}
@@ -79,6 +86,12 @@ class WestCoastBasis(EFTBasis):
 
     def es(self) -> list[str]:
         return [self.prefix + p for p in ("ce0", "cemono", "cequad")]
+
+    def cnnloA(self) -> list[str]:
+        return [self.prefix + p for p in ("cr4", "cr6")]
+
+    def cnnloB(self) -> list[str]:
+        raise NotImplementedError
 
     def is_cross(self) -> bool:
         return True if self.cross_prefix else False
@@ -111,6 +124,8 @@ class WestCoastBasis(EFTBasis):
             retval += [self.prefix + p for p in stnames]
         else:
             retval = [self.prefix + p for p in names + stnames]
+            if self.with_NNLO:
+                retval += self.cnnloA()
         return retval
 
     # impl
@@ -120,7 +135,10 @@ class WestCoastBasis(EFTBasis):
         bsA = [param_values[p] for p in self.bsA()]
         bsB = [param_values[p] for p in self.bsB()] or None
         es = [param_values[p] for p in self.es()]
-        bird.setreducePslb(bsA, bsB, es)
+        cnnloA = (
+            [param_values[p] for p in self.cnnloA()] if self.with_NNLO else (0.0, 0.0)
+        )
+        bird.setreducePslb(bsA, bsB, es, cnnloA)
 
     # impl
     def create_PG_table(
@@ -142,10 +160,12 @@ class WestCoastBasis(EFTBasis):
             b1A, b1B = (params_values_dict[_ + "b1"] for _ in self.cross_prefix)
         else:
             b1A = b1B = params_values_dict[self.prefix + "b1"]
-        Ploopl, Pctl, Pstl = bird.Ploopl, bird.Pctl, bird.Pstl
+        Ploopl, Pctl, PctNNLOl, Pstl = bird.Ploopl, bird.Pctl, bird.PctNNLOl, bird.Pstl
+        # fmt: off
         return self.create_PG_table_subroutine(
-            f, kmA, krA, ndA, kmB, krB, ndB, b1A, b1B, Ploopl, Pctl, Pstl, requires
+            f, kmA, krA, ndA, kmB, krB, ndB, b1A, b1B, Ploopl, Pctl, PctNNLOl, Pstl, requires
         )
+        # fmt: on
 
     # impl
     def create_binned_PG_table(
@@ -171,9 +191,12 @@ class WestCoastBasis(EFTBasis):
         Ploopl = binning.Ploopl
         Pctl = binning.Pctl
         Pstl = binning.Pstl
+        PctNNLOl = binning.PctNNLOl if self.with_NNLO else None
+        # fmt: off
         return self.create_PG_table_subroutine(
-            f, kmA, krA, ndA, kmB, krB, ndB, b1A, b1B, Ploopl, Pctl, Pstl, requires
+            f, kmA, krA, ndA, kmB, krB, ndB, b1A, b1B, Ploopl, Pctl, PctNNLOl, Pstl, requires
         )
+        # fmt: on
 
     def create_PG_table_subroutine(
         self,
@@ -188,6 +211,7 @@ class WestCoastBasis(EFTBasis):
         b1B: float,
         Ploopl: Any,
         Pctl: Any,
+        PctNNLOl: Any,
         Pstl: Any,
         requires: Container[str] | None = None,
     ):
@@ -230,6 +254,11 @@ class WestCoastBasis(EFTBasis):
                     2.0 * b1A / krA**2 * Pctl[:, 2, :]
                     + 2.0 * f / krA**2 * Pctl[:, 5, :]
                 )
+            if self.with_NNLO:
+                if (p := self.prefix + "cr4") in requires:
+                    PG[p] = 1 / 4 * b1A**2 / krA**4 * PctNNLOl[:, 0, :]
+                if (p := self.prefix + "cr6") in requires:
+                    PG[p] = 1 / 4 * b1A / krA**4 * PctNNLOl[:, 1, :]
         xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
         xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
         if (p := self.prefix + "ce0") in requires:
@@ -252,6 +281,7 @@ class EastCoastBasis(EFTBasis):
 
     prefix: str = ""
     cross_prefix: list[str] = field(default_factory=list)
+    with_NNLO: bool = False
 
     def __post_init__(self):
         if self.cross_prefix:
@@ -266,6 +296,12 @@ class EastCoastBasis(EFTBasis):
 
     def es(self) -> list[str]:
         return [self.prefix + p for p in ("Pshot", "a0", "a2")]
+
+    def cnnloA(self) -> list[str]:
+        return [self.prefix + "ctilde"]
+
+    def cnnloB(self) -> list[str]:
+        raise NotImplementedError
 
     def is_cross(self) -> bool:
         return True if self.cross_prefix else False
@@ -288,7 +324,10 @@ class EastCoastBasis(EFTBasis):
     # impl
     def gaussian_params(self) -> list[str]:
         names = ("bGamma3", "c0", "c2", "c4", "Pshot", "a0", "a2")
-        return [self.prefix + p for p in names]
+        retval = [self.prefix + p for p in names]
+        if self.with_NNLO:
+            retval += self.cnnloA()
+        return retval
 
     # impl
     def reduce_Pk(self, bird: Bird, params_values_dict: dict[str, float]) -> None:
@@ -308,7 +347,11 @@ class EastCoastBasis(EFTBasis):
         bsB = None
         Pshot, a0, a2 = (param_values[p] for p in self.es())
         es = [Pshot, a0 + 1 / 3 * a2, 2 / 3 * a2]
-        bird.setreducePslb(bsA, bsB, es)
+        if self.with_NNLO:
+            cnnloA = [param_values[p] for p in self.cnnloA()] + [0.0]  # placeholder
+        else:
+            cnnloA = (0.0, 0.0)
+        bird.setreducePslb(bsA, bsB, es, cnnloA=cnnloA)
 
     # impl
     def create_PG_table(
@@ -327,10 +370,12 @@ class EastCoastBasis(EFTBasis):
             bird.co.ndB,
         )
         b1A = b1B = params_values_dict[self.prefix + "b1"]
-        Ploopl, Pctl, Pstl = bird.Ploopl, bird.Pctl, bird.Pstl
+        Ploopl, Pctl, PctNNLOl, Pstl = bird.Ploopl, bird.Pctl, bird.PctNNLOl, bird.Pstl
+        # fmt: off
         return self.create_PG_table_subroutine(
-            f, kmA, krA, ndA, kmB, krB, ndB, b1A, b1B, Ploopl, Pctl, Pstl, requires
+            f, kmA, krA, ndA, kmB, krB, ndB, b1A, b1B, Ploopl, Pctl, PctNNLOl, Pstl, requires
         )
+        # fmt: on
 
     # impl
     def create_binned_PG_table(
@@ -352,10 +397,13 @@ class EastCoastBasis(EFTBasis):
         b1A = b1B = params_values_dict[self.prefix + "b1"]
         Ploopl = binning.Ploopl
         Pctl = binning.Pctl
+        PctNNLOl = binning.PctNNLOl
         Pstl = binning.Pstl
+        # fmt: off
         return self.create_PG_table_subroutine(
-            f, kmA, krA, ndA, kmB, krB, ndB, b1A, b1B, Ploopl, Pctl, Pstl, requires
+            f, kmA, krA, ndA, kmB, krB, ndB, b1A, b1B, Ploopl, Pctl, PctNNLOl, Pstl, requires
         )
+        # fmt: on
 
     def create_PG_table_subroutine(
         self,
@@ -370,6 +418,7 @@ class EastCoastBasis(EFTBasis):
         b1B: float,
         Ploopl: Any,
         Pctl: Any,
+        PctNNLOl: Any,
         Pstl: Any,
         requires: Container[str] | None = None,
     ):
@@ -387,6 +436,12 @@ class EastCoastBasis(EFTBasis):
                 -6 / 35 * f**2 * Pctl[:, 0, :]
                 + 12 / 7 * f**2 * Pctl[:, 1, :]
                 - 2.0 * f**2 * Pctl[:, 2, :]
+            )
+        if (p := self.prefix + "ctilde") in requires:
+            PG[p] = (
+                -(b1A**2) * f**4 * PctNNLOl[:, 0, :]
+                - 2.0 * b1A * f**5 * PctNNLOl[:, 1, :]
+                - f**6 * PctNNLOl[:, 2, :]
             )
         xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
         xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)

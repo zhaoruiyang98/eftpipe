@@ -57,6 +57,34 @@ def test_LRG_ELG_NGC_likelihood_reg(
     ndarrays_regression.check(regdict, default_tolerance={"atol": 0, "rtol": 1e-8})
 
 
+def test_LRG_ELG_NGC_all_likelihood_reg(
+    yamlroot: Path, ndarrays_regression: NDArraysRegressionFixture
+):
+    info = yamlroot / "mock_eBOSS_LRG_ELG_NGC_all_like.yaml"
+    with PathContext("cobaya"):
+        model = cobaya.get_model(info)
+    sampled_dict = dict(
+        omegach2=1.118146487e-01,
+        H0=6.738083803e1,
+        logA=3.10113145e00,
+        LRG_NGC_b1=2.114632816e00,
+        LRG_NGC_c2=6.730583247e-01,
+        ELG_NGC_b1=1.264557666e00,
+        ELG_NGC_b2=4.471452265e-01,
+        ELG_NGC_bG2=0.1,
+    )
+    logpost = model.logpost(sampled_dict)
+    likelihood = model.likelihood["LRG_ELG_NGC"]
+    regdict = dict(
+        logpost=logpost,
+        data_vector=likelihood.data_vector,
+        invcov=likelihood.invcov,
+        PNG=likelihood.PNG(),
+        PG=likelihood.PG(),
+    )
+    ndarrays_regression.check(regdict, default_tolerance={"atol": 0, "rtol": 1e-8})
+
+
 def test_LRGxELG_NGC_likelihood_reg(
     yamlroot: Path, ndarrays_regression: NDArraysRegressionFixture
 ):

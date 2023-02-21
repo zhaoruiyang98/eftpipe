@@ -122,6 +122,9 @@ class Binning(BirdHook, HasLogger):
         """
         self.P11l = self.integrBinning(bird.P11l)
         self.Pctl = self.integrBinning(bird.Pctl)
+        self.PctNNLOl = None
+        if bird.co.with_NNLO:
+            self.PctNNLOl = self.integrBinning(bird.PctNNLOl)
         self.Ploopl = self.integrBinning(bird.Ploopl)
         self.Pstl = self.integrBinning(bird.Pstl)
         self.Picc = self.integrBinning(bird.Picc)
@@ -132,10 +135,12 @@ class Binning(BirdHook, HasLogger):
             b11AB=bird.b11AB,
             bloopAB=bird.bloopAB,
             bctAB=bird.bctAB,
+            bctNNLOAB=bird.bctNNLOAB,
             bstAB=bird.bstAB,
             P11l=self.P11l,
             Ploopl=self.Ploopl,
             Pctl=self.Pctl,
+            PctNNLOl=self.PctNNLOl,
             Pstl=self.Pstl,
             Picc=self.Picc,
         )

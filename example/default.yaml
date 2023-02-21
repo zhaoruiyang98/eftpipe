@@ -42,6 +42,8 @@ theory:
         ##"westcoast", "eastcoast", None
         ##default None, which automatically matches the basis
         # counterform: None
+        ##whether to include NNLO terms, default false
+        # with_NNLO: false
         ##use linear power spectrum of cdm+baryon if true, otherwise compute the linear power spectrum of cdm+baryon+neutrino
         # use_cb: false
         ##this "tracer" is the cross between another two tracers
