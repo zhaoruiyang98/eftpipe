@@ -2170,6 +2170,8 @@ class FiberCollision(HasLogger):
         angular distance of the fiber channel, default Dfc(z = 0.55) = 0.43 / 0.6777 Mpc/h
     ktrust: float
         a UV cutoff, default 0.25
+    fiberst: bool
+        apply fiber collision correction to stochastic terms, default False
     co: Common
         this class only uses co.k and co.Nl, default pybird.Common
     name: str
@@ -2183,12 +2185,14 @@ class FiberCollision(HasLogger):
         fs: float,
         Dfc: float,  # = 0.43 / 0.6777,
         ktrust: float = 0.25,
+        fiberst: bool = False,
         co: Common = common,
         name: str = "pybird.fiber",
         snapshot: bool = False,
     ) -> None:
         self.set_logger(name=name)
         self.ktrust = ktrust
+        self.fiberst = fiberst
         self.fs = fs
         self.Dfc = Dfc
         self.co = co
@@ -2310,5 +2314,14 @@ class FiberCollision(HasLogger):
             fs=fs,
             Dfc=Dfc,
         )
+        if self.fiberst:
+            bird.Pstl += self.dPcorr(
+                self.co.k,
+                self.co.k,
+                bird.Pstl,
+                ktrust=ktrust,
+                fs=fs,
+                Dfc=Dfc,
+            )
         if self.snapshot:
             bird.create_snapshot("fiber")

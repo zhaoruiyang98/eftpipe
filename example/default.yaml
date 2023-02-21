@@ -86,6 +86,8 @@ theory:
           # nbinsmu: 200
           ##approximate Pkmu using Nlmax multipoles, default to internal determined Nl
           # Nlmax:
+          ##apply AP effect to stochastic terms
+          # APst: false
           ##take a snapshot after applying AP effect
           # snapshot: false
         ##apply window function, default false
@@ -140,6 +142,8 @@ theory:
           Dfc:
           ##UV cutoff
           # ktrust: 0.25
+          ##apply fiber collision correction to stochastic terms or not
+          # fiberst: false
           ##take a snapshot after applying fiber collision window
           # snapshot: false
         ##integral constraint correction, default false
