@@ -10,8 +10,8 @@ from numpy.fft import rfft
 from scipy.interpolate import CubicSpline
 
 
-def CoefWindow(N: int, window: float = 1):
-    """ FFTLog auxiliary function: window sending the FFT coefficients to 0 at the edges. From fast-pt """
+def CoefWindow(N: int, window: float = 1, left: bool = True, right: bool = True):
+    """FFTLog auxiliary function: window sending the FFT coefficients to 0 at the edges. From fast-pt"""
     n = np.arange(-N // 2, N // 2 + 1)
     if window == 1:
         n_cut = N // 2
@@ -28,8 +28,10 @@ def CoefWindow(N: int, window: float = 1):
     theta_left = (n_l - n[0]) / float(n_left - n[0] - 1)
 
     W = np.ones(n.size)
-    W[n[:] > n_right] = theta_right - 1 / (2 * pi) * sin(2 * pi * theta_right)
-    W[n[:] < n_left] = theta_left - 1 / (2 * pi) * sin(2 * pi * theta_left)
+    if right:
+        W[n[:] > n_right] = theta_right - 1 / (2 * pi) * sin(2 * pi * theta_right)
+    if left:
+        W[n[:] < n_left] = theta_left - 1 / (2 * pi) * sin(2 * pi * theta_left)
 
     return W
 
@@ -130,12 +132,12 @@ class FFTLog(object):
         if not log_interp:
             interpfunc = CubicSpline(xin, f, axis=-1, extrapolate=False)
         else:
-            _interpfunc = CubicSpline(xin, f, axis=-1, extrapolate=False)
+            _interpfunc = CubicSpline(np.log(xin), f, axis=-1, extrapolate=False)
             interpfunc = lambda x: _interpfunc(np.log(x))
 
-        _shape = list(f.shape)[:-1]
-        fx = np.zeros(tuple(_shape + [self.Nmax]), dtype=np.float64)
-        Coef = np.empty(tuple(_shape + [self.Nmax + 1]), dtype=complex)
+        _shape = f.shape[:-1]
+        fx = np.zeros(_shape + (self.Nmax,), dtype=np.float64)
+        Coef = np.empty(_shape + (self.Nmax + 1,), dtype=complex)
 
         if extrap == "extrap":
             ileft = np.searchsorted(self.x, xin[0])
@@ -181,5 +183,5 @@ class FFTLog(object):
         Coef = self.Coef(xin, f, window=window)
         fFFT = np.empty_like(x)
         for i, xi in enumerate(x):
-            fFFT[i] = np.real(np.sum(Coef * xi ** self.Pow))
+            fFFT[i] = np.real(np.sum(Coef * xi**self.Pow))
         return fFFT
