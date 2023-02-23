@@ -1015,6 +1015,8 @@ class EFTLike(Likelihood, Marginalizable):
                     "binned": with_binning,
                     **({"binning": binning} if with_binning else {}),
                 }
+                reqs.setdefault("eft_params_values_dict", {})
+                reqs["eft_params_values_dict"][t] = None
         reqs = {k: v for k, v in reqs.items() if v}
         return reqs
 
@@ -1115,6 +1117,13 @@ class EFTLike(Likelihood, Marginalizable):
     # impl
     def get_invcov(self):
         return self.invcov
+
+    # override
+    def env(self):
+        retval = {"np": np}
+        for t in self.tracers:
+            retval.update(self.provider.get_eft_params_values_dict(t))
+        return retval
 
     def calculate(self, state, want_derived=True, **params_values_dict):
         if self.marg:

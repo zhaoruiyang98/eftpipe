@@ -195,6 +195,9 @@ class EFTLSS(Theory):
     def get_snapshots(self, tracer: str) -> dict[str, BirdSnapshot]:
         return self._get_tracer_products(tracer, "snapshots")
 
+    def get_eft_params_values_dict(self, tracer: str) -> dict[str, float]:
+        return self._get_tracer_products(tracer, "eft_params_values_dict")
+
     def get_helper_theories(self) -> dict[str, Theory]:
         out = {}
         for i, name in enumerate(self.names):
@@ -667,6 +670,8 @@ class EFTLSSLeaf(HelperTheory):
 
         ``snapshots``: no settings required
 
+        ``eft_params_values_dict``: no settings required
+
         Notes
         -----
         all products should be treated as read-only, otherwise the cache may not work
@@ -719,6 +724,8 @@ class EFTLSSLeaf(HelperTheory):
                 # I think different binning settings are rarely used
                 self._config_binned("nonlinear_Plk_grid", v)
                 check_unsupported(k, v)
+            elif k == "eft_params_values_dict":
+                _ = self._must_provide[k]
             else:
                 raise LoggedError(
                     self.log,
@@ -832,6 +839,12 @@ class EFTLSSLeaf(HelperTheory):
                     key = PlkKey(chained=chained, binned=binned)
                     out[key] = tup
                 products[product] = out
+            elif product == "eft_params_values_dict":
+                products[product] = {
+                    p: params_values_dict.get(p, 0.0)
+                    for p in self.basis.gaussian_params()
+                    + self.basis.non_gaussian_params()
+                }
 
         state[self.name + "_results"] = products
 

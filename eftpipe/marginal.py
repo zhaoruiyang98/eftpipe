@@ -1,4 +1,5 @@
 from __future__ import annotations
+import inspect
 import time
 import numpy as np
 from typing import Any, TYPE_CHECKING
@@ -7,6 +8,15 @@ from cobaya.log import LoggedError
 
 if TYPE_CHECKING:
     from numpy.typing import NDArray
+
+
+def eval_callable(s: str, globals: dict[str, Any]):
+    fn = eval(s, globals)
+    # support positional arguments only
+    # NOTE: loc and scale of gaussian parameters should only depend on nongaussian parameters,
+    # though this is not enforced
+    argnames = inspect.getfullargspec(fn).args
+    return fn(*(globals[p] for p in argnames))
 
 
 class Marginalizable(HasLogger if TYPE_CHECKING else object):
@@ -18,9 +28,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
     * valid_prior will be sorted according to the order of parameters appearing in marginalizable_params
     """
 
-    valid_prior: dict[str, dict[str, float]]
-    mu_G: NDArray
-    sigma_inv: NDArray
+    valid_prior: dict[str, dict[str, float | str]]
 
     def marginalizable_params(self) -> list[str]:
         raise NotImplementedError
@@ -36,6 +44,28 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
 
     def get_invcov(self) -> NDArray:
         raise NotImplementedError
+
+    def env(self) -> dict[str, Any]:
+        return {"np": np}
+
+    @property
+    def mu_G(self) -> NDArray:
+        env = self.env()
+        loc_it = [dct["loc"] for dct in self.valid_prior.values()]
+        return np.array(
+            [eval_callable(x, env) if isinstance(x, str) else x for x in loc_it],
+            dtype=np.float64,
+        )
+
+    @property
+    def sigma_inv(self) -> NDArray:
+        env = self.env()
+        std_it = (dct["scale"] for dct in self.valid_prior.values())
+        std = [eval_callable(x, env) if isinstance(x, str) else x for x in std_it]
+        if np.inf in std:
+            return np.zeros((len(std), len(std)))
+        np.fill_diagonal(self._sigma_inv, 1 / np.array(std, dtype=np.float64) ** 2)
+        return self._sigma_inv
 
     def marginalized_logp(self) -> float:
         R"""calculate marginalized posterior
@@ -61,10 +91,11 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         dvector, invcov = self.get_data_vector(), self.get_invcov()
         PNG = self.PNG()
         PG = self.PG()
+        mu_G, sigma_inv = self.mu_G, self.sigma_inv
         # XXX: possible cache?
-        F2ij = self.calc_F2ij(PG, invcov)
-        F1i = self.calc_F1i(PG, PNG, invcov, dvector)
-        F0 = self.calc_F0(PNG, invcov, dvector)
+        F2ij = self.calc_F2ij(PG, invcov, sigma_inv)
+        F1i = self.calc_F1i(PG, PNG, invcov, dvector, mu_G, sigma_inv)
+        F0 = self.calc_F0(PNG, invcov, dvector, mu_G, sigma_inv)
         sign, logdet = np.linalg.slogdet(F2ij / (2 * np.pi))
         if sign <= 0:
             raise RuntimeError(
@@ -79,7 +110,8 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
     def setup_prior(self, prior: dict[str, dict[str, Any]]) -> None:
         """setup self.valid_prior, self.mu_G and self.sigma_inv"""
         self.valid_prior = self._update_prior(prior)
-        self.mu_G, self.sigma_inv = self._calc_prior(self.valid_prior)
+        nmarg = len(self.valid_prior)
+        self._sigma_inv = np.zeros((nmarg, nmarg))
 
     def report_marginalized(self) -> None:
         self.mpi_info("the following parameters are marginalized with gaussian prior:")
@@ -92,13 +124,14 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         """helper method to extract bestfit bG parameters"""
         PNG = self.PNG()
         PG = self.PG()
+        mu_G, sigma_inv = self.mu_G, self.sigma_inv
         dvector, invcov = self.get_data_vector(), self.get_invcov()
-        F1i = self.calc_F1i(PG, PNG, invcov, dvector)
-        F2ij = self.calc_F2ij(PG, invcov)
+        F1i = self.calc_F1i(PG, PNG, invcov, dvector, mu_G, sigma_inv)
+        F2ij = self.calc_F2ij(PG, invcov, sigma_inv)
         ret = np.linalg.inv(F2ij) @ F1i
         return {bG: val for bG, val in zip(self.valid_prior.keys(), ret)}
 
-    def calc_F2ij(self, PG, invcov) -> NDArray:
+    def calc_F2ij(self, PG, invcov, sigma_inv) -> NDArray:
         R"""calculate F2 matrix
 
         Notes
@@ -106,9 +139,9 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         .. math::
             F_{2,ij} = P_{G,\alpha}^i C_{\alpha\beta}^{-1} P_{G,\beta}^j + \sigma_{ij}^-1
         """
-        return PG @ invcov @ PG.T + self.sigma_inv
+        return PG @ invcov @ PG.T + sigma_inv
 
-    def calc_F1i(self, PG, PNG, invcov, dvector) -> NDArray:
+    def calc_F1i(self, PG, PNG, invcov, dvector, mu_G, sigma_inv) -> NDArray:
         R"""calculate F1 vector
 
         Notes
@@ -116,9 +149,9 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         .. math::
             F_{1,i} = -P_{G,\alpha}^i C_{\alpha\beta}^{-1} (P_{NG,\aplha} - D_{\alpha}) + \sigma_{ij}^{-1} \mu_{G,j}
         """
-        return -PG @ invcov @ (PNG - dvector) + self.sigma_inv @ self.mu_G
+        return -PG @ invcov @ (PNG - dvector) + sigma_inv @ mu_G
 
-    def calc_F0(self, PNG, invcov, dvector) -> NDArray:
+    def calc_F0(self, PNG, invcov, dvector, mu_G, sigma_inv) -> NDArray:
         R"""calculate F0
 
         Notes
@@ -127,11 +160,11 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
             F_0 = (P_{NG,\alpha} - D_{\alpha}) C_{\alpha\beta}^{-1} (P_{NG,\beta} - D_\beta) + \mu_{G,i}\sigma_{ij}^{-1}\mu_{G,j}
         """
         res = PNG - dvector
-        return res @ invcov @ res + self.mu_G @ self.sigma_inv @ self.mu_G
+        return res @ invcov @ res + mu_G @ sigma_inv @ mu_G
 
     def _update_prior(
         self, prior: dict[str, dict[str, Any]]
-    ) -> dict[str, dict[str, float]]:
+    ) -> dict[str, dict[str, float | str]]:
         """update prior to standard form and sort it"""
         marginalizable_params = self.marginalizable_params()
         for key in prior.keys():
@@ -168,14 +201,3 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
                 "only support setting infinite scale for all parameters",
             )
         return outdct
-
-    def _calc_prior(self, prior: dict[str, Any]) -> tuple[NDArray, NDArray]:
-        mu_G = [dct["loc"] for dct in prior.values()]
-        mu_G = np.array(mu_G)
-        nG = len(mu_G)
-        std = [dct["scale"] for dct in prior.values()]
-        if np.inf in std:
-            sigma_inv = np.zeros((nG, nG))
-        else:
-            sigma_inv = np.diag(1 / np.array(std) ** 2)
-        return mu_G, sigma_inv

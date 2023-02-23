@@ -425,7 +425,7 @@ class EastCoastBasis(EFTBasis):
         if requires is None:
             requires = EVERYTHING
         PG: dict[str, Any] = {}
-        if (p := self.prefix + "b3") in requires:
+        if (p := self.prefix + "bGamma3") in requires:
             PG[p] = 6.0 * (Ploopl[:, 3, :] + b1A * Ploopl[:, 7, :])
         if (p := self.prefix + "c0") in requires:
             PG[p] = -2.0 * Pctl[:, 0, :]
