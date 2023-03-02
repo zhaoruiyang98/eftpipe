@@ -18,7 +18,6 @@ def sky_to_castesian(RA, DEC, dist, is_radian: bool = False):
 @dataclass
 class comoving_distance:
     omegam: float
-    hubble: Callable[[Any], Any] = field(init=False)
 
     def __post_init__(self):
         self.hubble = lambda z: 100 * np.sqrt(
@@ -46,51 +45,72 @@ except ImportError:
 
     from tqdm import tqdm
 
-    def _effective_z(x, y, z, redshift, weight, smin, smax):
-        ndata = x.size
+    def _effective_z(
+        x1, y1, z1, redshift1, weight1, x2, y2, z2, redshift2, weight2, smin, smax
+    ):
+        ndata1 = x1.size
+        ndata2 = x2.size
         numerator = 0.0
         denominator = 0.0
         smin2 = smin**2
         smax2 = smax**2
-        for i in tqdm(range(ndata)):
-            for j in range(ndata):
-                if i == j:
-                    continue
-                distance = (x[i] - x[j]) ** 2 + (y[i] - y[j]) ** 2 + (z[i] - z[j]) ** 2
+        for i in tqdm(range(ndata1)):
+            for j in range(ndata2):
+                distance = (
+                    (x1[i] - x2[j]) ** 2 + (y1[i] - y2[j]) ** 2 + (z1[i] - z2[j]) ** 2
+                )
                 if smin2 <= distance <= smax2:
-                    numerator += weight[i] * weight[j] * (redshift[i] + redshift[j]) / 2
-                    denominator += weight[i] * weight[j]
+                    numerator += (
+                        weight1[i] * weight2[j] * (redshift1[i] + redshift2[j]) / 2
+                    )
+                    denominator += weight1[i] * weight2[j]
         return numerator / denominator
 
 else:
 
-    @njit(["f8(f8[:], f8[:], f8[:], f8[:], f8[:], f8, f8)"], parallel=True)
-    def _effective_z(x, y, z, redshift, weight, smin, smax):
-        ndata = x.size
+    @njit(parallel=True)
+    def _effective_z(
+        x1, y1, z1, redshift1, weight1, x2, y2, z2, redshift2, weight2, smin, smax
+    ):
+        ndata1 = x1.size
+        ndata2 = x2.size
         numerator = 0.0
         denominator = 0.0
         smin2 = smin**2
         smax2 = smax**2
-        for i in prange(ndata):
-            for j in range(ndata):
-                if i == j:
-                    continue
-                distance = (x[i] - x[j]) ** 2 + (y[i] - y[j]) ** 2 + (z[i] - z[j]) ** 2
+        for i in prange(ndata1):
+            for j in range(ndata2):
+                distance = (
+                    (x1[i] - x2[j]) ** 2 + (y1[i] - y2[j]) ** 2 + (z1[i] - z2[j]) ** 2
+                )
                 if smin2 <= distance <= smax2:
-                    numerator += weight[i] * weight[j] * (redshift[i] + redshift[j]) / 2
-                    denominator += weight[i] * weight[j]
+                    numerator += (
+                        weight1[i] * weight2[j] * (redshift1[i] + redshift2[j]) / 2
+                    )
+                    denominator += weight1[i] * weight2[j]
         return numerator / denominator
 
 
 def effective_z(
-    RA,
-    DEC,
-    redshift,
-    weight,
-    omegam: float = 0.307,
+    RA1,
+    DEC1,
+    redshift1,
+    weight1,
+    RA2=None,
+    DEC2=None,
+    redshift2=None,
+    weight2=None,
+    omegam: float = 0.307115,
     smin: float = 25,
     smax: float = 150,
 ):
-    dist = comoving_distance(omegam)(redshift)
-    x, y, z = sky_to_castesian(RA, DEC, dist)
-    return _effective_z(x, y, z, redshift, weight, smin, smax)
+    dist1 = comoving_distance(omegam)(redshift1)
+    x1, y1, z1 = sky_to_castesian(RA1, DEC1, dist1)
+    if any(x is None for x in [RA2, DEC2, redshift2, weight2]):
+        x2, y2, z2, redshift2, weight2 = x1, y1, z1, redshift1, weight1
+    else:
+        dist2 = comoving_distance(omegam)(redshift2)
+        x2, y2, z2 = sky_to_castesian(RA2, DEC2, dist2)
+    return _effective_z(
+        x1, y1, z1, redshift1, weight1, x2, y2, z2, redshift2, weight2, smin, smax
+    )
