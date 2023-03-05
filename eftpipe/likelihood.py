@@ -71,7 +71,7 @@ def regularize_float_bound(
         if default is None:
             raise TypeError("empty bound is not allowed if default is not provided")
         return [default] * n
-    elif isinstance(x, float):
+    elif isinstance(x, float) or isinstance(x, int):
         return [x] * n
     else:
         if len(x) != n:

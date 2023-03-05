@@ -73,6 +73,12 @@ class Binning(BirdHook, HasLogger):
             "round the difference of last two kout to %d decimal places",
             self.decimals,
         )
+        self.mpi_info(
+            "inferred kedges=%f, %f, ..., %f",
+            self.binmin[0],
+            self.binmin[1],
+            self.binmax[-1],
+        )
 
     def load_binning(self, setkout) -> None:
         """
@@ -80,8 +86,8 @@ class Binning(BirdHook, HasLogger):
         """
         delta_k = np.round(setkout[-1] - setkout[-2], self.decimals)
         kcentral = (setkout[-1] - delta_k * np.arange(len(setkout)))[::-1]
-        binmin = kcentral - delta_k / 2
-        binmax = kcentral + delta_k / 2
+        self.binmin = binmin = kcentral - delta_k / 2
+        self.binmax = binmax = kcentral + delta_k / 2
         self.binvol = np.array(
             [
                 quad(lambda k: k**2, kbinmin, kbinmax)[0]
