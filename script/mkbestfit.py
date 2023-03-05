@@ -275,14 +275,14 @@ def get_argparser():
         nargs="*",
         default=[],
         metavar="TRACER",
-        help="compute and plot hexadecapole for specified tracers",
+        help="compute and plot hexadecapole for specified tracers, 'all' for all tracers",
     )
     parser.add_argument(
         "--chained",
         nargs="*",
         default=[],
         metavar="TRACER",
-        help="compute and plot chained power spectrum for specified tracers",
+        help="compute and plot chained power spectrum for specified tracers, 'all' for all tracers",
     )
     parser.add_argument(
         "--sharey", action="store_true", help="share ylim for all subplots"
@@ -294,8 +294,10 @@ def main(input_args: Sequence[str] | None = None, save: bool = False):
     parser = get_argparser()
     args = parser.parse_args(input_args)
 
-    if not args.hex:
+    if args.hex and args.hex[0] == "all":
         args.hex = args.tracers
+    if args.chained and args.chained[0] == "all":
+        args.chained = args.tracers
 
     yaml_file: Path = args.input_yaml.resolve()
     base: Path = args.base.resolve()
