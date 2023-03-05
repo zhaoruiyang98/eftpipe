@@ -37,7 +37,9 @@ GREEN = tab10.colors[2]
 RED = tab10.colors[3]
 
 
-def extract_sampled_bestfit(file: str | os.PathLike, sampled_only: bool = True) -> dict[str, float]:
+def extract_sampled_bestfit(
+    file: str | os.PathLike, sampled_only: bool = True
+) -> dict[str, float]:
     file = Path(file)
     params: dict[str, float] = {}
     with file.open() as f:
@@ -72,7 +74,11 @@ def satisfy_prerequisite(yaml_file: str | os.PathLike) -> bool:
 def compute_bG_bestfit(model: Model, likelihoods: list[str]):
     ret: dict[str, float] = {}
     for l in likelihoods:
-        ret.update(model.likelihood[l].bG_bestfit())
+        try:
+            # nomarg
+            ret.update(model.likelihood[l].bG_bestfit())
+        except AttributeError:
+            pass
     return ret
 
 
@@ -90,7 +96,9 @@ def build_model(
             info["params"][name].pop("ref", None)
         else:
             info["params"][name] = value
-    info["likelihood"] = {"one": None}
+    for k, v in info["likelihood"].items():
+        if v.get("marg"):
+            v["marg"] = None
     info = yaml_dump(info)
     with PathContext(base):
         model = get_model(info)
@@ -99,10 +107,16 @@ def build_model(
             sampled_point[name] = params[name]
         model.add_requirements(requires)
     model.logpost(sampled_point)
+    if names := [k for k in requires if k.endswith("_chi2")]:
+        for name in names:
+            ndata = model.likelihood[name.split("_chi2")[0]].ndata
+            print(f"{name} = {model.provider.get_param(name):.2f}/{ndata}")
     return model
 
 
-def generate_requires(tracers: list[str], hex: list[str], chained: list[str]):
+def generate_requires(
+    tracers: list[str], hex: list[str], chained: list[str], likelihoods: list[str] = []
+):
     common = {}
     if hex:
         common["ls"] = [0, 2, 4]
@@ -118,6 +132,7 @@ def generate_requires(tracers: list[str], hex: list[str], chained: list[str]):
             value["chained"] = True
         ret[tracer] = value
     ret = {"nonlinear_Plk_interpolator": ret}
+    ret.update({k + "_chi2": None for k in likelihoods})  # type: ignore
     return ret
 
 
@@ -175,30 +190,35 @@ def paint_data_and_theory(
     P, _ = extract_multipole_info(df.columns.to_list())
     x = df.index.to_numpy()
     xx = np.geomspace(x.min(), x.max(), 1000)
+    estyle = dict(capsize=2)  # elinewidth=0.75
+    ymin, ymax = 0, 0
     if hex:
         ax.errorbar(
             x,
             x * df[f"{P}4"],
             yerr=x * df[f"{P}4err"],
             fmt=".",
-            c=GREEN,
-            elinewidth=0.75,
+            c="g",
+            **estyle,
         )
-        ax.plot(xx, xx * interpfn(4, xx), c=GREEN)
-    ax.errorbar(
-        x, x * df[f"{P}2"], yerr=x * df[f"{P}2err"], fmt=".", c=BLUE, elinewidth=0.75
-    )
-    ax.plot(xx, xx * interpfn(2, xx), c=BLUE)
-    ax.errorbar(
-        x, x * df[f"{P}0"], yerr=x * df[f"{P}0err"], fmt=".", c=GRAY, elinewidth=0.75
-    )
-    ax.plot(xx, xx * interpfn(0, xx), c=GRAY)
+        ymin = min(ymin, (x * (df[f"{P}4"] - 3 * df[f"{P}4err"])).min())
+        ymax = max(ymax, (x * (df[f"{P}4"] + 3 * df[f"{P}4err"])).max())
+        ax.plot(xx, xx * interpfn(4, xx), c="g")
+    ax.errorbar(x, x * df[f"{P}2"], yerr=x * df[f"{P}2err"], fmt=".", c="b", **estyle)
+    ymin = min(ymin, (x * (df[f"{P}2"] - 3 * df[f"{P}2err"])).min())
+    ymax = max(ymax, (x * (df[f"{P}2"] + 3 * df[f"{P}2err"])).max())
+    ax.plot(xx, xx * interpfn(2, xx), c="b")
+    ax.errorbar(x, x * df[f"{P}0"], yerr=x * df[f"{P}0err"], fmt=".", c="k", **estyle)
+    ymin = min(ymin, (x * (df[f"{P}0"] - 3 * df[f"{P}0err"])).min())
+    ymax = max(ymax, (x * (df[f"{P}0"] + 3 * df[f"{P}0err"])).max())
+    ax.plot(xx, xx * interpfn(0, xx), c="k")
     ax.set_xlabel(R"$k$ $[h\,\mathrm{Mpc}^{-1}]$")
     if chained:
         ax.set_ylabel(R"$kQ_\ell(k)$ $[h^{-1}\,\mathrm{Mpc}]^2$")
     else:
         ax.set_ylabel(R"$kP_\ell(k)$ $[h^{-1}\,\mathrm{Mpc}]^2$")
     ax.set_xlim(0, 0.3)
+    ax.set_ylim(ymin, ymax)
 
 
 def generate_data_like_theory(path: str, df: pd.DataFrame, interpfn: PlkInterpolator):
@@ -274,6 +294,9 @@ def main(input_args: Sequence[str] | None = None, save: bool = False):
     parser = get_argparser()
     args = parser.parse_args(input_args)
 
+    if not args.hex:
+        args.hex = args.tracers
+
     yaml_file: Path = args.input_yaml.resolve()
     base: Path = args.base.resolve()
     verbose_guard = do_nothing if args.verbose else disable_logging
@@ -298,7 +321,9 @@ def main(input_args: Sequence[str] | None = None, save: bool = False):
         best_model = build_model(
             yaml_file,
             bestfit,
-            requires=generate_requires(args.tracers, args.hex, args.chained),
+            requires=generate_requires(
+                args.tracers, args.hex, args.chained, args.likelihoods
+            ),
             base=base,
         )
 
@@ -328,6 +353,7 @@ def main(input_args: Sequence[str] | None = None, save: bool = False):
     fig.tight_layout()
     if save:
         plt.savefig(args.output)
+    return fig, axes
 
 
 if __name__ == "__main__":
