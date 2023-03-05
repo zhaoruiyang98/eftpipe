@@ -885,7 +885,6 @@ class EFTLike(Likelihood, Marginalizable):
     file_base_name = "eftlike"
     # fmt: off
     likelihood_prefix: str
-    nparams: int
     tracers: list[str]  # also support str
     data: dict[str, dict[str, Any]]  # also support dict[str, Any] | list[dict[str, Any]]
     cov: dict[str, Any]  # also support str for path
@@ -897,6 +896,9 @@ class EFTLike(Likelihood, Marginalizable):
 
     def initialize(self) -> None:
         super().initialize()
+        if self.likelihood_prefix is None:
+            self.likelihood_prefix = self.get_name()
+            print(f"{self.likelihood_prefix=}")
         self.regularize_attributes()
         self.minfodict = {
             t: MultipoleInfo.load(**self.data[t], logger=self.log) for t in self.tracers
@@ -1127,17 +1129,16 @@ class EFTLike(Likelihood, Marginalizable):
 
     def calculate(self, state, want_derived=True, **params_values_dict):
         if self.marg:
-            state["logp"] = self.marginalized_logp()
+            logp = self.marginalized_logp()
+            state["logp"] = logp
+            # in this case, the chi2 is meaningless...
+            chi2 = -2 * logp
         else:
             res = self.data_vector - self.PNG()
             chi2 = res @ self.invcov @ res
             state["logp"] = -0.5 * chi2
-            if want_derived:
-                state["derived"][self.likelihood_prefix + "reduced_chi2"] = chi2 / (
-                    self.ndata - self.nparams
-                )
+        if want_derived:
+            state["derived"][self.likelihood_prefix + "_chi2"] = chi2
 
     def get_can_provide_params(self) -> list[str]:
-        if self.marg:
-            return []
-        return [self.likelihood_prefix + "reduced_chi2"]
+        return [self.likelihood_prefix + "_chi2"]
