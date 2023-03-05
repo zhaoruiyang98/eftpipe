@@ -185,7 +185,13 @@ def collect_multipole_dataframe(model, tracers: list[str], likelihoods: list[str
 
 
 def paint_data_and_theory(
-    ax: Axes, df: pd.DataFrame, interpfn, hex: bool = False, chained: bool = False
+    ax: Axes,
+    df: pd.DataFrame,
+    interpfn,
+    hex: bool = False,
+    chained: bool = False,
+    ymin0: float | None = None,
+    ymax0: float | None = None,
 ):
     P, _ = extract_multipole_info(df.columns.to_list())
     x = df.index.to_numpy()
@@ -218,6 +224,10 @@ def paint_data_and_theory(
     else:
         ax.set_ylabel(R"$kP_\ell(k)$ $[h^{-1}\,\mathrm{Mpc}]^2$")
     ax.set_xlim(0, 0.3)
+    if ymin0 is not None:
+        ymin = ymin0
+    if ymax0 is not None:
+        ymax = ymax0
     ax.set_ylim(ymin, ymax)
 
 
@@ -287,6 +297,12 @@ def get_argparser():
     parser.add_argument(
         "--sharey", action="store_true", help="share ylim for all subplots"
     )
+    parser.add_argument(
+        "--ymin", type=float, help="set the minimum of y axis for all subplots"
+    )
+    parser.add_argument(
+        "--ymax", type=float, help="set the maximum of y axis for all subplots"
+    )
     return parser
 
 
@@ -331,6 +347,9 @@ def main(input_args: Sequence[str] | None = None, save: bool = False):
 
     width = 5 * len(args.tracers)
     height = 4
+    sharey = False
+    if args.sharey or args.ymin is not None or args.ymax is not None:
+        sharey = True
     fig, axes = plt.subplots(
         1, len(args.tracers), figsize=(width, height), sharey=args.sharey
     )
@@ -350,6 +369,8 @@ def main(input_args: Sequence[str] | None = None, save: bool = False):
             fn,
             hex=(True if tracer in args.hex else False),
             chained=(True if tracer in args.chained else False),
+            ymin0=args.ymin,
+            ymax0=args.ymax,
         )
         axes[i].set_title(tracer)
     fig.tight_layout()
