@@ -898,7 +898,6 @@ class EFTLike(Likelihood, Marginalizable):
         super().initialize()
         if self.likelihood_prefix is None:
             self.likelihood_prefix = self.get_name()
-            print(f"{self.likelihood_prefix=}")
         self.regularize_attributes()
         self.minfodict = {
             t: MultipoleInfo.load(**self.data[t], logger=self.log) for t in self.tracers
