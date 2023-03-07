@@ -67,6 +67,8 @@ def main():
     plt.rcParams["text.usetex"] = True
     if not args.regen:
         window = np.load(args.window)
+        with args.window.with_suffix(".json").open() as f:
+            meta = json.load(f)
         plot_window(
             plt.gca(),
             args.k,
@@ -74,6 +76,7 @@ def main():
             args.hex,
             xlim=(args.xmin, args.xmax),
             ylim=(args.ymin, args.ymax),
+            accboost=meta["accboost"],
         )
         plt.show()
         if args.icc and args.PSN:
@@ -109,7 +112,8 @@ def main():
     co = Common(Nl=override.get("Nl", meta["Nl"]))
     override.update({"co": co, "load": False, "save": False})
     meta.update(override)
-    window = Window(**meta).Wal
+    tmp = Window(**meta)
+    window = tmp.Wal
     plot_window(
         plt.gca(),
         args.k,
@@ -117,7 +121,7 @@ def main():
         args.hex,
         xlim=(args.xmin, args.xmax),
         ylim=(args.ymin, args.ymax),
-        accboost=override.get("accboost", 1),
+        accboost=tmp.meta["accboost"],
     )
     plt.show()
 
