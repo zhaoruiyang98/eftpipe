@@ -87,7 +87,6 @@ CONFIG: Config = {
     "with_window": True,
     "with_fiber": False,
     "with_binning": True,
-    "IRresum": {"optiresum": False},
     "APeffect": {"Om_AP": 0.307115, "z_AP": 0.7},
     "window": {
         "window_fourier_file": str(EFTPIPE_CACHE / "LRG_NGC_GB_interp.npy"),
