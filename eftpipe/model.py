@@ -238,25 +238,28 @@ class EFTModel:
         nbinsmu: int = 200,
         accboost: int = 1,
         Nlmax: int | None = None,
+        APst: bool = False,
     ):
         """
         Parameters
         ----------
-        Om_AP: float
+        Om_AP : float
             omega matter for fiducial cosmology
-        z_AP: float, optional
+        z_AP : float, optional
             fiducial effective redshift
-        rdrag_AP: float, optional
+        rdrag_AP : float, optional
             fiducial rdrag, in absolute units
-        h_AP: float, optional
+        h_AP : float, optional
             fiducial h, used together with rdrag_AP,
             rdrag_AP and h_AP are only used in ``get_alperp_alpara``
-        nbinsmu: int
+        nbinsmu : int
             mu bins in [0, 1], default 200
-        accboost: int
+        accboost : int
             boost the accuracy, default 1
-        Nlmax: int, optional
+        Nlmax : int, optional
             approximate Pkmu using Nlmax multipoles, default self.co.Nl
+        APst : bool
+            set it True to apply AP effect to stochastic terms
         """
         d = self.theory["eftpipe.eftlss"]["tracers"]["x"]
         d["with_APeffect"] = True
@@ -268,6 +271,54 @@ class EFTModel:
             "nbinsmu": nbinsmu,
             "accboost": accboost,
             "Nlmax": Nlmax,
+            "APst": APst,
+        }
+        return self
+
+    def set_icc(
+        self,
+        Pshot: float,
+        icc_fourier_file: str | None = None,
+        icc_configspace_SN_file: str | None = None,
+        icc_configspace_IC_file: str | None = None,
+        Na: int | None = None,
+        Nl: int | None = None,
+        pmax: float = 0.3,
+        accboost: int = 1,
+        withmask: bool = True,
+        windowk: float = 0.05,
+        Nmax: int = 4096,
+        bias: float = -2.1,
+        window_param: float | None = 1,
+        Nxmax: int = 4096,
+        Nymax: int = 4096,
+        xbias: float = -2.0,
+        ybias: float = -2.0,
+        windowxy_param: float | None = 1,
+        inorder: bool = False,
+    ):
+        d = self.theory["eftpipe.eftlss"]["tracers"]["x"]
+        d["with_icc"] = True
+        d["icc"] = {
+            "Pshot": Pshot,
+            "icc_fourier_file": icc_fourier_file,
+            "icc_configspace_SN_file": icc_configspace_SN_file,
+            "icc_configspace_IC_file": icc_configspace_IC_file,
+            "Na": Na,
+            "Nl": Nl,
+            "pmax": pmax,
+            "accboost": accboost,
+            "withmask": withmask,
+            "windowk": windowk,
+            "Nmax": Nmax,
+            "bias": bias,
+            "window_param": window_param,
+            "Nxmax": Nxmax,
+            "Nymax": Nymax,
+            "xbias": xbias,
+            "ybias": ybias,
+            "windowxy_param": windowxy_param,
+            "inorder": inorder,
         }
         return self
 
