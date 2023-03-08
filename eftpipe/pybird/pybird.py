@@ -2007,19 +2007,20 @@ class Window(HasLogger):
         )
         Nas = np.arange(Na)
         Nls = np.arange(Nl)
+        kernel = lambda x: spherical_jn(
+            2 * Nas[:, newaxis, newaxis, newaxis],
+            x[newaxis, newaxis, newaxis, :] * self.co.k[newaxis, newaxis, :, newaxis],
+        )
         self.Coef[...] = (
             (-1j) ** (2 * Nas)[:, newaxis, newaxis, newaxis]
             * (1j) ** (2 * Nls)[newaxis, :, newaxis, newaxis]
             * self.fft.Coef(
                 sw,
                 Qal[:, :, newaxis, :]
-                * spherical_jn(
-                    2 * Nas[:, newaxis, newaxis, newaxis],
-                    sw[newaxis, newaxis, newaxis, :]
-                    * self.co.k[newaxis, newaxis, :, newaxis],
-                ),
+                * np.ones(self.co.k.size)[newaxis, newaxis, :, newaxis],
                 window=self.meta["window_param"],
                 extrap="padding",
+                kernel=kernel,
             )
         )
 

@@ -10,6 +10,10 @@ from numpy.fft import rfft
 from scipy.interpolate import CubicSpline
 
 
+def one(x):
+    return 1
+
+
 def CoefWindow(N: int, window: float = 1, left: bool = True, right: bool = True):
     """FFTLog auxiliary function: window sending the FFT coefficients to 0 at the edges. From fast-pt"""
     n = np.arange(-N // 2, N // 2 + 1)
@@ -100,6 +104,7 @@ class FFTLog(object):
         extrap="extrap",
         window: float | None = 1,
         log_interp: bool = False,
+        kernel=one,
     ):
         """compute coefficients for FFTLog
 
@@ -134,6 +139,12 @@ class FFTLog(object):
         else:
             _interpfunc = CubicSpline(np.log(xin), f, axis=-1, extrapolate=False)
             interpfunc = lambda x: _interpfunc(np.log(x))
+        if (
+            (kernel is not one)
+            and (extrap == "extrap")
+            and (xin[0] > self.x[0] and xin[-1] < self.x[-1])
+        ):
+            raise ValueError("kernel is not supported in 'extrap' mode")
 
         _shape = f.shape[:-1]
         fx = np.zeros(_shape + (self.Nmax,), dtype=np.float64)
@@ -160,7 +171,8 @@ class FFTLog(object):
             ileft = np.searchsorted(self.x, xin[0])
             iright = np.searchsorted(self.x, xin[-1], side="right")
             efactor = exp(-self.bias * np.arange(ileft, iright) * self.dx)
-            fx[..., ileft:iright] = interpfunc(self.x[ileft:iright]) * efactor
+            xtrunc = self.x[ileft:iright]
+            fx[..., ileft:iright] = interpfunc(xtrunc) * (efactor * kernel(xtrunc))
         else:
             raise ValueError(f"unexpected extrap = {extrap}")
 
