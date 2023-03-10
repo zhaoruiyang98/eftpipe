@@ -12,8 +12,8 @@ from .fftlog2d import FFTLog2D
 from .fftlog2d import bessel_matrix
 from .pybird.fftlog import FFTLog
 from .pybird.pybird import common
-from .pybird.pybird import MetaInfoError
-from .pybird.pybird import window_kgrid
+from .window import MetaInfoError
+from .window import window_kgrid
 from .tools import replace_suffix
 from .tools import root_only
 
@@ -60,7 +60,7 @@ else:
         return ret
 
     @njit(float64[:, :, :, :](float64[:, :]), parallel=True, cache=True)
-    def _ICpannel_to_ndarray(arr):
+    def _ICpannel_to_ndarray(arr):  # type: ignore
         l1 = np.unique(arr.T[0])
         l2 = np.unique(arr.T[1])
         s1 = np.unique(arr.T[2])
@@ -497,6 +497,7 @@ class IntegralConstraint(HasLogger):
         return np.einsum("alkp,lsp->ask", self.Waldk, Pk, optimize=True)
 
     def icc(self, bird: Bird):
+        self.mpi_warning("This method is wrong and deprecated, please don't use it!")
         bird.P11l -= self.integrWindow(bird.P11l)
         bird.Pctl -= self.integrWindow(bird.Pctl)
         bird.Ploopl -= self.integrWindow(bird.Ploopl)

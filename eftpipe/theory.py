@@ -22,6 +22,7 @@ from cobaya.log import LoggedError
 from cobaya.theory import HelperTheory
 from cobaya.theory import Theory
 from .parambasis import EastCoastBasis
+from .window import Window
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
@@ -219,8 +220,7 @@ class EFTLSS(Theory):
 class PluginsDict(TypedDict):
     IRresum: pybird.Resum
     APeffect: pybird.APeffect
-    window: pybird.Window
-    icc: IntegralConstraint
+    window: Window
     fiber: pybird.FiberCollision
 
 
@@ -378,13 +378,14 @@ class EFTLSSLeaf(HelperTheory):
         self.with_window: bool = self.config.get("with_window", False)
         if self.with_window:
             self.plugins["_window"] = Initializer(
-                pybird.Window, self.config.get("window", {}), self.log
+                Window, self.config.get("window", {}), self.log
             )
         self.with_fiber: bool = self.config.get("with_fiber", False)
         if self.with_fiber:
             self.plugins["_fiber"] = Initializer(
                 pybird.FiberCollision, self.config.get("fiber", {}), self.log
             )
+        # TODO: move icc config under the window
         self.with_icc: bool = self.config.get("with_icc", False)
         if self.with_icc:
             self.plugins["_icc"] = Initializer(
@@ -523,16 +524,6 @@ class EFTLSSLeaf(HelperTheory):
                 co=self.co, name=self.get_name() + ".APeffect"
             )
             msg_pool.append(("APeffect enabled",))
-        if self.with_window:
-            self.plugins["window"] = self.plugins["_window"].initialize(
-                co=self.co, name=self.get_name() + ".window"
-            )
-            msg_pool.append(("window enabled",))
-        if self.with_fiber:
-            self.plugins["fiber"] = self.plugins["_fiber"].initialize(
-                co=self.co, name=self.get_name() + ".fiber"
-            )
-            msg_pool.append(("fiber enabled",))
         if self.with_icc:
             if self.is_cross:
                 raise LoggedError(
@@ -542,7 +533,20 @@ class EFTLSSLeaf(HelperTheory):
             self.plugins["icc"] = self.plugins["_icc"].initialize(
                 co=self.co, name=self.get_name() + ".icc"
             )
-            msg_pool.append(("Integral Constraint Correction (icc) enabled",))
+        if self.with_window:
+            self.plugins["window"] = self.plugins["_window"].initialize(
+                co=self.co,
+                icc=self.plugins.get("icc"),
+                name=self.get_name() + ".window",
+            )
+            msg_pool.append(("window enabled",))
+            if self.plugins.get("icc"):
+                msg_pool.append(("Integral Constraint Correction (icc) enabled",))
+        if self.with_fiber:
+            self.plugins["fiber"] = self.plugins["_fiber"].initialize(
+                co=self.co, name=self.get_name() + ".fiber"
+            )
+            msg_pool.append(("fiber enabled",))
         for msg in msg_pool:
             self.mpi_info(*msg)
 
@@ -760,8 +764,6 @@ class EFTLSSLeaf(HelperTheory):
                     plugins["window"].Window(bird)
                 if self.with_fiber:
                     plugins["fiber"].fibcolWindow(bird)
-                if self.with_icc:
-                    plugins["icc"].icc(bird)
                 if self.binning:
                     self.binning.kbinning(bird)
                     bird.attach_hook(self.binning)
