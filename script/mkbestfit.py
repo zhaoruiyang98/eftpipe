@@ -4,6 +4,7 @@ import argparse
 import itertools
 import os
 import pprint
+import math
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -303,6 +304,9 @@ def get_argparser():
     parser.add_argument(
         "--ymax", type=float, help="set the maximum of y axis for all subplots"
     )
+    parser.add_argument(
+        "--nrows", type=int, default=1, help="number of rows in the plot (default 1)"
+    )
     return parser
 
 
@@ -345,13 +349,15 @@ def main(input_args: Sequence[str] | None = None, save: bool = False):
             base=base,
         )
 
-    width = 5 * len(args.tracers)
-    height = 4
+    nrows = args.nrows
+    ncols = math.ceil(len(args.tracers) / nrows)
+    width = 5 * ncols
+    height = 4 * nrows
     sharey = False
     if args.sharey or args.ymin is not None or args.ymax is not None:
         sharey = True
     fig, axes = plt.subplots(
-        1, len(args.tracers), figsize=(width, height), sharey=args.sharey
+        nrows, ncols, figsize=(width, height), sharey=args.sharey
     )
     if len(args.tracers) == 1:
         axes: Any = [axes]
@@ -363,8 +369,9 @@ def main(input_args: Sequence[str] | None = None, save: bool = False):
         )
         if path := freeze.get(tracer):
             generate_data_like_theory(path, df, fn)
+        ax = plt.subplot(nrows, ncols, i + 1)
         paint_data_and_theory(
-            axes[i],
+            ax,
             df,
             fn,
             hex=(True if tracer in args.hex else False),
@@ -372,7 +379,7 @@ def main(input_args: Sequence[str] | None = None, save: bool = False):
             ymin0=args.ymin,
             ymax0=args.ymax,
         )
-        axes[i].set_title(tracer)
+        ax.set_title(tracer)
     fig.tight_layout()
     if save:
         plt.savefig(args.output)
