@@ -1046,12 +1046,19 @@ class EFTLike(Likelihood, Marginalizable):
             to_assign = self.valid_prior.keys()
             for bGlist, basis in zip(bG_group, self.eft_bases):
                 allowed = basis.gaussian_params()
+                # use for-loop to preserve the order
                 for name in to_assign:
                     if name in allowed:
                         bGlist.append(name)
             self._bG_group_cache = bG_group
-            number_of_bG = sum(len(_) for _ in bG_group)
-            self._PG_cache = np.zeros((number_of_bG, self.data_vector.size))
+            counter = 0
+            bGidx: dict[str, int] = {}
+            for name in itertools.chain(*bG_group):
+                if name not in bGidx:
+                    bGidx[name] = counter
+                    counter += 1
+            self._bGidx_cache = bGidx
+            self._PG_cache = np.zeros((len(bGidx), self.data_vector.size))
 
     # impl
     def marginalizable_params(self) -> list[str]:
@@ -1062,21 +1069,21 @@ class EFTLike(Likelihood, Marginalizable):
 
     # impl
     def PG(self):
-        for t, minfo, chained, with_binning, bGlist, shift, (istart, iend) in zip(
+        bG_idx = self._bGidx_cache
+        for tracer, minfo, chained, with_binning, bGlist, (istart, iend) in zip(
             self.tracers,
             self.minfodict.values(),
             self.chained.values(),
             self.with_binning.values(),
             self._bG_group_cache,
-            itertools.accumulate([len(_) for _ in self._bG_group_cache], initial=0),
             self._istart_iend_cache,
         ):
             _, kgrid, table = self.provider.get_nonlinear_Plk_gaussian_grid(
-                t,
+                tracer,
                 chained=chained,
                 binned=with_binning,
             )
-            for i, bG in enumerate(bGlist):
+            for bG in bGlist:
                 plk = table[bG]
                 if not with_binning:
                     interpfn = interp1d(kgrid, kgrid * plk, kind="cubic", axis=-1)
@@ -1086,7 +1093,7 @@ class EFTLike(Likelihood, Marginalizable):
                     minfo.ls,
                     plk,
                     minfo.kout_mask,
-                    out=self._PG_cache[i + shift, istart:iend],
+                    out=self._PG_cache[bG_idx[bG], istart:iend],
                 )
         # be careful, return a reference
         return self._PG_cache
