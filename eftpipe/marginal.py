@@ -139,7 +139,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         .. math::
             F_{2,ij} = P_{G,\alpha}^i C_{\alpha\beta}^{-1} P_{G,\beta}^j + \sigma_{ij}^-1
         """
-        return PG @ invcov @ PG.T + sigma_inv
+        return np.einsum("ia,ab,jb->ij", PG, invcov, PG, optimize=True) + sigma_inv
 
     def calc_F1i(self, PG, PNG, invcov, dvector, mu_G, sigma_inv) -> NDArray:
         R"""calculate F1 vector
@@ -149,7 +149,10 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         .. math::
             F_{1,i} = -P_{G,\alpha}^i C_{\alpha\beta}^{-1} (P_{NG,\aplha} - D_{\alpha}) + \sigma_{ij}^{-1} \mu_{G,j}
         """
-        return -PG @ invcov @ (PNG - dvector) + sigma_inv @ mu_G
+        return (
+            -np.einsum("ia,ab,b->i", PG, invcov, PNG - dvector, optimize=True)
+            + sigma_inv @ mu_G
+        )
 
     def calc_F0(self, PNG, invcov, dvector, mu_G, sigma_inv) -> NDArray:
         R"""calculate F0
