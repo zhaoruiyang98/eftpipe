@@ -761,8 +761,7 @@ class Bird(object):
         self.Cf = np.empty(shape=(2, self.co.Nl, self.co.Ns))
         self.fullPs = np.empty(shape=(self.co.Nl, self.co.Nk))
         # integral constraint terms, "constant" part
-        # observational effects **after** fiber collision will have effect on it, e.g. binning
-        # The rationale is, pixelation is performed after fiber collision and affects typically large-scale modes
+        # binning will affect this term
         self.Picc = np.zeros(shape=(self.co.Nl, self.co.Nk))
 
         self._hooks: list[BirdHook] = []
@@ -1684,7 +1683,7 @@ class Resum(HasLogger):
                 for j, xy in enumerate(XpYp):
                     IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(CoefArray[l, j, :])
                     for v in range(self.co.Na):
-                        self.IRct[
+                        self.IRctNNLO[
                             l, j * self.co.Na + v, self.co.Nklow :
                         ] = IRcorrUnsorted[v]
             self.IRctNNLOresum = np.einsum(
@@ -2044,5 +2043,6 @@ class FiberCollision(HasLogger):
                 fs=fs,
                 Dfc=Dfc,
             )
+        # XXX: Picc?
         if self.snapshot:
             bird.create_snapshot("fiber")
