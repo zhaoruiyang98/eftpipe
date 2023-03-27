@@ -1,13 +1,22 @@
 from __future__ import annotations
 import importlib
+import numpy as np
 from dataclasses import dataclass
 from dataclasses import field
-from typing import Any, Literal, Protocol, Type, TYPE_CHECKING
+from typing import (
+    Any,
+    Container,
+    Iterable,
+    Literal,
+    Mapping,
+    Protocol,
+    Type,
+    TYPE_CHECKING,
+)
 
 if TYPE_CHECKING:
-    from collections.abc import Container
-    from .binning import Binning
-    from .pybird.pybird import Bird
+    from .typing import ndarrayf
+    from .pybird.pybird import BirdLike
 
 
 class Everything:
@@ -18,8 +27,125 @@ class Everything:
 EVERYTHING = Everything()
 
 
+def reduce_Plk(
+    bird: BirdLike,
+    bsA: Iterable[float],
+    bsB: Iterable[float] | None = None,
+    es: Iterable[float] = (0.0, 0.0, 0.0),
+    cnnloA: Iterable[float] = (0.0, 0.0),
+    cnnloB: Iterable[float] | None = None,
+) -> ndarrayf:
+    R"""compute reduced power spectrum
+
+    Parameters
+    ----------
+    bsA : Iterable[float]
+        b_1, b_2, b_3, b_4, c_{ct}, c_{r,1}, c{r,2}
+        if counterform="eastcoast", c_{ct}, c_{r,1}, c{r,2} are interpreted as
+        \tilde{c}_0, \tilde{c}_2, \tilde{c}_4
+    bsB : Iterable[float], optional
+        the same as bsA, but for tracer B, by default None,
+        and will compute auto power spectrum
+    es : Iterable[float], optional
+        c_{e,0}, c_{mono}, c_{quad}, by default zeros
+    cnnloA : Iterable[float]
+        c_{r,4}, c_{r,6} or ctilde for eastcoast
+    cnnloB : Iterable[float], optional
+        the same as cnnloA, but for tracer B, by default None,
+        and will compute auto power spectrum
+    """
+    kmA, krA, ndA, kmB, krB, ndB = (
+        bird.co.kmA,
+        bird.co.krA,
+        bird.co.ndA,
+        bird.co.kmB,
+        bird.co.krB,
+        bird.co.ndB,
+    )
+    b1A, b2A, b3A, b4A, cctA, cr1A, cr2A = bsA
+    b1B, b2B, b3B, b4B, cctB, cr1B, cr2B = bsB or bsA
+    f = bird.f
+    ce0, cemono, cequad = es
+
+    # cct -> cct / km**2, cr1 -> cr1 / kr**2, cr2 -> cr2 / kr**2
+    # ce0 -> ce0 / nd, cemono -> cemono / nd / km**2, cequad -> cequad / nd / km**2
+    b11AB = np.array([b1A * b1B, (b1A + b1B) * f, f**2])
+    if bird.co.counterform == "westcoast":
+        bctAB = np.array(
+            [
+                b1A * cctB / kmB**2 + b1B * cctA / kmA**2,
+                b1B * cr1A / krA**2 + b1A * cr1B / krB**2,
+                b1B * cr2A / krA**2 + b1A * cr2B / krB**2,
+                (cctA / kmA**2 + cctB / kmB**2) * f,
+                (cr1A / krA**2 + cr1B / krB**2) * f,
+                (cr2A / krA**2 + cr2B / krB**2) * f,
+            ]
+        )
+        if bird.co.with_NNLO:
+            cr4, cr6 = cnnloA
+            bctNNLOAB = np.array(
+                [1 / 4 * b1A**2 / krA**4 * cr4, 1 / 4 * b1A / krA**4 * cr6, 0.0]
+            )
+        else:
+            bctNNLOAB = np.zeros(3)
+    else:
+        bctAB = np.array(
+            [-cctA - cctB, -(cr1A + cr1B) * f, -(cr2A + cr2B) * f**2, 0.0, 0.0, 0.0]
+        )
+        if bird.co.with_NNLO:
+            ctilde, *_ = cnnloA
+            bctNNLOAB = ctilde * np.array(
+                [-(b1A**2) * f**4, -2 * b1A * f**5, -(f**6)]
+            )
+        else:
+            bctNNLOAB = np.zeros(3)
+    bloopAB = np.array(
+        [
+            1.0,
+            1.0 / 2.0 * (b1A + b1B),
+            1.0 / 2.0 * (b2A + b2B),
+            1.0 / 2.0 * (b3A + b3B),
+            1.0 / 2.0 * (b4A + b4B),
+            b1A * b1B,
+            1.0 / 2.0 * (b1A * b2B + b1B * b2A),
+            1.0 / 2.0 * (b1A * b3B + b1B * b3A),
+            1.0 / 2.0 * (b1A * b4B + b1B * b4A),
+            b2A * b2B,
+            1.0 / 2.0 * (b2A * b4B + b2B * b4A),
+            b4A * b4B,
+        ]
+    )
+    xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
+    xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
+    bstAB = np.array([ce0 * xfactor1, cemono * xfactor2, cequad * xfactor2])
+
+    Ps0 = np.einsum("b,lbx->lx", b11AB, bird.P11l)
+    Ps1 = np.einsum("b,lbx->lx", bloopAB, bird.Ploopl) + np.einsum(
+        "b,lbx->lx", bctAB, bird.Pctl
+    )
+    if bird.co.with_NNLO:
+        assert bird.PctNNLOl is not None
+        Ps1 += np.einsum("b,lbx->lx", bctNNLOAB, bird.PctNNLOl)
+    Ps2 = np.einsum("b,lbx->lx", bstAB, bird.Pstl)
+    # from matplotlib import pyplot as plt
+    # k = bird.co.k
+    # plt.plot(k, k * Ps0[0], "k-", label="kaiser")
+    # plt.plot(k, k * Ps0[1], "b-")
+    # _Ploop = np.einsum("b,lbx->lx", bloopAB, Ploopl)
+    # _Pct = np.einsum("b,lbx->lx", bctAB, Pctl)
+    # plt.plot(k, k * _Ploop[0], "k--", label="loop")
+    # plt.plot(k, k * _Ploop[1], "b--")
+    # plt.plot(k, k * _Pct[0], "k:", label="counter")
+    # plt.plot(k, k * _Pct[1], "b:")
+    # plt.legend(frameon=False)
+    # plt.xlim(0, 0.3)
+    # plt.ylim(-300, 450)
+    # plt.show()
+    return Ps0 + Ps1 + Ps2 + bird.Picc
+
+
 class EFTBasis(Protocol):
-    def __init__(self, prefix: str, cross_prefix: list[str], with_NNLO: bool = False):
+    def __init__(self, prefix: str, cross_prefix: list[str]):
         ...
 
     @classmethod
@@ -36,24 +162,17 @@ class EFTBasis(Protocol):
     def gaussian_params(self) -> list[str]:
         ...
 
-    def reduce_Pk(self, bird: Bird, params_values_dict: dict[str, float]) -> None:
+    def reduce_Plk(
+        self, bird: BirdLike, params_values_dict: Mapping[str, float]
+    ) -> ndarrayf:
         ...
 
-    def create_PG_table(
+    def reduce_Plk_gaussian_table(
         self,
-        bird: Bird,
-        params_values_dict: dict[str, float],
+        bird: BirdLike,
+        params_values_dict: Mapping[str, float],
         requires: Container[str] | None = None,
-    ) -> dict[str, Any]:
-        ...
-
-    def create_binned_PG_table(
-        self,
-        binning: Binning,
-        bird: Bird,
-        params_values_dict: dict[str, float],
-        requires: Container[str] | None = None,
-    ) -> dict[str, Any]:
+    ) -> dict[str, ndarrayf]:
         ...
 
 
@@ -61,13 +180,6 @@ class EFTBasis(Protocol):
 class WestCoastBasis(EFTBasis):
     prefix: str = ""
     cross_prefix: list[str] = field(default_factory=list)
-    with_NNLO: bool = False
-
-    def __post_init__(self):
-        if self.is_cross() and self.with_NNLO:
-            raise NotImplementedError(
-                "cross power spectrum with NNLO terms are not implemented"
-            )
 
     def default(self) -> dict[str, float]:
         return {p: 0.0 for p in self.gaussian_params()}
@@ -124,29 +236,32 @@ class WestCoastBasis(EFTBasis):
             retval += [self.prefix + p for p in stnames]
         else:
             retval = [self.prefix + p for p in names + stnames]
-            if self.with_NNLO:
-                retval += self.cnnloA()
+            # NOTE: It's okay to include nnlo params here, since they will not be
+            # included in the gaussian table.
+            retval += self.cnnloA()
         return retval
 
     # impl
-    def reduce_Pk(self, bird: Bird, params_values_dict: dict[str, float]) -> None:
+    def reduce_Plk(self, bird: BirdLike, params_values_dict: Mapping[str, float]):
         param_values = self.default()
         param_values.update(params_values_dict)
         bsA = [param_values[p] for p in self.bsA()]
         bsB = [param_values[p] for p in self.bsB()] or None
         es = [param_values[p] for p in self.es()]
         cnnloA = (
-            [param_values[p] for p in self.cnnloA()] if self.with_NNLO else (0.0, 0.0)
+            [param_values[p] for p in self.cnnloA()]
+            if bird.co.with_NNLO
+            else (0.0, 0.0)
         )
-        bird.setreducePslb(bsA, bsB, es, cnnloA)
+        return reduce_Plk(bird, bsA, bsB, es, cnnloA)
 
     # impl
-    def create_PG_table(
+    def reduce_Plk_gaussian_table(
         self,
-        bird: Bird,
-        params_values_dict: dict[str, float],
+        bird: BirdLike,
+        params_values_dict: Mapping[str, float],
         requires: Container[str] | None = None,
-    ) -> dict[str, Any]:
+    ):
         f = bird.f
         kmA, krA, ndA, kmB, krB, ndB = (
             bird.co.kmA,
@@ -161,63 +276,10 @@ class WestCoastBasis(EFTBasis):
         else:
             b1A = b1B = params_values_dict[self.prefix + "b1"]
         Ploopl, Pctl, PctNNLOl, Pstl = bird.Ploopl, bird.Pctl, bird.PctNNLOl, bird.Pstl
-        # fmt: off
-        return self.create_PG_table_subroutine(
-            f, kmA, krA, ndA, kmB, krB, ndB, b1A, b1B, Ploopl, Pctl, PctNNLOl, Pstl, requires
-        )
-        # fmt: on
 
-    # impl
-    def create_binned_PG_table(
-        self,
-        binning: Binning,
-        bird: Bird,
-        params_values_dict: dict[str, float],
-        requires: Container[str] | None = None,
-    ) -> dict[str, Any]:
-        f = bird.f
-        kmA, krA, ndA, kmB, krB, ndB = (
-            binning.co.kmA,
-            binning.co.krA,
-            binning.co.ndA,
-            binning.co.kmB,
-            binning.co.krB,
-            binning.co.ndB,
-        )
-        if self.is_cross():
-            b1A, b1B = (params_values_dict[_ + "b1"] for _ in self.cross_prefix)
-        else:
-            b1A = b1B = params_values_dict[self.prefix + "b1"]
-        Ploopl = binning.Ploopl
-        Pctl = binning.Pctl
-        Pstl = binning.Pstl
-        PctNNLOl = binning.PctNNLOl if self.with_NNLO else None
-        # fmt: off
-        return self.create_PG_table_subroutine(
-            f, kmA, krA, ndA, kmB, krB, ndB, b1A, b1B, Ploopl, Pctl, PctNNLOl, Pstl, requires
-        )
-        # fmt: on
-
-    def create_PG_table_subroutine(
-        self,
-        f: float,
-        kmA: float,
-        krA: float,
-        ndA: float,
-        kmB: float,
-        krB: float,
-        ndB: float,
-        b1A: float,
-        b1B: float,
-        Ploopl: Any,
-        Pctl: Any,
-        PctNNLOl: Any,
-        Pstl: Any,
-        requires: Container[str] | None = None,
-    ):
         if requires is None:
             requires = EVERYTHING
-        PG: dict[str, Any] = {}
+        PG: dict[str, ndarrayf] = {}
         if self.is_cross():
             _A, _B = self.cross_prefix
             if (p := _A + "b3") in requires:
@@ -254,7 +316,7 @@ class WestCoastBasis(EFTBasis):
                     2.0 * b1A / krA**2 * Pctl[:, 2, :]
                     + 2.0 * f / krA**2 * Pctl[:, 5, :]
                 )
-            if self.with_NNLO:
+            if bird.co.with_NNLO:
                 if (p := self.prefix + "cr4") in requires:
                     PG[p] = 1 / 4 * b1A**2 / krA**4 * PctNNLOl[:, 0, :]
                 if (p := self.prefix + "cr6") in requires:
@@ -281,7 +343,6 @@ class EastCoastBasis(EFTBasis):
 
     prefix: str = ""
     cross_prefix: list[str] = field(default_factory=list)
-    with_NNLO: bool = False
 
     def __post_init__(self):
         if self.cross_prefix:
@@ -325,12 +386,13 @@ class EastCoastBasis(EFTBasis):
     def gaussian_params(self) -> list[str]:
         names = ("bGamma3", "c0", "c2", "c4", "Pshot", "a0", "a2")
         retval = [self.prefix + p for p in names]
-        if self.with_NNLO:
-            retval += self.cnnloA()
+        # NOTE: It's okay to include nnlo params here, since they will not be
+        # included in the gaussian table.
+        retval += self.cnnloA()
         return retval
 
     # impl
-    def reduce_Pk(self, bird: Bird, params_values_dict: dict[str, float]) -> None:
+    def reduce_Plk(self, bird: BirdLike, params_values_dict: Mapping[str, float]):
         param_values = self.default()
         param_values.update(params_values_dict)
         b1, b2, bG2, bGamma3, c0, c2, c4 = [param_values[p] for p in self.bsA()]
@@ -347,19 +409,19 @@ class EastCoastBasis(EFTBasis):
         bsB = None
         Pshot, a0, a2 = (param_values[p] for p in self.es())
         es = [Pshot, a0 + 1 / 3 * a2, 2 / 3 * a2]
-        if self.with_NNLO:
+        if bird.co.with_NNLO:
             cnnloA = [param_values[p] for p in self.cnnloA()] + [0.0]  # placeholder
         else:
             cnnloA = (0.0, 0.0)
-        bird.setreducePslb(bsA, bsB, es, cnnloA=cnnloA)
+        return reduce_Plk(bird, bsA, bsB, es, cnnloA=cnnloA)
 
     # impl
-    def create_PG_table(
+    def reduce_Plk_gaussian_table(
         self,
-        bird: Bird,
-        params_values_dict: dict[str, float],
+        bird: BirdLike,
+        params_values_dict: Mapping[str, float],
         requires: Container[str] | None = None,
-    ) -> dict[str, Any]:
+    ):
         f = bird.f
         kmA, krA, ndA, kmB, krB, ndB = (
             bird.co.kmA,
@@ -371,60 +433,10 @@ class EastCoastBasis(EFTBasis):
         )
         b1A = b1B = params_values_dict[self.prefix + "b1"]
         Ploopl, Pctl, PctNNLOl, Pstl = bird.Ploopl, bird.Pctl, bird.PctNNLOl, bird.Pstl
-        # fmt: off
-        return self.create_PG_table_subroutine(
-            f, kmA, krA, ndA, kmB, krB, ndB, b1A, b1B, Ploopl, Pctl, PctNNLOl, Pstl, requires
-        )
-        # fmt: on
 
-    # impl
-    def create_binned_PG_table(
-        self,
-        binning: Binning,
-        bird: Bird,
-        params_values_dict: dict[str, float],
-        requires: Container[str] | None = None,
-    ) -> dict[str, Any]:
-        f = bird.f
-        kmA, krA, ndA, kmB, krB, ndB = (
-            binning.co.kmA,
-            binning.co.krA,
-            binning.co.ndA,
-            binning.co.kmB,
-            binning.co.krB,
-            binning.co.ndB,
-        )
-        b1A = b1B = params_values_dict[self.prefix + "b1"]
-        Ploopl = binning.Ploopl
-        Pctl = binning.Pctl
-        PctNNLOl = binning.PctNNLOl
-        Pstl = binning.Pstl
-        # fmt: off
-        return self.create_PG_table_subroutine(
-            f, kmA, krA, ndA, kmB, krB, ndB, b1A, b1B, Ploopl, Pctl, PctNNLOl, Pstl, requires
-        )
-        # fmt: on
-
-    def create_PG_table_subroutine(
-        self,
-        f: float,
-        kmA: float,
-        krA: float,
-        ndA: float,
-        kmB: float,
-        krB: float,
-        ndB: float,
-        b1A: float,
-        b1B: float,
-        Ploopl: Any,
-        Pctl: Any,
-        PctNNLOl: Any,
-        Pstl: Any,
-        requires: Container[str] | None = None,
-    ):
         if requires is None:
             requires = EVERYTHING
-        PG: dict[str, Any] = {}
+        PG: dict[str, ndarrayf] = {}
         if (p := self.prefix + "bGamma3") in requires:
             PG[p] = 6.0 * (Ploopl[:, 3, :] + b1A * Ploopl[:, 7, :])
         if (p := self.prefix + "c0") in requires:
@@ -437,12 +449,13 @@ class EastCoastBasis(EFTBasis):
                 + 12 / 7 * f**2 * Pctl[:, 1, :]
                 - 2.0 * f**2 * Pctl[:, 2, :]
             )
-        if (p := self.prefix + "ctilde") in requires:
-            PG[p] = (
-                -(b1A**2) * f**4 * PctNNLOl[:, 0, :]
-                - 2.0 * b1A * f**5 * PctNNLOl[:, 1, :]
-                - f**6 * PctNNLOl[:, 2, :]
-            )
+        if bird.co.with_NNLO:
+            if (p := self.prefix + "ctilde") in requires:
+                PG[p] = (
+                    -(b1A**2) * f**4 * PctNNLOl[:, 0, :]
+                    - 2.0 * b1A * f**5 * PctNNLOl[:, 1, :]
+                    - f**6 * PctNNLOl[:, 2, :]
+                )
         xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
         xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
         if (p := self.prefix + "Pshot") in requires:

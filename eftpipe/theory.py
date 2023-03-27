@@ -248,7 +248,7 @@ class PlkInterpolator:
             axis=-1,
             kind="cubic",
             bounds_error=False,
-            fill_value="extrapolate",
+            fill_value="extrapolate",  # type: ignore
         )
         fn = lambda k: tmp(k) / k
         self.fn = fn
@@ -339,7 +339,7 @@ class EFTLSSLeaf(HelperTheory):
         self.setup_prefix()
         with_NNLO = self.config.get("with_NNLO", False)
         self.basis = find_param_basis(self.config.get("basis", "westcoast"))(
-            self.prefix, self.related_prefix, with_NNLO
+            self.prefix, self.related_prefix
         )
         self.mpi_info("EFT parameter basis: %s", self.basis.get_name())
         self.mpi_info("with_NNLO: %s", with_NNLO)
@@ -766,14 +766,17 @@ class EFTLSSLeaf(HelperTheory):
                     plugins["fiber"].fibcolWindow(bird)
                 if self.binning:
                     self.binning.kbinning(bird)
-                    bird.attach_hook(self.binning)
                 self.bird = bird
             # use basis to compute power spectrum
-            self.basis.reduce_Pk(self.bird, params_values_dict)
+            fullPs = self.basis.reduce_Plk(self.bird, params_values_dict)
 
         products: dict[str, Any] = {}
         if self.need_power:
-            products["snapshots"] = self.bird.snapshots  # type: ignore
+            assert self.bird
+            products["snapshots"] = {
+                k: self.basis.reduce_Plk(v, params_values_dict)
+                for k, v in self.bird.snapshots.items()
+            }
         # collect results
         for product, config_dict in self._must_provide.items():
             ls_tot = [2 * i for i in range(self.co.Nl)]
@@ -789,10 +792,10 @@ class EFTLSSLeaf(HelperTheory):
                 ):
                     if binned:
                         assert self.binning
-                        plk = self.binning.fullPs
+                        plk = self.basis.reduce_Plk(self.binning, params_values_dict)
                         kreturn = self.binning.keff.copy()
                     else:
-                        plk = self.bird.fullPs
+                        plk = fullPs  # type: ignore
                         kreturn = kgrid.copy()
                     if chained:
                         plk = to_chained(ls_tot, plk)
@@ -820,14 +823,13 @@ class EFTLSSLeaf(HelperTheory):
                 ):
                     if binned:
                         assert self.binning
-                        PG_table = self.basis.create_binned_PG_table(
+                        PG_table = self.basis.reduce_Plk_gaussian_table(
                             self.binning,
-                            self.bird,
                             params_values_dict,
                         )
                         kreturn = self.binning.keff.copy()
                     else:
-                        PG_table = self.basis.create_PG_table(
+                        PG_table = self.basis.reduce_Plk_gaussian_table(
                             self.bird,
                             params_values_dict,
                         )

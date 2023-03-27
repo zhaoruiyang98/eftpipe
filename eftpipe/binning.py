@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import numpy as np
 from typing import TYPE_CHECKING
+from cobaya.log import HasLogger
 from scipy.integrate import quad
 from scipy.interpolate import interp1d
-from cobaya.log import HasLogger
 from .pybird import pybird
-from .pybird.pybird import BirdHook
+from .pybird.pybird import BirdLike
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
 
 
-class Binning(BirdHook, HasLogger):
+class Binning(BirdLike, HasLogger):
     """Match the theoretical output to data, do binning and store results
 
     Parameters
@@ -117,7 +117,7 @@ class Binning(BirdHook, HasLogger):
             axis=-1,
             kind="cubic",
             bounds_error=False,
-            fill_value="extrapolate",
+            fill_value="extrapolate",  # type: ignore
         )
         res = np.trapz(Pkint(self.points) * self.points**2, x=self.points, axis=-1)
         return res / self.binvol
@@ -126,27 +126,10 @@ class Binning(BirdHook, HasLogger):
         """
         Apply binning in k-space for linear-spaced data k-array
         """
+        self.f = bird.f
         self.P11l = self.integrBinning(bird.P11l)
-        self.Pctl = self.integrBinning(bird.Pctl)
-        self.PctNNLOl = None
-        if bird.co.with_NNLO:
-            self.PctNNLOl = self.integrBinning(bird.PctNNLOl)
         self.Ploopl = self.integrBinning(bird.Ploopl)
+        self.Pctl = self.integrBinning(bird.Pctl)
+        self.PctNNLOl = self.integrBinning(bird.PctNNLOl)
         self.Pstl = self.integrBinning(bird.Pstl)
         self.Picc = self.integrBinning(bird.Picc)
-
-    # override
-    def setreducePslb(self, bird: pybird.Bird) -> None:
-        self.fullPs = bird.reducePslb(
-            b11AB=bird.b11AB,
-            bloopAB=bird.bloopAB,
-            bctAB=bird.bctAB,
-            bctNNLOAB=bird.bctNNLOAB,
-            bstAB=bird.bstAB,
-            P11l=self.P11l,
-            Ploopl=self.Ploopl,
-            Pctl=self.Pctl,
-            PctNNLOl=self.PctNNLOl,
-            Pstl=self.Pstl,
-            Picc=self.Picc,
-        )

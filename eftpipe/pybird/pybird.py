@@ -7,7 +7,7 @@ from scipy import special
 from scipy.interpolate import interp1d
 from scipy.special import legendre, j1, loggamma
 from scipy.integrate import quad
-from typing import Iterable, Literal, Protocol, TYPE_CHECKING
+from typing import Literal, Protocol, TYPE_CHECKING
 
 # local
 from .fftlog import FFTLog
@@ -15,7 +15,10 @@ from .resumfactor import Qawithhex
 from ..tools import is_main_process
 
 if TYPE_CHECKING:
+    from typing_extensions import TypeAlias
     from numpy.typing import NDArray
+
+    ndarrayf: TypeAlias = NDArray[np.float64]
 
 
 def cH(Om, a):
@@ -606,20 +609,20 @@ class Common(object):
 common = Common()
 
 
-class BirdHook(Protocol):
-    """accept a Bird object, and then do postprocessing.
+class BirdLike(Protocol):
+    """contains key attributes of Bird"""
 
-    Typically, a BirdHook will be automatically invoked by Bird.setreducePslb,
-    it means there is no need to manually call the hook and hook's status is
-    automatically updated by Bird.
-    """
+    co: Common
+    f: float
+    P11l: ndarrayf
+    Ploopl: ndarrayf
+    Pctl: ndarrayf
+    Pstl: ndarrayf
+    Picc: ndarrayf
+    PctNNLOl: ndarrayf
 
-    def setreducePslb(self, bird: Bird) -> None:
-        """automatically invoked when Bird.setreducePslb is called"""
-        ...
 
-
-class BirdSnapshot(BirdHook):
+class BirdSnapshot(BirdLike):
     """
     created by Bird.create_snapshot, do not use this class directly
     """
@@ -627,32 +630,18 @@ class BirdSnapshot(BirdHook):
     def __init__(self, bird: Bird) -> None:
         self.k = bird.co.k.copy()
         self.ls = [2 * i for i in range(bird.co.Nl)]
+        # impl BirdLike
+        self.co = bird.co
+        self.f = bird.f
         self.P11l = bird.P11l.copy()
         self.Ploopl = bird.Ploopl.copy()
         self.Pctl = bird.Pctl.copy()
         self.Pstl = bird.Pstl.copy()
         self.Picc = bird.Picc.copy()
-        self.PctNNLOl = None
-        if bird.co.with_NNLO:
-            self.PctNNLOl = bird.PctNNLOl.copy()
-
-    def setreducePslb(self, bird: Bird) -> None:
-        self.fullPs = bird.reducePslb(
-            b11AB=bird.b11AB,
-            bloopAB=bird.bloopAB,
-            bctAB=bird.bctAB,
-            bctNNLOAB=bird.bctNNLOAB,
-            bstAB=bird.bstAB,
-            P11l=self.P11l,
-            Ploopl=self.Ploopl,
-            Pctl=self.Pctl,
-            PctNNLOl=self.PctNNLOl,
-            Pstl=self.Pstl,
-            Picc=self.Picc,
-        )
+        self.PctNNLOl = bird.PctNNLOl.copy()
 
 
-class Bird(object):
+class Bird:
     """
     Main class which contains the power spectrum and correlation function, given a cosmology and a set of EFT parameters.
     Bird: Biased tracers in redshift space
@@ -697,16 +686,6 @@ class Bird(object):
         To store the power spectrum multipole full linear part and full loop part (the loop including the counterterms)
     Cf : ndarray
         To store the correlation function multipole full linear part and full loop part (the loop including the counterterms)
-    fullPs : ndarray
-        To store the full power spectrum multipole (linear + loop)
-    b11 : ndarray
-        EFT parameters for the linear terms per multipole
-    b13 : ndarray
-        EFT parameters for the 13-loop terms per multipole
-    b22 : ndarray
-        EFT parameters for the 22-loop terms per multipole
-    bct : ndarray
-        EFT parameters for the counter terms per multipole
     """
 
     def __init__(
@@ -744,7 +723,6 @@ class Bird(object):
         self.PctNNLOl = np.empty(shape=(self.co.Nl, self.co.NctNNLO, self.co.Nk))
         self.P22l = np.empty(shape=(self.co.Nl, self.co.N22, self.co.Nk))
         self.P13l = np.empty(shape=(self.co.Nl, self.co.N13, self.co.Nk))
-        self.Pb3 = np.empty(shape=(self.co.Nl, self.co.Nk))
         # stochastic terms
         self.Pstl = np.empty(shape=(self.co.Nl, 3, self.co.Nk))
 
@@ -759,19 +737,11 @@ class Bird(object):
         self.bct = np.empty(shape=(self.co.Nl))
         self.Ps = np.empty(shape=(2, self.co.Nl, self.co.Nk))
         self.Cf = np.empty(shape=(2, self.co.Nl, self.co.Ns))
-        self.fullPs = np.empty(shape=(self.co.Nl, self.co.Nk))
         # integral constraint terms, "constant" part
         # binning will affect this term
         self.Picc = np.zeros(shape=(self.co.Nl, self.co.Nk))
 
-        self._hooks: list[BirdHook] = []
         self.snapshots: dict[str, BirdSnapshot] = {}
-
-    def attach_hook(self, *args: BirdHook) -> None:
-        self._hooks.extend(args)
-
-    def clear_hook(self) -> None:
-        self._hooks = []
 
     def create_snapshot(self, name: str) -> None:
         """
@@ -783,7 +753,6 @@ class Bird(object):
         if name not in self.snapshots:
             snapshot = BirdSnapshot(self)
             self.snapshots[name] = snapshot
-            self.attach_hook(snapshot)
 
     def setPsCfl(self):
         """Creates multipoles for each term weighted accordingly"""
@@ -912,156 +881,6 @@ class Bird(object):
         self.Pstl[0, 1, :] = ks2
         if Nl >= 2:
             self.Pstl[1, 2, :] = ks2
-
-    def setreducePslb(
-        self,
-        bsA: Iterable[float],
-        bsB: Iterable[float] | None = None,
-        es: Iterable[float] = (0.0, 0.0, 0.0),
-        cnnloA: Iterable[float] = (0.0, 0.0),
-        cnnloB: Iterable[float] | None = None,
-    ) -> None:
-        R"""apply counter terms and bind fullPs to self
-
-        Parameters
-        ----------
-        bsA : Iterable[float]
-            b_1, b_2, b_3, b_4, c_{ct}, c_{r,1}, c{r,2}
-            if counterform="eastcoast", c_{ct}, c_{r,1}, c{r,2} are interpreted as
-            \tilde{c}_0, \tilde{c}_2, \tilde{c}_4
-        bsB : Iterable[float], optional
-            the same as bsA, but for tracer B, by default None,
-            and will compute auto power spectrum
-        es : Iterable[float], optional
-            c_{e,0}, c_{mono}, c_{quad}, by default zeros
-        cnnloA : Iterable[float]
-            c_{r,4}, c_{r,6} or ctilde for eastcoast
-        cnnloB : Iterable[float], optional
-            the same as cnnloA, but for tracer B, by default None,
-            and will compute auto power spectrum
-        """
-        kmA, krA, ndA, kmB, krB, ndB = (
-            self.co.kmA,
-            self.co.krA,
-            self.co.ndA,
-            self.co.kmB,
-            self.co.krB,
-            self.co.ndB,
-        )
-        b1A, b2A, b3A, b4A, cctA, cr1A, cr2A = bsA
-        b1B, b2B, b3B, b4B, cctB, cr1B, cr2B = bsB or bsA
-        f = self.f
-        ce0, cemono, cequad = es
-
-        # cct -> cct / km**2, cr1 -> cr1 / kr**2, cr2 -> cr2 / kr**2
-        # ce0 -> ce0 / nd, cemono -> cemono / nd / km**2, cequad -> cequad / nd / km**2
-        b11AB = np.array([b1A * b1B, (b1A + b1B) * f, f**2])
-        if self.co.counterform == "westcoast":
-            bctAB = np.array(
-                [
-                    b1A * cctB / kmB**2 + b1B * cctA / kmA**2,
-                    b1B * cr1A / krA**2 + b1A * cr1B / krB**2,
-                    b1B * cr2A / krA**2 + b1A * cr2B / krB**2,
-                    (cctA / kmA**2 + cctB / kmB**2) * f,
-                    (cr1A / krA**2 + cr1B / krB**2) * f,
-                    (cr2A / krA**2 + cr2B / krB**2) * f,
-                ]
-            )
-            if self.co.with_NNLO:
-                cr4, cr6 = cnnloA
-                bctNNLOAB = np.array(
-                    [
-                        1 / 4 * b1A**2 / krA**4 * cr4,
-                        1 / 4 * b1A / krA**4 * cr6,
-                        0.0,
-                    ]
-                )
-            else:
-                bctNNLOAB = np.zeros(3)
-        else:
-            bctAB = np.array(
-                [
-                    -cctA - cctB,
-                    -(cr1A + cr1B) * f,
-                    -(cr2A + cr2B) * f**2,
-                    0.0,
-                    0.0,
-                    0.0,
-                ]
-            )
-            if self.co.with_NNLO:
-                ctilde, *_ = cnnloA
-                bctNNLOAB = ctilde * np.array(
-                    [-(b1A**2) * f**4, -2 * b1A * f**5, -(f**6)]
-                )
-            else:
-                bctNNLOAB = np.zeros(3)
-        bloopAB = np.array(
-            [
-                1.0,
-                1.0 / 2.0 * (b1A + b1B),
-                1.0 / 2.0 * (b2A + b2B),
-                1.0 / 2.0 * (b3A + b3B),
-                1.0 / 2.0 * (b4A + b4B),
-                b1A * b1B,
-                1.0 / 2.0 * (b1A * b2B + b1B * b2A),
-                1.0 / 2.0 * (b1A * b3B + b1B * b3A),
-                1.0 / 2.0 * (b1A * b4B + b1B * b4A),
-                b2A * b2B,
-                1.0 / 2.0 * (b2A * b4B + b2B * b4A),
-                b4A * b4B,
-            ]
-        )
-        xfactor1 = 0.5 * (1.0 / ndA + 1.0 / ndB)
-        xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
-        bstAB = np.array([ce0 * xfactor1, cemono * xfactor2, cequad * xfactor2])
-
-        self.b11AB = b11AB
-        self.bctAB = bctAB
-        self.bctNNLOAB = bctNNLOAB
-        self.bloopAB = bloopAB
-        self.bstAB = bstAB
-        self.fullPs = self.reducePslb(
-            b11AB=b11AB,
-            bloopAB=bloopAB,
-            bctAB=bctAB,
-            bctNNLOAB=bctNNLOAB,
-            bstAB=bstAB,
-            P11l=self.P11l,
-            Ploopl=self.Ploopl,
-            Pctl=self.Pctl,
-            PctNNLOl=self.PctNNLOl,
-            Pstl=self.Pstl,
-            Picc=self.Picc,
-        )
-        for viewer in self._hooks:
-            viewer.setreducePslb(self)
-
-    # fmt: off
-    def reducePslb(
-        self, *, b11AB, bloopAB, bctAB, bctNNLOAB, bstAB, P11l, Ploopl, Pctl, PctNNLOl, Pstl, Picc
-    ) -> NDArray:
-        Ps0 = np.einsum("b,lbx->lx", b11AB, P11l)
-        Ps1 = np.einsum("b,lbx->lx", bloopAB, Ploopl) + np.einsum("b,lbx->lx", bctAB, Pctl)
-        if self.co.with_NNLO:
-            Ps1 += np.einsum("b,lbx->lx", bctNNLOAB, PctNNLOl)
-        Ps2 = np.einsum("b,lbx->lx", bstAB, Pstl)
-        # from matplotlib import pyplot as plt
-        # k = self.co.k
-        # plt.plot(k, k * Ps0[0], "k-", label="kaiser")
-        # plt.plot(k, k * Ps0[1], "b-")
-        # _Ploop = np.einsum("b,lbx->lx", bloopAB, Ploopl)
-        # _Pct = np.einsum("b,lbx->lx", bctAB, Pctl)
-        # plt.plot(k, k * _Ploop[0], "k--", label="loop")
-        # plt.plot(k, k * _Ploop[1], "b--")
-        # plt.plot(k, k * _Pct[0], "k:", label="counter")
-        # plt.plot(k, k * _Pct[1], "b:")
-        # plt.legend(frameon=False)
-        # plt.xlim(0, 0.3)
-        # plt.ylim(-300, 450)
-        # plt.show()
-        return Ps0 + Ps1 + Ps2 + Picc
-    # fmt: on
 
     def subtractShotNoise(self):
         """Subtract the constant stochastic term from the (22-)loop"""
@@ -1827,7 +1646,7 @@ class APeffect(HasLogger):
             axis=-1,
             kind="cubic",
             bounds_error=False,
-            fill_value="extrapolate",
+            fill_value="extrapolate",  # type: ignore
         )(kp)
         Pkmu = np.einsum("lpkm,lkm->pkm", Pkint, arrayLegendremup, optimize=True)
         Integrandmu = np.einsum(
@@ -1957,7 +1776,7 @@ class FiberCollision(HasLogger):
         dq_ref = np.concatenate([[0], dq_ref])
 
         PS_interp = interp1d(
-            kPS, PS, axis=-1, bounds_error=False, fill_value="extrapolate"
+            kPS, PS, axis=-1, bounds_error=False, fill_value="extrapolate"  # type: ignore
         )(q_ref)
 
         dPcorr = np.zeros(shape=(PS.shape[0], PS.shape[1], len(kout)))

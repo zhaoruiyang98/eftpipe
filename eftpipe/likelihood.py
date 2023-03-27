@@ -1078,6 +1078,7 @@ class EFTLike(Likelihood, Marginalizable):
             self._bG_group_cache,
             self._istart_iend_cache,
         ):
+            # TODO: ells trim
             _, kgrid, table = self.provider.get_nonlinear_Plk_gaussian_grid(
                 tracer,
                 chained=chained,
@@ -1107,6 +1108,7 @@ class EFTLike(Likelihood, Marginalizable):
             self.chained.values(),
             self._istart_iend_cache,
         ):
+            # TODO: ells trim
             if with_binning:
                 _, _, plk = self.provider.get_nonlinear_Plk_grid(
                     t, chained=chained, binned=True

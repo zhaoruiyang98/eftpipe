@@ -7,6 +7,7 @@ from typing import (
     Dict,
     List,
     Protocol,
+    TYPE_CHECKING,
     TypeVar,
     Union,
 )
@@ -16,9 +17,13 @@ if sys.version_info >= (3, 10):
 else:
     from typing_extensions import TypeAlias
 
+if TYPE_CHECKING:
+    import numpy as np
+    from numpy.typing import NDArray
+
+    ndarrayf: TypeAlias = NDArray[np.float64]
 
 Location: TypeAlias = Union[str, Path]
-
 YamlElement: TypeAlias = Union[str, bool, int, float, None, datetime]
 SimpleYaml: TypeAlias = Union[YamlElement, List["SimpleYaml"], Dict[str, "SimpleYaml"]]
 
