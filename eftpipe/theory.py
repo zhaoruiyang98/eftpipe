@@ -17,7 +17,6 @@ from typing import (
     TYPE_CHECKING,
 )
 from scipy.interpolate import interp1d
-from scipy.special import legendre
 from cobaya.log import LoggedError
 from cobaya.theory import HelperTheory
 from cobaya.theory import Theory
@@ -31,6 +30,7 @@ if TYPE_CHECKING:
 
 # local
 from .binning import Binning
+from .chained import Chained
 from .icc import IntegralConstraint
 from .interface import find_boltzmann_interface
 from .parambasis import find_param_basis
@@ -40,24 +40,6 @@ from .tools import group_lists
 from .tools import int_or_list
 from .tools import Initializer
 from .tools import recursively_update_dict
-
-
-def chain_coeff(l: int) -> float:
-    R"""compute ``A_\ell`` coeff for chained power spectrum
-
-    Parameters
-    ----------
-    l : int
-
-    Returns
-    -------
-    float
-
-    Notes
-    -----
-    .. math:: \frac{(2\ell+1)\mathcal{L}_{\ell}(0)}{(2\ell+5)\mathcal{L}_{\ell+2}(0)}
-    """
-    return ((2 * l + 1) * legendre(l)(0)) / ((2 * l + 5) * legendre(l + 2)(0))
 
 
 class EFTLSS(Theory):
@@ -227,13 +209,6 @@ class PluginsDict(TypedDict):
 class PlkKey(NamedTuple):
     chained: bool
     binned: bool
-
-
-def to_chained(ls_tot: list[int], fullPs: NDArray) -> NDArray:
-    out = np.empty_like(fullPs)
-    for i, l in enumerate(ls_tot[:-1]):
-        out[i, :] = fullPs[i, :] - chain_coeff(l) * fullPs[i + 1, :]
-    return out[:-1, :]
 
 
 class PlkInterpolator:
@@ -556,6 +531,7 @@ class EFTLSSLeaf(HelperTheory):
                 co=self.co,
                 name=self.get_name() + ".binning",
             )
+        self.chained_tranformer = Chained()
 
     def get_requirements(self) -> dict[str, Any]:
         # requirements should be known after initialization especially EFT parameters
@@ -765,7 +741,7 @@ class EFTLSSLeaf(HelperTheory):
                 if self.with_fiber:
                     plugins["fiber"].fibcolWindow(bird)
                 if self.binning:
-                    self.binning.kbinning(bird)
+                    self.binning.transform(bird)
                 self.bird = bird
             # use basis to compute power spectrum
             fullPs = self.basis.reduce_Plk(self.bird, params_values_dict)
@@ -792,16 +768,18 @@ class EFTLSSLeaf(HelperTheory):
                 ):
                     if binned:
                         assert self.binning
-                        plk = self.basis.reduce_Plk(self.binning, params_values_dict)
+                        birdlike = self.binning
                         kreturn = self.binning.keff.copy()
                     else:
-                        plk = fullPs  # type: ignore
+                        birdlike = self.bird
                         kreturn = kgrid.copy()
                     if chained:
-                        plk = to_chained(ls_tot, plk)
-                        tup = (ls[:-1], kreturn, plk[idx[:-1]].copy())
+                        birdlike = self.chained_tranformer.transform(birdlike)
+                        plk = self.basis.reduce_Plk(birdlike, params_values_dict)
+                        tup = (ls[:-1], kreturn, plk)
                     else:
-                        tup = (ls.copy(), kreturn, plk[idx].copy())
+                        plk = self.basis.reduce_Plk(birdlike, params_values_dict)
+                        tup = (ls.copy(), kreturn, plk)
                     key = PlkKey(chained=chained, binned=binned)
                     results[key] = tup
                 products[product] = results
@@ -823,22 +801,21 @@ class EFTLSSLeaf(HelperTheory):
                 ):
                     if binned:
                         assert self.binning
-                        PG_table = self.basis.reduce_Plk_gaussian_table(
-                            self.binning,
-                            params_values_dict,
-                        )
+                        birdlike = self.binning
                         kreturn = self.binning.keff.copy()
                     else:
-                        PG_table = self.basis.reduce_Plk_gaussian_table(
-                            self.bird,
-                            params_values_dict,
-                        )
+                        birdlike = self.bird
                         kreturn = kgrid.copy()
                     if chained:
-                        for kk, vv in PG_table.items():
-                            PG_table[kk] = to_chained(ls_tot, vv)
+                        birdlike = self.chained_tranformer.transform(birdlike)
+                        PG_table = self.basis.reduce_Plk_gaussian_table(
+                            birdlike, params_values_dict
+                        )
                         tup = (ls_tot[:-1], kreturn, PG_table)
                     else:
+                        PG_table = self.basis.reduce_Plk_gaussian_table(
+                            birdlike, params_values_dict
+                        )
                         tup = (ls_tot.copy(), kreturn, PG_table)
                     key = PlkKey(chained=chained, binned=binned)
                     out[key] = tup

@@ -7,12 +7,13 @@ from scipy.integrate import quad
 from scipy.interpolate import interp1d
 from .pybird import pybird
 from .pybird.pybird import BirdLike
+from .transformer import BirdTransformer
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
 
 
-class Binning(BirdLike, HasLogger):
+class Binning(BirdTransformer, HasLogger):
     """Match the theoretical output to data, do binning and store results
 
     Parameters
@@ -122,7 +123,7 @@ class Binning(BirdLike, HasLogger):
         res = np.trapz(Pkint(self.points) * self.points**2, x=self.points, axis=-1)
         return res / self.binvol
 
-    def kbinning(self, bird: pybird.Bird) -> None:
+    def kbinning(self, bird: BirdLike):
         """
         Apply binning in k-space for linear-spaced data k-array
         """
@@ -133,3 +134,7 @@ class Binning(BirdLike, HasLogger):
         self.PctNNLOl = self.integrBinning(bird.PctNNLOl)
         self.Pstl = self.integrBinning(bird.Pstl)
         self.Picc = self.integrBinning(bird.Picc)
+        return self
+
+    def transform(self, birdlike: BirdLike):
+        return self.kbinning(birdlike)
