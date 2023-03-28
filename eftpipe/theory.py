@@ -32,7 +32,7 @@ if TYPE_CHECKING:
 from .binning import Binning
 from .chained import Chained
 from .icc import IntegralConstraint
-from .interface import find_boltzmann_interface
+from .boltzmann import find_boltzmann_interface
 from .parambasis import find_param_basis
 from .pybird import pybird
 from .tools import bool_or_list
@@ -720,7 +720,7 @@ class EFTLSSLeaf(HelperTheory):
         boltzmann = self.boltzmann
         # the main computation pipeline
         if self.need_power:
-            if boltzmann.updated() or self.bird is None:
+            if self.bird is None:
                 # TODO: make kmin, kmax configurable
                 kh = np.logspace(-5, 0, 200)
                 pkh = boltzmann.Pkh(kh)

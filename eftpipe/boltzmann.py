@@ -6,7 +6,6 @@ import importlib
 import os
 import numpy as np
 from abc import abstractmethod
-from copy import deepcopy
 from typing import Any, cast, Protocol, TYPE_CHECKING
 from scipy.interpolate import interp1d
 from cobaya.log import HasLogger
@@ -59,10 +58,6 @@ class BoltzmannInterface(Protocol):
     def get_requirements(self) -> dict[str, Any]:
         """Cosmological requirements of this interface when used by eftlss"""
         return {}
-
-    def updated(self) -> bool:
-        """Whether the Boltzmann code has been updated, compared to the last time it was invoked"""
-        return True
 
     @abstractmethod
     def Pkh(self, kh: NDArray[np.floating]) -> NDArray[np.floating]:
@@ -139,14 +134,6 @@ class InternalBoltzmannInterface(HasLogger, BoltzmannInterface):
     def get_requirements(self) -> dict[str, Any]:
         raise NotImplementedError
 
-    def updated(self) -> bool:
-        """
-        Notes
-        -----
-        This is a hack to cobaya's classy and camb modules
-        """
-        raise NotImplementedError
-
     def Pkh(self, kh: NDArray[np.floating]) -> NDArray[np.floating]:
         # extra_kmin=1e-6 is sufficient
         fn: PowerSpectrumInterpolator = self.provider.get_Pk_interpolator(
@@ -200,21 +187,6 @@ class CobayaCambInterface(InternalBoltzmannInterface):
         }
         return requires
 
-    # HACK
-    def updated(self) -> bool:
-        flag = True
-        provider = cast(Any, self.provider)
-        transfer = provider.model.theory["camb.transfers"]
-        camb = provider.model.theory["camb"]
-        if len(transfer._states) != 0 and len(camb._states) != 0:
-            cosmo_params_dict = deepcopy(transfer._states[0]["params"])
-            cosmo_params_dict.update(camb._states[0]["params"])
-            if cosmo_params_dict == self.cosmo_params_dict:
-                flag = False
-            else:
-                self.cosmo_params_dict = cosmo_params_dict
-        return flag
-
     # XXX: warning: f used here is effective f, which is different from that used in classy
     # possiblely use Omega_m(z)**0.545 instead
     def f(self) -> float:
@@ -266,18 +238,6 @@ class CobayaClassyInterface(InternalBoltzmannInterface):
             "rdrag": None,
         }
         return requires
-
-    # HACK
-    def updated(self) -> bool:
-        flag = True
-        classy = self.provider.model.theory[self.name]  # type: ignore
-        if len(classy._states) != 0:
-            cosmo_params_dict = deepcopy(classy._states[0]["params"])
-            if cosmo_params_dict == self.cosmo_params_dict:
-                flag = False
-            else:
-                self.cosmo_params_dict = cosmo_params_dict
-        return flag
 
     def f(self) -> float:
         from classy import CosmoSevereError  # type: ignore
@@ -342,9 +302,6 @@ class LinearPowerFile(HasLogger, BoltzmannInterface):
             self.prefix + "alperp": None,
             self.prefix + "alpara": None,
         }
-
-    def updated(self) -> bool:
-        return False
 
     def Pkh(self, kh: NDArray[np.floating]) -> NDArray[np.floating]:
         return self.plin(kh)
