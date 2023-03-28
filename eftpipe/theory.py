@@ -1,34 +1,41 @@
 from __future__ import annotations
-
-# global
 import itertools
-import time
 import numpy as np
 from collections import defaultdict
 from copy import deepcopy
-from functools import cached_property
+from dataclasses import dataclass
+from dataclasses import field
+from dataclasses import InitVar
 from pathlib import Path
+from time import perf_counter
 from typing import (
     Any,
     cast,
+    Callable,
     Iterable,
-    NamedTuple,
+    Mapping,
+    Protocol,
+    Sequence,
     TypedDict,
     TYPE_CHECKING,
 )
-from scipy.interpolate import interp1d
 from cobaya.log import LoggedError
 from cobaya.theory import HelperTheory
 from cobaya.theory import Theory
-from .parambasis import EastCoastBasis
-from .window import Window
+from cobaya.typing import empty_dict, TheoryDictIn
+from scipy.interpolate import interp1d
 
 if TYPE_CHECKING:
-    from numpy.typing import ArrayLike, NDArray
     from cobaya.theory import Provider
+    from numpy.typing import ArrayLike, NDArray
+    from typing_extensions import TypeAlias
+    from .boltzmann import BoltzmannInterface
+    from .pybird.pybird import BirdLike
     from .pybird.pybird import BirdSnapshot
+    from .parambasis import EFTBasis
 
-# local
+    ndarrayf: TypeAlias = NDArray[np.float64]
+
 from .binning import Binning
 from .chained import Chained
 from .icc import IntegralConstraint
@@ -40,180 +47,27 @@ from .tools import group_lists
 from .tools import int_or_list
 from .tools import Initializer
 from .tools import recursively_update_dict
+from .window import Window
 
 
-class EFTLSS(Theory):
-    """
-    Effective field theory of Large-scale Structures
-    """
-
-    file_base_name = "eftlss"
-
-    cache_dir_path: Path
-    tracers: dict[str, dict[str, Any]]
-
-    names: list[str]
-
-    def initialize(self) -> None:
-        super().initialize()
-        self.cache_dir_path = Path(self.cache_dir_path)
-        # XXX: self.tracers seems not completely copied by cobaya
-        self.tracers = deepcopy(self.tracers)
-        if default := self.tracers.pop("default", {}):
-            self.mpi_info("'default' field applies to all tracers")
-            for k, tracer_config in self.tracers.items():
-                default_config = deepcopy(default)
-                recursively_update_dict(default_config, tracer_config)
-                self.tracers[k] = default_config
-        elif default := self.tracers.pop("common", {}):
-            self.mpi_info("'common' field applies to all tracers")
-            self.mpi_warning(
-                "'common' field is deprecated, please use 'default' instead"
-            )
-            for k, tracer_config in self.tracers.items():
-                default_config = deepcopy(default)
-                recursively_update_dict(default_config, tracer_config)
-                self.tracers[k] = default_config
-        self.names = list(self.tracers.keys())
-        if not self.names:
-            raise LoggedError(self.log, "No tracer specified")
-
-        # check cross
-        for name, tracer_config in self.tracers.items():
-            cross = tracer_config.get("cross", [])
-            if cross and (not isinstance(cross, list) or len(cross) != 2):
-                raise LoggedError(
-                    self.log,
-                    "tracer %s: expect a list of 2 elements, but given cross=%r",
-                    name,
-                    cross,
-                )
-            if diff := set(cross).difference(self.names):
-                raise LoggedError(
-                    self.log,
-                    "tracer %s: cross=%r contains unknown tracer names: %r",
-                    name,
-                    cross,
-                    diff,
-                )
-
-        # check boltzmann provider
-        providers = set(v.get("provider", "classy") for v in self.tracers.values())
-        if len(providers) != 1:
-            self.mpi_warning(
-                "Seems like tracers are not sharing the same provider, is this intended?"
-            )
-
-        # {requirement: tracers' names}
-        self._must_provide: defaultdict[str, set[str]] = defaultdict(set)
-
-    def get_requirements(self) -> dict[str, dict]:
-        """
-        make it possible to use eftlss with likelihood one, otherwise eftlss may not depend on anything
-        """
-        return {name + "_results": {} for name in self.names}
-
-    def must_provide(
-        self, **requirements: dict[str, dict[str, Any]]
-    ) -> dict[str, dict[str, Any]]:
-        """redirect requirements to EFTLSSChild
-
-        For example, ``nonlinear_Plk_grid={{'LRG': {...}, 'ELG': {...}}}`` will
-        be packed like ``{'LRG_results': {'nonlinear_Plk_grid': {...}}, 'ELG_results': {'nonlinear_Plk_grid': {...}}}``
-
-        all requirements support ``default`` field
-
-        detailed requirement form can be found in ``EFTLSSChild.must_provide``
-        """
-        super().must_provide(**requirements)
-        redirected_reqs_tmp: defaultdict[str, dict[str, Any]] = defaultdict(dict)
-        for product, config_dict in requirements.items():
-            self._must_provide[product] |= config_dict.keys()
-            if product == "snapshots":
-                # no settings required for snapshots
-                continue
-            for tracer, settings in config_dict.items():
-                redirected_reqs_tmp[tracer][product] = settings
-        redirected_reqs = {}
-        for tracer, config_dict in redirected_reqs_tmp.items():
-            redirected_reqs[tracer + "_results"] = deepcopy(config_dict)
-        # apply default settings
-        if default := redirected_reqs_tmp.pop("default", {}):
-            for tracer, config_dict in redirected_reqs.items():
-                ref = deepcopy(default)
-                recursively_update_dict(ref, config_dict)
-                redirected_reqs[tracer] = ref
-        return redirected_reqs
-
-    def calculate(self, state, want_derived=True, **params_values_dict):
-        pass
-
-    def _get_tracer_products(self, tracer: str, product: str):
-        if tracer not in self._must_provide[product]:
-            raise LoggedError(self.log, "No %s requested for %s", product, tracer)
-        return self.provider.get_result(tracer + "_results")[product]
-
-    def get_nonlinear_Plk_grid(
-        self, tracer: str, chained: bool = False, binned: bool = False
-    ) -> tuple[list[int], NDArray, NDArray]:
-        results = self._get_tracer_products(tracer, "nonlinear_Plk_grid")
-        key = PlkKey(chained=chained, binned=binned)
-        # let it crash...
-        return results[key]
-
-    def get_nonlinear_Plk_gaussian_grid(
-        self, tracer: str, chained: bool = False, binned: bool = False
-    ) -> tuple[list[int], NDArray, dict[str, NDArray]]:
-        results = self._get_tracer_products(tracer, "nonlinear_Plk_gaussian_grid")
-        key = PlkKey(chained=chained, binned=binned)
-        return results[key]
-
-    def get_nonlinear_Plk_interpolator(
-        self, tracer: str, chained: bool = False
-    ) -> PlkInterpolator:
-        results = self._get_tracer_products(tracer, "nonlinear_Plk_interpolator")
-        key = PlkKey(chained=chained, binned=False)
-        return results[key]
-
-    def get_snapshots(self, tracer: str) -> dict[str, BirdSnapshot]:
-        return self._get_tracer_products(tracer, "snapshots")
-
-    def get_eft_params_values_dict(self, tracer: str) -> dict[str, float]:
-        return self._get_tracer_products(tracer, "eft_params_values_dict")
-
-    def get_helper_theories(self) -> dict[str, Theory]:
-        out = {}
-        for i, name in enumerate(self.names):
-            # Pk_interpolator requires at least 4 redshift
-            zextra = []
-            if i == 0 and len(self.names) < 4:
-                zeff = self.tracers[name]["z"]
-                zextra = [zeff + i * 0.1 for i in range(1, 5 - len(out))]
-            out["eftpipe.eftlss." + name] = EFTLSSLeaf(
-                self,
-                name,
-                dict(stop_at_error=self.stop_at_error),
-                timing=self.timer,  # type: ignore
-                zextra=zextra,
-            )
-        return out
+def leaf_product_name(tracer: str):
+    return f"eftleaf_{tracer}_results"
 
 
-class PluginsDict(TypedDict):
-    IRresum: pybird.Resum
-    APeffect: pybird.APeffect
-    window: Window
-    fiber: pybird.FiberCollision
+def leaf_kernel_product_name(tracer: str):
+    return f"eftleaf_kernel_{tracer}_results"
 
 
-class PlkKey(NamedTuple):
-    chained: bool
-    binned: bool
-
-
+@dataclass
 class PlkInterpolator:
-    def __init__(self, ls: list[int], kgrid: NDArray, Plk: NDArray):
-        self.ls = ls.copy()
+    ls: list[int]
+    kgrid: InitVar[ndarrayf]
+    Plk: InitVar[ndarrayf]
+
+    fn: Callable[[ArrayLike], ndarrayf] = field(init=False)
+
+    def __post_init__(self, kgrid: ndarrayf, Plk: ndarrayf):
+        self.ls = self.ls.copy()
         # XXX: not sure if inserting zero is a good idea
         kgrid = np.hstack(([0], kgrid))
         Plk = np.insert(Plk, 0, 0, axis=-1)
@@ -225,10 +79,9 @@ class PlkInterpolator:
             bounds_error=False,
             fill_value="extrapolate",  # type: ignore
         )
-        fn = lambda k: tmp(k) / k
-        self.fn = fn
+        self.fn = lambda k: tmp(k) / k
 
-    def __call__(self, l: int | Iterable[int], k: ArrayLike) -> NDArray:
+    def __call__(self, l: int | Iterable[int], k: ArrayLike) -> ndarrayf:
         l = int_or_list(l)
         try:
             idx = [self.ls.index(ll) for ll in l]
@@ -239,110 +92,266 @@ class PlkInterpolator:
         return self.fn(k)[idx]
 
 
-class EFTLSSLeaf(HelperTheory):
-    """EFT theory for single tracer
+class PluginsDict(TypedDict):
+    IRresum: pybird.Resum
+    APeffect: pybird.APeffect
+    window: Window
+    fiber: pybird.FiberCollision
 
-    Parameters
-    ----------
-    eftlss : EFTLSS
-        parent EFTLSS theory
-    name : str
-        tracer's name
-    info : dict
-    timing : bool, optional
-    zextra : list[float], optional
-        append extra redshifts to satisfy Pk_interpolator's requirement
-    """
+
+class EFTLSS(Theory):
+    """Effective Field Theory of Large-scale Structures"""
+
+    cache_dir_path: Path
+    tracers: dict[str, dict[str, Any]]
+    # override default
+    file_base_name = "eftlss"
+    # other attrs
+    tracer_names: Sequence[str]
+
+    def initialize(self) -> None:
+        # step 1: check and apply 'default' field to all tracers
+        self.cache_dir_path = Path(self.cache_dir_path)
+        if not self.cache_dir_path.is_dir():
+            self.cache_dir_path.mkdir(parents=True)
+        # XXX: self.tracers seems not completely copied by cobaya, manually copy it here
+        self.tracers = deepcopy(self.tracers)
+        if default := self.tracers.pop("default", {}):
+            self.mpi_info("'default' field applies to all tracers")
+            for tracer_name, config in self.tracers.items():
+                default_config = deepcopy(default)
+                recursively_update_dict(default_config, config)
+                self.tracers[tracer_name] = default_config
+        self.tracer_names = list(self.tracers.keys())
+        if not self.tracer_names:
+            raise LoggedError(self.log, "No tracer specified")
+        # step 2: check 'cross' field is valid
+        for tracer_name, config in self.tracers.items():
+            cross = config.get("cross", False)
+            if isinstance(cross, bool):
+                continue
+            if not isinstance(cross, list) or len(cross) != 2:
+                msg = "tracer %s: expect a list of 2 elements, but given cross=%r"
+                raise LoggedError(self.log, msg, tracer_name, cross)
+            if diff := set(cross).difference(self.tracer_names):
+                msg = "tracer %s: cross=%r contains unknown tracer names: %r"
+                raise LoggedError(self.log, msg, tracer_name, cross, diff)
+        # step 3: check if tracers are using the same 'boltzmann' provider
+        providers = set(
+            config.get("provider", "classy") for config in self.tracers.values()
+        )
+        if len(providers) != 1:
+            self.mpi_warning(
+                "Tracers are not sharing the same provider, is this intended?"
+            )
+
+    def get_requirements(self):
+        """
+        dummy requirements: make it possible to use eftlss with likelihood one,
+        otherwise eftlss does not depend on anything
+        """
+        return {leaf_product_name(tracer): {} for tracer in self.tracer_names}
+
+    def must_provide(
+        self, **requirements: dict[str, dict[str, Any]]
+    ) -> dict[str, dict[str, Any]]:
+        """redirect requirements to EFTLeaf and EFTLeafKernel
+
+        For example, ``nonlinear_Plk_grid={{'LRG': {...}, 'ELG': {...}}}`` will
+        be packed like ``{'eftleaf_LRG_results': {'nonlinear_Plk_grid': {...}}, 'eftleaf_ELG_results': {'nonlinear_Plk_grid': {...}}}``
+
+        all requirements support ``default`` field
+
+        detailed requirement form can be found in ``EFTLeaf.must_provide``
+        """
+        super().must_provide(**requirements)
+        redirected: defaultdict[str, dict[str, Any]] = defaultdict(dict)
+        for product, config_per_tracer in requirements.items():
+            config_per_tracer: dict[str, Any]
+            for tracer, config in config_per_tracer.items():
+                if (tracer != "default") and (tracer not in self.tracer_names):
+                    raise LoggedError(self.log, "Unknown tracer name: %s", tracer)
+                redirected[tracer][product] = config
+        reqs = {}
+        for tracer, product_config in redirected.items():
+            reqs[leaf_product_name(tracer)] = deepcopy(product_config)
+            reqs[leaf_kernel_product_name(tracer)] = deepcopy(product_config)
+        # apply default settings
+        if default := reqs.pop("default", {}):
+            for tracer, config in reqs.items():
+                default_config = deepcopy(default)
+                recursively_update_dict(default_config, config)
+                reqs[tracer] = default_config
+        self.mpi_debug("Redirected requirements: %r", reqs)
+        return reqs
+
+    def get_helper_theories(self) -> dict[str, Theory]:
+        info = {"stop_at_error": self.stop_at_error}
+        helpers = {}
+        for i, tracer in enumerate(self.tracer_names):
+            # Pk_interpolator requires at least 4 redshift
+            zextra = []
+            if i == 0 and len(self.tracer_names) < 4:
+                zeff = self.tracers[tracer]["z"]
+                zextra = [zeff + i * 0.1 for i in range(1, 5 - len(helpers))]
+            # leaf
+            leaf_name = self.leaf_name(tracer)
+            helpers[leaf_name] = EFTLeaf(
+                info=info,
+                name=leaf_name,
+                timing=self.timer,
+                tracer=tracer,
+                eftlss=self,
+            )
+            # kernel
+            leaf_kernel_name = self.leaf_kernel_name(tracer)
+            helpers[leaf_kernel_name] = EFTLeafKernel(
+                info=info,
+                name=leaf_kernel_name,
+                timing=self.timer,
+                tracer=tracer,
+                eftlss=self,
+                zextra=zextra.copy(),
+            )
+        return helpers
+
+    def leaf_name(self, tracer: str):
+        return self.get_name() + "." + tracer
+
+    def leaf_kernel_name(self, tracer: str):
+        return self.leaf_name(tracer) + ".kernel"
+
+    def retrieve_product_from_leaf(self, tracer: str, product: Any):
+        if tracer not in self.tracer_names:
+            raise ValueError(f"Tracer {tracer} not in {self.tracer_names}!")
+        try:
+            return self.provider.get_result(leaf_product_name(tracer))[product]
+        except KeyError:
+            raise LoggedError(
+                self.log,
+                "%s not computed, please check if you have specified it in requirements",
+                product,
+            )
+
+    def get_nonlinear_Plk_grid(
+        self, tracer: str, chained: bool = False, binned: bool = False
+    ) -> tuple[list[int], ndarrayf, ndarrayf]:
+        key = ("nonlinear_Plk_grid", chained, binned)
+        return self.retrieve_product_from_leaf(tracer, key)
+
+    def get_nonlinear_Plk_gaussian_grid(
+        self, tracer: str, chained: bool = False, binned: bool = False
+    ) -> tuple[list[int], ndarrayf, dict[str, ndarrayf]]:
+        key = ("nonlinear_Plk_gaussian_grid", chained, binned)
+        return self.retrieve_product_from_leaf(tracer, key)
+
+    def get_nonlinear_Plk_interpolator(
+        self, tracer: str, chained: bool = False
+    ) -> PlkInterpolator:
+        key = ("nonlinear_Plk_interpolator", chained)
+        return self.retrieve_product_from_leaf(tracer, key)
+
+    def get_snapshots(self, tracer: str) -> dict[str, BirdSnapshot]:
+        return self.retrieve_product_from_leaf(tracer, "snapshots")
+
+    def get_eft_params_values_dict(self, tracer: str) -> dict[str, float]:
+        return self.retrieve_product_from_leaf(tracer, "eft_params_values_dict")
+
+
+class LeafKernelShared(Protocol):
+    tracer: str
+    tracer_prefix: str
+    tracer_config: Mapping[str, Any]
+    eftlss: EFTLSS
+
+    def set_tracer_prefix(self):
+        if (prefix := self.tracer_config.get("prefix")) is None:
+            prefix = self.tracer + "_"
+        self.tracer_prefix = prefix
+
+    def cross_type(self) -> bool | list[str]:
+        return self.tracer_config.get("cross", False)
+
+    def build_basis(self) -> EFTBasis:
+        if (prefix := self.tracer_config.get("prefix")) is None:
+            prefix = self.tracer + "_"
+        related_prefix: list[str] = []
+        if isinstance(cross := self.cross_type(), Iterable):
+            for name in cross:
+                config = self.eftlss.tracers[name]
+                related_prefix.append(
+                    config["prefix"] if config.get("prefix") else name + "_"
+                )
+        return find_param_basis(self.tracer_config.get("basis", "westcoast"))(
+            prefix=prefix, cross_prefix=related_prefix
+        )
+
+
+class EFTLeafKernel(HelperTheory, LeafKernelShared):
+    """EFT theory for single tracer (EFT parameterization independent part)"""
+
+    tracer: str
+    tracer_prefix: str
+    tracer_config: Mapping[str, Any]
+    eftlss: EFTLSS
+    zextra: list[float]
+    basis: EFTBasis
+    zeff: float
+    boltzmann: BoltzmannInterface
+    plugins: dict[str, Any]
 
     def __init__(
         self,
-        eftlss: EFTLSS,
-        name: str,
-        info,
-        timing: bool | None = None,
-        zextra: list[float] | None = None,
-    ) -> None:
-        self._zextra: list[float] = zextra or []
-        self.name = name
-        self.eftlss = eftlss
-        # EFTLSSChild always initialized after EFTLSS, safe to use config
-        self.config = self.eftlss.tracers[name]
-        super().__init__(info, self.eftlss.get_name() + "." + name, timing=timing)
-
-    @cached_property
-    def is_cross(self) -> bool:
-        return bool(self.config.get("cross", False))
-
-    @cached_property
-    def cross_tracers(self) -> tuple[str, str]:
-        return tuple(self.config.get("cross", ()))
-
-    @property
-    def need_power(self):
-        return any(
-            item in self._must_provide
-            for item in ("nonlinear_Plk_grid", "nonlinear_Plk_gaussian_grid")
+        info: TheoryDictIn = empty_dict,
+        name: str | None = None,
+        timing: Any | None = None,
+        packages_path: str | None = None,
+        initialize: bool = True,
+        standalone: bool = True,
+        tracer: str = "",
+        eftlss: EFTLSS | None = None,
+        zextra: list[float] = [],
+    ):
+        self.tracer = tracer
+        self.eftlss = cast(EFTLSS, eftlss)
+        self.zextra = zextra or []
+        # EFTLeafKernel always initialized after EFTLSS, safe to use config
+        self.tracer_config = self.eftlss.tracers[tracer]
+        super().__init__(
+            info=info,
+            name=name,
+            timing=timing,
+            packages_path=packages_path,
+            initialize=initialize,
+            standalone=standalone,
         )
 
-    @property
-    def need_marg(self):
-        return "nonlinear_Plk_gaussian_grid" in self._must_provide
-
-    @property
-    def need_binning(self):
-        return True in self._must_provide.get("nonlinear_Plk_grid", {}).get(
-            "binned", [False]
-        )
-
-    def setup_prefix(self) -> None:
-        if (prefix := self.config.get("prefix")) is None:
-            prefix = self.name + "_"
-        self.prefix: str = prefix
-        # write back
-        self.config["prefix"] = prefix
-        # find related prefix
-        self.related_prefix: list[str] = []
-        if cross := self.config.get("cross"):
-            for name in cross:
-                config = self.eftlss.tracers[name]
-                self.related_prefix.append(
-                    config["prefix"] if config.get("prefix") else name + "_"
-                )
-
-    def initialize(self) -> None:
+    def initialize(self):
         super().initialize()
-        self.setup_prefix()
-        with_NNLO = self.config.get("with_NNLO", False)
-        self.basis = find_param_basis(self.config.get("basis", "westcoast"))(
-            self.prefix, self.related_prefix
-        )
-        self.mpi_info("EFT parameter basis: %s", self.basis.get_name())
-        self.mpi_info("with_NNLO: %s", with_NNLO)
-        self._not_reported = defaultdict(lambda: True)
-        try:
-            self.zeff: float = self.config["z"]
-        except KeyError:
-            raise LoggedError(self.log, "must specify effective redshift z")
-        # provider hould be determined at initialization (requirements from boltzmann interface)
+        self.set_tracer_prefix()
+        self.basis = self.build_basis()
+        self.zeff = self.tracer_config["z"]
         self.boltzmann = find_boltzmann_interface(
-            self.config.get("provider", "classy"),
-            self.config.get("provider_kwargs", {}),
+            self.tracer_config.get("provider", "classy"),
+            self.tracer_config.get("provider_kwargs", {}),
         )
         self.boltzmann.initialize(
-            zeff=self.zeff, use_cb=self.config.get("use_cb", False), zextra=self._zextra
+            zeff=self.zeff,
+            use_cb=self.tracer_config.get("use_cb", False),
+            zextra=self.zextra,
         )
         # delayed initialization in initialize_with_provider,
         # so that all dependencies can be quickly checked
         # check config
         self.plugins: dict[str, Any] = {}
-        self.with_IRresum: bool = self.config.get("with_IRresum", True)
+        self.with_IRresum: bool = self.tracer_config.get("with_IRresum", True)
         if self.with_IRresum:
             self.plugins["_IRresum"] = Initializer(
-                pybird.Resum, self.config.get("IRresum", {}), self.log
+                pybird.Resum, self.tracer_config.get("IRresum", {}), self.log
             )
-        self.with_APeffect: bool = self.config.get("with_APeffect", False)
+        self.with_APeffect: bool = self.tracer_config.get("with_APeffect", False)
         if self.with_APeffect:
-            APeffect_config = deepcopy(self.config.get("APeffect", {}))
+            APeffect_config = deepcopy(self.tracer_config.get("APeffect", {}))
             if APeffect_config.get("z_AP") is None:
                 APeffect_config["z_AP"] = self.zeff
             self.plugins["_APeffect"] = Initializer(
@@ -350,118 +359,56 @@ class EFTLSSLeaf(HelperTheory):
                 APeffect_config,
                 self.log,
             )
-        self.with_window: bool = self.config.get("with_window", False)
+        self.with_window: bool = self.tracer_config.get("with_window", False)
         if self.with_window:
             self.plugins["_window"] = Initializer(
-                Window, self.config.get("window", {}), self.log
+                Window, self.tracer_config.get("window", {}), self.log
             )
-        self.with_fiber: bool = self.config.get("with_fiber", False)
+        self.with_fiber: bool = self.tracer_config.get("with_fiber", False)
         if self.with_fiber:
             self.plugins["_fiber"] = Initializer(
-                pybird.FiberCollision, self.config.get("fiber", {}), self.log
+                pybird.FiberCollision, self.tracer_config.get("fiber", {}), self.log
             )
-        # TODO: move icc config under the window
-        self.with_icc: bool = self.config.get("with_icc", False)
+        # TODO: move icc config to window
+        self.with_icc: bool = self.tracer_config.get("with_icc", False)
         if self.with_icc:
             self.plugins["_icc"] = Initializer(
-                IntegralConstraint, self.config.get("icc", {}), self.log
+                IntegralConstraint, self.tracer_config.get("icc", {}), self.log
             )
-        self.binning: Binning | None = None
-        self._must_provide: defaultdict[str, dict[str, Any]] = defaultdict(dict)
-
-    def extract_km_kr_nd(self):
-        cross_tracers = self.cross_tracers
-        if cross_tracers:
-            try:
-                tracerA, tracerB = (self.eftlss.tracers[_] for _ in cross_tracers)
-                kmA, krA, ndA = tracerA["km"], tracerA.get("kr"), tracerA["nd"]
-                kmB, krB, ndB = tracerB["km"], tracerB.get("kr"), tracerB["nd"]
-                if krA is None:
-                    self.mpi_warning(
-                        "%s: kr not specified, assuming kr=km, will raise exception in the future",
-                        cross_tracers[0],
-                    )
-                    krA = kmA
-                if krB is None:
-                    self.mpi_warning(
-                        "%s: kr not specified, assuming kr=km, will raise exception in the future",
-                        cross_tracers[1],
-                    )
-                    krB = kmB
-            except KeyError:
-                raise LoggedError(
-                    self.log, "missing km, kr or nd for tracer %s", cross_tracers
-                )
-        else:
-            try:
-                kmA, krA, ndA = (
-                    self.config["km"],
-                    self.config.get("kr"),
-                    self.config["nd"],
-                )
-                if krA is None:
-                    self.mpi_warning(
-                        "kr not specified, assuming kr=km, will raise exception in the future"
-                    )
-                    krA = kmA
-                kmB, krB, ndB = kmA, krA, ndA
-            except KeyError:
-                raise LoggedError(self.log, "must specify km, kr and nd")
-        if isinstance(self.basis, EastCoastBasis) and kmA != krA:
-            raise LoggedError(self.log, "eastcoast basis is usually used with km=kr")
-        return kmA, krA, ndA, kmB, krB, ndB
+        # allowed keys: Nl, binned, binning, chained
+        self._must_provide: dict[str, Any] = {"Nl": 0, "binned": [], "chained": []}
+        self._warned = set()
 
     def initialize_with_provider(self, provider: Provider):
         super().initialize_with_provider(provider)
+        # do not initialize if no power spectrum is required
+        if not self.required_power_spectrum():
+            return
 
         self.boltzmann.initialize_with_provider(provider)
-        kmA, krA, ndA, kmB, krB, ndB = self.extract_km_kr_nd()
-
-        # do not initialize if no power spectrum requested
-        if not self.need_power:
-            return
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-        counterform = self.config.get("counterform") or self.basis.counterform()
+        self.mpi_info("EFT parameter basis: %s", self.basis.get_name())
+        self.mpi_info("with_NNLO: %s", self.tracer_config.get("with_NNLO", False))
+        counterform = self.tracer_config.get("counterform") or self.basis.counterform()
         if counterform != self.basis.counterform():
             self.mpi_warning(
                 "specified counterform %s is different from the one in basis %s",
                 counterform,
                 self.basis.counterform(),
             )
-        if self.cross_tracers:
-            _A, _B = self.cross_tracers
-            self.mpi_info("%s: km=%.3f kr=%.3f nd=%.3e", _A, kmA, krA, ndA)
-            self.mpi_info("%s: km=%.3f kr=%.3f nd=%.3e", _B, kmB, krB, ndB)
-        else:
-            self.mpi_info("km=%.3f kr=%.3f nd=%.3e", kmA, krA, ndA)
-        self.mpi_info("effective redshift: %.3f", self.zeff)
-        if self.cross_tracers:
-            self.mpi_info(
-                "computing cross power spectrum between %s and %s", *self.cross_tracers
-            )
-        ls_group = []
-        for name in (
-            "nonlinear_Plk_grid",
-            "nonlinear_Plk_interpolator",
-            "nonlinear_Plk_gaussian_grid",
-        ):
-            if name not in self._must_provide:
-                continue
-            ls_group.append(self._must_provide[name]["ls"])
-        # pybird actually does not support computing, e.g. P4 only
-        lmax = max(group_lists(*ls_group))
-        ls = list(range(0, lmax + 2, 2))
-        Nl = len(ls)
-        self.mpi_info("compute power spectrum multipoles (internal): %s", ls)
+        self.report_cross_type()
+        self.mpi_info(
+            "compute power spectrum multipoles (internally): %s",
+            [2 * i for i in range(self.Nl())],
+        )
 
-        optiresum: bool = self.config.get("IRresum", {}).pop("optiresum", False)
+        optiresum: bool = self.tracer_config.get("IRresum", {}).pop("optiresum", False)
         if optiresum:
             self.mpi_warning(
                 "no test on ``optiresum = true``, use it only if you know what you are doing"
             )
+        kmA, krA, ndA, kmB, krB, ndB = self.extract_km_kr_nd()
         self.co = pybird.Common(
-            Nl=Nl,
+            Nl=self.Nl(),
             optiresum=optiresum,
             kmA=kmA,
             krA=krA,
@@ -470,9 +417,8 @@ class EFTLSSLeaf(HelperTheory):
             krB=krB,
             ndB=ndB,
             counterform=counterform,
-            with_NNLO=self.config.get("with_NNLO", False),
+            with_NNLO=self.tracer_config.get("with_NNLO", False),
         )
-        self.bird: pybird.Bird | None = None
         self.nonlinear = pybird.NonLinear(
             load=True,
             save=True,
@@ -481,11 +427,7 @@ class EFTLSSLeaf(HelperTheory):
             name=self.get_name() + ".nonlinear",
         )
 
-        if self.config.get("use_cb", False):
-            self.mpi_info("using P_cb as input linear power spectrum")
-        else:
-            self.mpi_info("using P_m as input linear power spectrum")
-
+        # initialize plugins
         msg_pool = []
         if self.with_IRresum:
             self.plugins["IRresum"] = self.plugins["_IRresum"].initialize(
@@ -500,7 +442,7 @@ class EFTLSSLeaf(HelperTheory):
             )
             msg_pool.append(("APeffect enabled",))
         if self.with_icc:
-            if self.is_cross:
+            if self.cross_type():
                 raise LoggedError(
                     self.log,
                     "integral constraint correction (icc) not yet supported for cross power spectrum",
@@ -525,109 +467,281 @@ class EFTLSSLeaf(HelperTheory):
         for msg in msg_pool:
             self.mpi_info(*msg)
 
-        if self.need_binning:
+        if self.required_binning():
             self.binning = Binning(
-                **self._must_provide["nonlinear_Plk_grid"]["binning"],
+                **self._must_provide["binning"],
                 co=self.co,
                 name=self.get_name() + ".binning",
             )
         self.chained_tranformer = Chained()
 
-    def get_requirements(self) -> dict[str, Any]:
-        # requirements should be known after initialization especially EFT parameters
-        # XXX: dependency on cosmology may be dynamically updated
-        requires = self.boltzmann.get_requirements()
-        eft_params = {param: None for param in self.basis.non_gaussian_params()}
-        requires.update(eft_params)
-        return requires
+    def get_requirements(self):
+        return self.boltzmann.get_requirements()
 
-    def get_can_support_params(self):
-        return self.basis.gaussian_params()
-
-    def _config_ls(
-        self,
-        k: str,
-        v: dict[str, Any],
-        chained: list[bool] = [False],
-        base: str | None = None,
-    ) -> None:
-        """
-        Parameters
-        ----------
-        k : str
-            key name
-        v : dict[str, Any]
-            requires
-        chained : list[bool]
-            chained or not, used for ls reinterpretation
-        base : str | None
-            update associated base
-
-        Notes
-        -----
-        saved ls always denote the internal ls and are always sorted in ascending order
-        """
-        stored = self._must_provide[k]
-        ls: list[int] = stored.get("ls", [])
-        try:
-            ls_get = int_or_list(v.pop("ls"))
-        except KeyError:
-            raise LoggedError(self.log, "missing ls")
-        # reinterpret ls if chained
-        if True in chained:
-            if len(chained) == 1:
-                # e.g. [2] -> [0, 2, 4]
-                tmp = [2 * _ for _ in range(min(ls_get) // 2 + 1)]
-                ls_get = group_lists(tmp, [_ + 2 for _ in ls_get])
-            else:
-                # e.g. [2, 4] -> [0, 2, 4]
-                tmp = [2 * _ for _ in range(min(ls_get) // 2)]
-                ls_get = group_lists(tmp, ls_get)
-        for l in ls_get:
-            if l not in (0, 2, 4):
-                raise LoggedError(
-                    self.log,
-                    "internal ls should be 0, 2 or 4, but requires %s",
-                    ls_get,
+    def must_provide(self, **requirements):
+        super().must_provide(**requirements)
+        reqs: dict[str, dict[str, Any]] = requirements.get(self.product_name(), {})
+        # TODO: support dynamical plugin settings
+        for product, config in reqs.items():
+            if product in (
+                "nonlinear_Plk_grid",
+                "nonlinear_Plk_interpolator",
+                "nonlinear_Plk_gaussian_grid",
+            ):
+                # step 1: determine maximum Nl
+                ls = int_or_list(config["ls"])  # mandatory key in config
+                if bool_or_list(config.get("chained", False)) == [True]:
+                    ls = list(set(ls + [l + 2 for l in ls]))
+                if any(l % 2 == 1 for l in ls):
+                    raise LoggedError(self.log, "Invalid multipoles: %s", ls)
+                if max(ls) > 4:
+                    raise LoggedError(self.log, "Unsupported multipoles: %s", ls)
+                Nl = max(ls) // 2 + 1
+                self._must_provide["Nl"] = max(Nl, self._must_provide["Nl"])
+                # step 2: configure chained
+                self._must_provide["chained"] = group_lists(
+                    bool_or_list(config.get("chained", False)),
+                    self._must_provide["chained"],
                 )
-        combined_ls = group_lists(ls, ls_get)
-        stored["ls"] = combined_ls
-        if base:
-            base_stored = self._must_provide[base]
-            ls: list[int] = base_stored.get("ls", [])
-            combined_ls = group_lists(ls, combined_ls)
-            base_stored["ls"] = combined_ls
+                # step 3: safely configure binning
+                binned = bool_or_list(config.get("binned", False))
+                if True in binned:
+                    try:
+                        binning = config["binning"]
+                    except KeyError:
+                        raise LoggedError(self.log, "binned=True but missing binning")
+                    # XXX: this part depends on the concrete implementation of Binning, not a good idea
+                    try:
+                        kout = binning["kout"]
+                    except KeyError:
+                        raise LoggedError(self.log, "missing kout in binning")
+                    if stored_binning := self._must_provide.get("binning"):
+                        # different binning settings are not allowed
+                        stored_kout = stored_binning.pop("kout")
+                        binning_wo_kout = {
+                            k: v for k, v in binning.items() if k != "kout"
+                        }
+                        compatible = (
+                            np.array_equal(kout, stored_kout)
+                            and binning_wo_kout == stored_binning
+                        )
+                        if not compatible:
+                            raise LoggedError(
+                                self.log,
+                                "does not support multiple different binning requirements",
+                            )
+                    self._must_provide["binning"] = deepcopy(binning)
+                self._must_provide["binned"] = group_lists(
+                    binned, self._must_provide["binned"]
+                )
+                assert self._must_provide["binned"]  # not possible to be empty
+        self.mpi_debug("updated must_provide: %s", self._must_provide)
 
-    def _config_binned(self, k: str, v: dict[str, Any]) -> None:
-        stored = self._must_provide[k]
-        binned: list[bool] = stored.get("binned", [])
-        binning: dict[str, Any] = stored.setdefault("binning", {})  # default {}
-        binned_get = bool_or_list(v.pop("binned", False))  # default False
-        if True in binned_get:
-            # XXX: this part depends on the concrete implementation of Binning, not a good idea
-            try:
-                binning_get = v.pop("binning")
-            except KeyError:
-                raise LoggedError(self.log, "binned=True, but missing binning")
-            # different binning settings are not allowed
-            if binning:
-                kout = binning.pop("kout")
-                try:
-                    kout_ = binning_get.pop("kout")
-                except KeyError:
-                    raise LoggedError(self.log, "missing kout")
-                if not (np.array_equal(kout, kout_) and binning == binning_get):
-                    raise LoggedError(
-                        self.log,
-                        "does not support multiple different binning requirements",
-                    )
-                binning["kout"] = kout
+    def calculate_power_spectrum(self, state, want_derived=True, **params_values_dict):
+        # step 1: bird
+        boltzmann = self.boltzmann
+        # TODO: make kmin, kmax configurable
+        kh = np.logspace(-5, 0, 200)
+        pkh = boltzmann.Pkh(kh)
+        H, DA, f = boltzmann.H(), boltzmann.DA(), boltzmann.f()
+        rdrag, h = boltzmann.rdrag(), boltzmann.h()
+        bird = pybird.Bird(kh, pkh, f, DA, H, self.zeff, co=self.co, rdrag=rdrag, h=h)
+        self.nonlinear.PsCf(bird)
+        bird.setPsCfl()
+        self.bird = bird
+        plugins = cast(PluginsDict, self.plugins)
+        if self.with_IRresum:
+            plugins["IRresum"].Ps(bird)
+        if self.with_APeffect:
+            plugins["APeffect"].AP(bird)
+        if self.with_window:
+            plugins["window"].Window(bird)
+        if self.with_fiber:
+            plugins["fiber"].fibcolWindow(bird)
+        # step 2: collect birdlike products
+        birdlike_products: dict[
+            tuple[str, str], tuple[list[int], ndarrayf, BirdLike]
+        ] = {}
+        for chained, binned in itertools.product(
+            self._must_provide["chained"], self._must_provide["binned"]
+        ):
+            birdlike = bird
+            if binned:
+                kreturn = self.binning.keff.copy()
+                birdlike = self.binning.transform(birdlike)
             else:
-                if "kout" not in binning_get:
-                    raise LoggedError(self.log, "missing kout")
-                binning = binning_get
-        stored["binned"] = group_lists(binned, binned_get)
-        stored["binning"] = binning
+                kreturn = bird.co.k.copy()
+            if chained:
+                ls = [2 * l for l in range(self.Nl() - 1)]
+                birdlike = self.chained_tranformer.transform(birdlike)
+            else:
+                ls = [2 * l for l in range(self.Nl())]
+            birdlike_products[(chained, binned)] = (ls, kreturn, birdlike)
+        state[self.product_name()] = {
+            "bird": bird,
+            "birdlike_products": birdlike_products,
+        }
+
+    def calculate(self, state, want_derived=True, **params_values_dict):
+        tstart = perf_counter()
+        # empty if not required_power_spectrum
+        state[self.product_name()] = {}
+        if self.required_power_spectrum():
+            self.calculate_power_spectrum(state, want_derived, **params_values_dict)
+
+        if want_derived:
+            boltzmann = self.boltzmann
+            plugins = cast(PluginsDict, self.plugins)
+            if self.with_APeffect:
+                try:
+                    alperp, alpara = plugins["APeffect"].get_alperp_alpara(self.bird)
+                except (KeyError, AttributeError):
+                    if self.not_warned("no AP plugin"):
+                        self.mpi_warning(
+                            "APeffect not initialized, possiblely due to no power spectrum requested"
+                        )
+                else:
+                    state["derived"][self.tracer_prefix + "alperp"] = alperp
+                    state["derived"][self.tracer_prefix + "alpara"] = alpara
+            else:
+                state["derived"][self.tracer_prefix + "alperp"] = -1
+                state["derived"][self.tracer_prefix + "alpara"] = -1
+            state["derived"][self.tracer_prefix + "fz"] = boltzmann.f()
+            state["derived"][self.tracer_prefix + "fsigma8_z"] = boltzmann.fsigma8_z()
+            # TODO: fsigma8_cb_z
+        tend = perf_counter()
+        self.mpi_debug("calculate %s: %fs", self.product_name(), tend - tstart)
+
+    def get_can_provide(self):
+        return [self.product_name()]
+
+    def get_can_provide_params(self):
+        return [
+            self.tracer_prefix + item
+            for item in ("fz", "fsigma8_z", "fsigma8_cb_z", "alperp", "alpara")
+        ]
+
+    def report_cross_type(self):
+        cross = self.cross_type()
+        kmA, krA, ndA, kmB, krB, ndB = self.extract_km_kr_nd()
+        if isinstance(cross, bool):
+            self.mpi_info("km=%s, kr=%s, nd=%s", kmA, krA, ndA)
+            if cross:
+                self.mpi_info("using cross itself's parameterization")
+        else:
+            tracerA, tracerB = cross
+            self.mpi_info("cross correlation between %s and %s", tracerA, tracerB)
+            self.mpi_info("%s: km=%s, kr=%s, nd=%s", tracerA, kmA, krA, ndA)
+            self.mpi_info("%s: km=%s, kr=%s, nd=%s", tracerB, kmB, krB, ndB)
+
+    def extract_km_kr_nd(self):
+        cross_type = self.cross_type()
+        if isinstance(cross_type, bool):
+            try:
+                kmA, krA, ndA = (
+                    self.tracer_config["km"],
+                    self.tracer_config.get("kr"),
+                    self.tracer_config["nd"],
+                )
+                if krA is None:
+                    self.mpi_warning(
+                        "kr not specified, assuming kr=km, will raise exception in the future"
+                    )
+                    krA = kmA
+                kmB, krB, ndB = kmA, krA, ndA
+            except KeyError:
+                raise LoggedError(self.log, "must specify km, kr and nd")
+        else:
+            try:
+                tracerA, tracerB = (self.eftlss.tracers[_] for _ in cross_type)
+                kmA, krA, ndA = tracerA["km"], tracerA.get("kr"), tracerA["nd"]
+                kmB, krB, ndB = tracerB["km"], tracerB.get("kr"), tracerB["nd"]
+                if krA is None:
+                    self.mpi_warning(
+                        "%s: kr not specified, assuming kr=km, will raise exception in the future",
+                        cross_type[0],
+                    )
+                    krA = kmA
+                if krB is None:
+                    self.mpi_warning(
+                        "%s: kr not specified, assuming kr=km, will raise exception in the future",
+                        cross_type[1],
+                    )
+                    krB = kmB
+            except KeyError:
+                raise LoggedError(
+                    self.log, "missing km, kr or nd for tracer %s", cross_type
+                )
+        return kmA, krA, ndA, kmB, krB, ndB
+
+    def product_name(self) -> str:
+        return leaf_kernel_product_name(self.tracer)
+
+    def Nl(self) -> int:
+        return self._must_provide["Nl"]
+
+    def required_power_spectrum(self) -> bool:
+        return self.Nl() != 0
+
+    def required_binning(self) -> bool:
+        return True in self._must_provide["binned"]
+
+    def not_warned(self, key: str) -> bool:
+        if key in self._warned:
+            return False
+        self._warned.add(key)
+        return True
+
+
+class EFTLeaf(HelperTheory, LeafKernelShared):
+    """
+    EFT theory for single tracer
+    """
+
+    tracer: str
+    tracer_prefix: str
+    tracer_config: Mapping[str, Any]
+    eftlss: EFTLSS
+    basis: EFTBasis
+
+    def __init__(
+        self,
+        info: TheoryDictIn = empty_dict,
+        name: str | None = None,
+        timing: Any | None = None,
+        packages_path: str | None = None,
+        initialize: bool = True,
+        standalone: bool = True,
+        tracer: str = "",
+        eftlss: EFTLSS | None = None,
+    ):
+        self.tracer = tracer
+        self.eftlss = cast(EFTLSS, eftlss)
+        # EFTLeaf always initialized after EFTLSS, safe to use config
+        self.tracer_config = self.eftlss.tracers[tracer]
+        super().__init__(
+            info=info,
+            name=name,
+            timing=timing,
+            packages_path=packages_path,
+            initialize=initialize,
+            standalone=standalone,
+        )
+
+    def initialize(self):
+        super().initialize()
+        self.set_tracer_prefix()
+        self.basis = self.build_basis()
+        self._must_provide: dict[str, set[tuple[bool, bool]]] = {
+            "nonlinear_Plk_grid": set(),
+            "nonlinear_Plk_interpolator": set(),
+            "nonlinear_Plk_gaussian_grid": set(),
+        }
+
+    def get_requirements(self):
+        requires: dict[str, Any] = {k: None for k in self.basis.non_gaussian_params()}
+        requires[self.kernel_product_name()] = {}
+        return requires
 
     def must_provide(self, **requirements):
         """
@@ -656,207 +770,86 @@ class EFTLSSLeaf(HelperTheory):
         -----
         all products should be treated as read-only, otherwise the cache may not work
         """
-
-        def check_unsupported(k, v) -> None:
-            if v:
-                raise LoggedError(self.log, "unsupported requirements in %s: %s", k, v)
-
         super().must_provide(**requirements)
-        reqs: dict[str, dict[str, Any]] = requirements.get(self.name + "_results", {})
-        # TODO: support dynamical plugin settings
-        for k, v in reqs.items():
-            # nonlinear_Plk_interpolator based on nonlinear_Plk_grid
-            if k in ("nonlinear_Plk_grid", "nonlinear_Plk_interpolator"):
-                stored = self._must_provide[k]
-                chained: list[bool] = stored.get("chained", [])
-                chained_get = bool_or_list(v.pop("chained", False))  # default False
-                stored["chained"] = group_lists(chained, chained_get)
-                if k == "nonlinear_Plk_grid":
-                    self._config_ls(k, v, chained=chained_get)
-                else:
-                    self._config_ls(
-                        k,
-                        v,
-                        chained=chained_get,
-                        base="nonlinear_Plk_grid",
-                    )
-                    # request nonlinear_Plk_interpolator, but no nonlinear_Plk_grid requirements
-                    base = self._must_provide["nonlinear_Plk_grid"]
-                    chained_base: list[bool] = base.get("chained", [False])
-                    base["chained"] = group_lists(chained_base, chained_get)
-                    # require binned
-                    binned_base: list[bool] = base.get("binned", [False])
-                    base["binned"] = group_lists(binned_base, [False])
-                    base.setdefault("binning", {})
-
-                # nonlinear_Plk_interpolator does not support binned
-                if k == "nonlinear_Plk_grid":
-                    self._config_binned(k, v)
-
-                check_unsupported(k, v)
-            elif k == "nonlinear_Plk_gaussian_grid":
-                # TODO: ``requires`` option to select which gaussian parameters are needed
-                stored = self._must_provide[k]
-                chained: list[bool] = stored.get("chained", [])
-                chained_get = bool_or_list(v.pop("chained", False))  # default False
-                stored["chained"] = group_lists(chained, chained_get)
-                self._config_ls(k, v, chained=chained_get)
-                # I think different binning settings are rarely used
-                self._config_binned("nonlinear_Plk_grid", v)
-                check_unsupported(k, v)
-            elif k == "eft_params_values_dict":
-                _ = self._must_provide[k]
+        reqs: dict[str, dict[str, Any]] = requirements.get(self.product_name(), {})
+        for product, config in reqs.items():
+            if product in (
+                "nonlinear_Plk_grid",
+                "nonlinear_Plk_interpolator",
+                "nonlinear_Plk_gaussian_grid",
+            ):
+                chained = bool_or_list(config.get("chained", False))
+                binned = bool_or_list(config.get("binned", False))
+                if product == "nonlinear_Plk_interpolator" and True in binned:
+                    raise LoggedError(self.log, "binned Plk interpolator not supported")
+                for c, b in itertools.product(chained, binned):
+                    self._must_provide[product].add((c, b))
+            elif product == "snapshots":
+                self._must_provide[product] = set()
+            elif product == "eft_params_values_dict":
+                self._must_provide[product] = set()
             else:
                 raise LoggedError(
                     self.log,
                     "Unexpected requirement %s, this should not happen, "
                     "please contact the developers",
-                    k,
+                    product,
                 )
-        self.mpi_debug("updated must_provide: %s", self._must_provide)
+        self.mpi_debug("updated must provide %s", self._must_provide)
 
-    def calculate(self, state, want_derived=True, **params_values_dict: float):
-        start = time.perf_counter()
-        boltzmann = self.boltzmann
-        # the main computation pipeline
-        if self.need_power:
-            if self.bird is None:
-                # TODO: make kmin, kmax configurable
-                kh = np.logspace(-5, 0, 200)
-                pkh = boltzmann.Pkh(kh)
-                H, DA, f = boltzmann.H(), boltzmann.DA(), boltzmann.f()
-                rdrag, h = boltzmann.rdrag(), boltzmann.h()
-                bird = pybird.Bird(
-                    kh, pkh, f, DA, H, self.zeff, co=self.co, rdrag=rdrag, h=h
-                )
-                self.nonlinear.PsCf(bird)
-                bird.setPsCfl()
-                plugins = cast(PluginsDict, self.plugins)
-                if self.with_IRresum:
-                    plugins["IRresum"].Ps(bird)
-                if self.with_APeffect:
-                    plugins["APeffect"].AP(bird)
-                if self.with_window:
-                    plugins["window"].Window(bird)
-                if self.with_fiber:
-                    plugins["fiber"].fibcolWindow(bird)
-                self.bird = bird
-
-        products: dict[str, Any] = {}
-        if self.need_power:
-            assert self.bird
-            products["snapshots"] = {
-                k: self.basis.reduce_Plk(v, params_values_dict)
-                for k, v in self.bird.snapshots.items()
-            }
-        # collect results
-        for product, config_dict in self._must_provide.items():
-            ls_tot = [2 * i for i in range(self.co.Nl)]
-            kgrid = self.co.k
-            if product == "nonlinear_Plk_grid":
-                # XXX: necessary to perform the l cut?
-                ls = config_dict["ls"]
-                idx = [ls_tot.index(l) for l in ls]
-                assert self.bird is not None
-                results: dict[PlkKey, tuple[list[int], NDArray, NDArray]] = {}
-                for chained, binned in itertools.product(
-                    config_dict["chained"], config_dict["binned"]
-                ):
-                    if binned:
-                        assert self.binning
-                        birdlike = self.binning.transform(self.bird)
-                        kreturn = self.binning.keff.copy()
-                    else:
-                        birdlike = self.bird
-                        kreturn = kgrid.copy()
-                    if chained:
-                        birdlike = self.chained_tranformer.transform(birdlike)
-                        plk = self.basis.reduce_Plk(birdlike, params_values_dict)
-                        tup = (ls[:-1], kreturn, plk)
-                    else:
-                        plk = self.basis.reduce_Plk(birdlike, params_values_dict)
-                        tup = (ls.copy(), kreturn, plk)
-                    key = PlkKey(chained=chained, binned=binned)
-                    results[key] = tup
-                products[product] = results
-                if "nonlinear_Plk_interpolator" in self._must_provide.keys():
-                    reqs = self._must_provide["nonlinear_Plk_interpolator"]
-                    results_interp: dict[PlkKey, PlkInterpolator] = {}
-                    for chained in reqs["chained"]:
-                        key = PlkKey(chained=chained, binned=False)
-                        tup = products["nonlinear_Plk_grid"][key]
-                        results_interp[key] = PlkInterpolator(*tup)
-                    products["nonlinear_Plk_interpolator"] = results_interp
-
-            elif product == "nonlinear_Plk_gaussian_grid":
-                assert self.bird is not None
-                out: dict[PlkKey, tuple[list[int], NDArray, dict[str, NDArray]]] = {}
-                for chained, binned in itertools.product(
-                    config_dict["chained"],
-                    self._must_provide["nonlinear_Plk_grid"]["binned"],
-                ):
-                    if binned:
-                        assert self.binning
-                        birdlike = self.binning.transform(self.bird)
-                        kreturn = self.binning.keff.copy()
-                    else:
-                        birdlike = self.bird
-                        kreturn = kgrid.copy()
-                    if chained:
-                        birdlike = self.chained_tranformer.transform(birdlike)
-                        PG_table = self.basis.reduce_Plk_gaussian_table(
+    def calculate(self, state, want_derived=True, **params_values_dict):
+        tstart = perf_counter()
+        if kernel_product := self.provider.get_result(self.kernel_product_name()):
+            bird = kernel_product["bird"]
+            birdlike_products = kernel_product["birdlike_products"]
+            basis = self.basis
+            products: dict = {}
+            for product, keyset in self._must_provide.items():
+                if product == "snapshots":
+                    products[product] = bird.snapshots
+                elif product == "eft_params_values_dict":
+                    products[product] = {
+                        p: params_values_dict.get(p, 0.0)
+                        for p in basis.gaussian_params() + basis.non_gaussian_params()
+                    }
+                elif product == "nonlinear_Plk_gaussian_grid":
+                    for key in keyset:
+                        ls, k, birdlike = birdlike_products[key]
+                        # TODO: requires
+                        PG_table = basis.reduce_Plk_gaussian_table(
                             birdlike, params_values_dict
                         )
-                        tup = (ls_tot[:-1], kreturn, PG_table)
-                    else:
-                        PG_table = self.basis.reduce_Plk_gaussian_table(
-                            birdlike, params_values_dict
+                        products[(product,) + key] = (ls, k, PG_table)
+                elif product == "nonlinear_Plk_grid":
+                    for key in keyset:
+                        ls, k, birdlike = birdlike_products[key]
+                        products[(product,) + key] = (
+                            ls,
+                            k,
+                            basis.reduce_Plk(birdlike, params_values_dict),
                         )
-                        tup = (ls_tot.copy(), kreturn, PG_table)
-                    key = PlkKey(chained=chained, binned=binned)
-                    out[key] = tup
-                products[product] = out
-            elif product == "eft_params_values_dict":
-                products[product] = {
-                    p: params_values_dict.get(p, 0.0)
-                    for p in self.basis.gaussian_params()
-                    + self.basis.non_gaussian_params()
-                }
-
-        state[self.name + "_results"] = products
-
-        if want_derived:
-            plugins = cast(PluginsDict, self.plugins)
-            if self.with_APeffect:
-                try:
-                    alperp, alpara = plugins["APeffect"].get_alperp_alpara(self.bird)
-                except KeyError:
-                    if self.not_reported("no AP plugin"):
-                        self.mpi_warning(
-                            "APeffect not initialized, possiblely due to no power requested",
-                        )
-                else:
-                    state["derived"][self.prefix + "alperp"] = alperp
-                    state["derived"][self.prefix + "alpara"] = alpara
-            else:
-                state["derived"][self.prefix + "alperp"] = -1
-                state["derived"][self.prefix + "alpara"] = -1
-            state["derived"][self.prefix + "fz"] = boltzmann.f()
-            state["derived"][self.prefix + "fsigma8_z"] = boltzmann.fsigma8_z()
-            # TODO: fsigma8_cb_z
-        end = time.perf_counter()
-        self.mpi_debug("calculate: time used: %s", end - start)
+                elif product == "nonlinear_Plk_interpolator":
+                    for key in keyset:
+                        ls, k, birdlike = birdlike_products[key]
+                        if tmp := products.get(("nonlinear_Plk_grid",) + key):
+                            _, _, Plk = tmp
+                        else:
+                            Plk = basis.reduce_Plk(birdlike, params_values_dict)
+                        fn = PlkInterpolator(ls, k, Plk)
+                        chained, binned = key
+                        products[(product, chained)] = fn
+            state[self.product_name()] = products
+        tend = perf_counter()
+        self.mpi_debug("calculate %s: %fs", self.product_name(), tend - tstart)
 
     def get_can_provide(self):
-        return [self.name + "_results"]
+        return [self.product_name()]
 
-    def get_can_provide_params(self) -> list[str]:
-        return [
-            self.prefix + item
-            for item in ("fz", "fsigma8_z", "fsigma8_cb_z", "alperp", "alpara")
-        ]
+    def get_can_support_params(self):
+        return self.basis.gaussian_params()
 
-    def not_reported(self, key: str) -> bool:
-        flag = self._not_reported[key]
-        self._not_reported[key] = False
-        return flag
+    def product_name(self) -> str:
+        return leaf_product_name(self.tracer)
+
+    def kernel_product_name(self) -> str:
+        return leaf_kernel_product_name(self.tracer)
