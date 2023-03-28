@@ -4,6 +4,7 @@ from typing import TYPE_CHECKING
 from scipy.special import legendre
 from .pybird.pybird import BirdLike
 from .transformer import BirdTransformer
+from .transformer import PlainBird
 
 if TYPE_CHECKING:
     from .typing import ndarrayf
@@ -55,12 +56,13 @@ class Chained(BirdTransformer):
     def transform(self, birdlike: BirdLike):
         mat = self.chained_matrix(birdlike.co.Nl)
         to_chained = lambda P: np.einsum("al,l...->a...", mat, P, optimize=True)
-        self.f = birdlike.f
-        self.co = birdlike.co
-        self.P11l = to_chained(birdlike.P11l)
-        self.Ploopl = to_chained(birdlike.Ploopl)
-        self.Pctl = to_chained(birdlike.Pctl)
-        self.PctNNLOl = to_chained(birdlike.PctNNLOl)
-        self.Pstl = to_chained(birdlike.Pstl)
-        self.Picc = to_chained(birdlike.Picc)
-        return self
+        return PlainBird(
+            f=birdlike.f,
+            co=birdlike.co,
+            P11l=to_chained(birdlike.P11l),
+            Ploopl=to_chained(birdlike.Ploopl),
+            Pctl=to_chained(birdlike.Pctl),
+            PctNNLOl=to_chained(birdlike.PctNNLOl),
+            Pstl=to_chained(birdlike.Pstl),
+            Picc=to_chained(birdlike.Picc),
+        )

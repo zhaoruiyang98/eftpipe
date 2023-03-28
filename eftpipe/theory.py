@@ -740,11 +740,7 @@ class EFTLSSLeaf(HelperTheory):
                     plugins["window"].Window(bird)
                 if self.with_fiber:
                     plugins["fiber"].fibcolWindow(bird)
-                if self.binning:
-                    self.binning.transform(bird)
                 self.bird = bird
-            # use basis to compute power spectrum
-            fullPs = self.basis.reduce_Plk(self.bird, params_values_dict)
 
         products: dict[str, Any] = {}
         if self.need_power:
@@ -768,7 +764,7 @@ class EFTLSSLeaf(HelperTheory):
                 ):
                     if binned:
                         assert self.binning
-                        birdlike = self.binning
+                        birdlike = self.binning.transform(self.bird)
                         kreturn = self.binning.keff.copy()
                     else:
                         birdlike = self.bird
@@ -801,7 +797,7 @@ class EFTLSSLeaf(HelperTheory):
                 ):
                     if binned:
                         assert self.binning
-                        birdlike = self.binning
+                        birdlike = self.binning.transform(self.bird)
                         kreturn = self.binning.keff.copy()
                     else:
                         birdlike = self.bird

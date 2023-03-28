@@ -8,6 +8,7 @@ from scipy.interpolate import interp1d
 from .pybird import pybird
 from .pybird.pybird import BirdLike
 from .transformer import BirdTransformer
+from .transformer import PlainBird
 
 if TYPE_CHECKING:
     from numpy.typing import ArrayLike, NDArray
@@ -127,14 +128,16 @@ class Binning(BirdTransformer, HasLogger):
         """
         Apply binning in k-space for linear-spaced data k-array
         """
-        self.f = bird.f
-        self.P11l = self.integrBinning(bird.P11l)
-        self.Ploopl = self.integrBinning(bird.Ploopl)
-        self.Pctl = self.integrBinning(bird.Pctl)
-        self.PctNNLOl = self.integrBinning(bird.PctNNLOl)
-        self.Pstl = self.integrBinning(bird.Pstl)
-        self.Picc = self.integrBinning(bird.Picc)
-        return self
+        return PlainBird(
+            f=bird.f,
+            co=bird.co,
+            P11l=self.integrBinning(bird.P11l),
+            Ploopl=self.integrBinning(bird.Ploopl),
+            Pctl=self.integrBinning(bird.Pctl),
+            PctNNLOl=self.integrBinning(bird.PctNNLOl),
+            Pstl=self.integrBinning(bird.Pstl),
+            Picc=self.integrBinning(bird.Picc),
+        )
 
     def transform(self, birdlike: BirdLike):
         return self.kbinning(birdlike)
