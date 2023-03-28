@@ -19,6 +19,15 @@ def eval_callable(s: str, globals: dict[str, Any]):
     return fn(*(globals[p] for p in argnames))
 
 
+def valid_prior_config(config: Any) -> bool:
+    if config is None:
+        return True
+    if isinstance(config, dict):
+        if "loc" in config or "scale" in config:
+            return True
+    return False
+
+
 class Marginalizable(HasLogger if TYPE_CHECKING else object):
     """Marginalizable mixin
 
@@ -109,7 +118,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
 
     def setup_prior(self, prior: dict[str, dict[str, Any]]) -> None:
         """setup self.valid_prior, self.mu_G and self.sigma_inv"""
-        self.valid_prior = self._update_prior(prior)
+        self.valid_prior = self.update_prior(prior)
         nmarg = len(self.valid_prior)
         self._sigma_inv = np.zeros((nmarg, nmarg))
 
@@ -165,7 +174,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         res = PNG - dvector
         return res @ invcov @ res + mu_G @ sigma_inv @ mu_G
 
-    def _update_prior(
+    def update_prior(
         self, prior: dict[str, dict[str, Any]]
     ) -> dict[str, dict[str, float | str]]:
         """update prior to standard form and sort it"""

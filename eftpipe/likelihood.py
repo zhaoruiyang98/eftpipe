@@ -11,6 +11,7 @@ from typing import Any, Iterable, List, TYPE_CHECKING, Union
 from scipy.interpolate import interp1d
 from cobaya.likelihood import Likelihood
 from .marginal import Marginalizable
+from .marginal import valid_prior_config
 from .reader import read_pkl
 from .tools import int_or_list
 from .tools import str_or_list
@@ -510,6 +511,36 @@ class EFTLike(Likelihood, Marginalizable):
         for t in self.tracers:
             retval.update(self.provider.get_eft_params_values_dict(t))
         return retval
+
+    # override
+    def update_prior(
+        self, prior: dict[str, dict[str, Any]]
+    ) -> dict[str, dict[str, float | str]]:
+        # support additional prefix form, e.g.
+        # ELG_NGC_b1:
+        #   loc: 0
+        #   scale: 1
+        # LRG_NGC:
+        #   b1:
+        #     loc: 0
+        #     scale: 1
+        #   b2:
+        #     loc: 0
+        #     scale: 1
+        # LRG_SGC:
+        #   b1:
+        #   ...
+        processed: dict[str, dict[str, Any]] = {}
+        for p, config in prior.items():
+            if valid_prior_config(config):
+                processed[p] = config
+                continue
+            if isinstance(config, dict):
+                for param, subconfig in config.items():
+                    processed[f"{p}{param}"] = subconfig
+            else:
+                raise ValueError(f"invalid prior config: {config}")
+        return super().update_prior(processed)
 
     def calculate(self, state, want_derived=True, **params_values_dict):
         if self.marg:

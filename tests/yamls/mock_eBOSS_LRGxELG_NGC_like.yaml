@@ -77,30 +77,20 @@ likelihood:
     chained: [false, true, false]
     with_binning: true
     marg:
-      LRG_NGC_b3:
-        scale: 2
-      LRG_NGC_cct:
-        scale: 2
-      LRG_NGC_cr1:
-        scale: 4
-      LRG_NGC_cr2:
-        scale: 4
-      LRG_NGC_ce0:
-        scale: 2
-      LRG_NGC_cequad:
-        scale: 2
-      ELG_NGC_b3:
-        scale: 2
-      ELG_NGC_cct:
-        scale: 2
-      ELG_NGC_cr1:
-        scale: 4
-      ELG_NGC_cr2:
-        scale: 4
-      ELG_NGC_ce0:
-        scale: 2
-      ELG_NGC_cequad:
-        scale: 2
+      LRG_NGC_: &westcoast
+        b3:
+          scale: 2
+        cct:
+          scale: 2
+        cr1:
+          scale: 4
+        cr2:
+          scale: 4
+        ce0:
+          scale: 2
+        cequad:
+          scale: 2
+      ELG_NGC_: *westcoast
       x_NGC_ce0:
         scale: 2
       x_NGC_cequad:
