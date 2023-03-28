@@ -8,7 +8,7 @@ from typing import Any, cast, Dict, Generator, Iterable, Literal
 from typing_extensions import TypedDict, NotRequired
 from numpy import ndarray as NDArray
 from cobaya import get_model
-from eftpipe.interface import CobayaCambInterface
+from eftpipe.boltzmann import CobayaCambInterface
 from eftpipe.tools import PathContext
 from eftpipe.tools import recursively_update_dict
 from eftpipe.tools import RandomParams

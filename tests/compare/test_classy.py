@@ -3,7 +3,7 @@ import cobaya
 import pytest
 from pathlib import Path
 from cobaya.yaml import yaml_load_file
-from eftpipe.interface import CobayaClassyInterface
+from eftpipe.boltzmann import CobayaClassyInterface
 
 
 def test_compare_classynu_and_classy(

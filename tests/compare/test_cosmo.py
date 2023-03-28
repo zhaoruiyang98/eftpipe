@@ -2,7 +2,7 @@ import numpy as np
 import cobaya
 import pytest
 from pathlib import Path
-from eftpipe.interface import CobayaClassyInterface, CobayaCambInterface
+from eftpipe.boltzmann import CobayaClassyInterface, CobayaCambInterface
 
 
 @pytest.mark.fcompare
