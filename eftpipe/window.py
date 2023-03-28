@@ -383,7 +383,7 @@ class Window(HasLogger):
                 axis=-1,
                 kind="cubic",
                 bounds_error=False,
-                fill_value="extrapolate",
+                fill_value="extrapolate",  # type: ignore
             )(self.p)
         else:
             Pk = P

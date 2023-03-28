@@ -33,20 +33,20 @@ class Chained(BirdTransformer):
         # fmt: off
         if Nl == 2:
             return np.array(
-                [[1, -chain_coeff(0)]],
+                [[               1, -chain_coeff(0)]],
                 dtype=np.float64,
             )
         elif Nl == 3:
             return np.array(
-                [[1, -chain_coeff(0),               0],
-                 [0,               1, -chain_coeff(2)],],
+                [[               1, -chain_coeff(0),               0],
+                 [               0,               1, -chain_coeff(2)],],
                 dtype=np.float64,
             )
         elif Nl == 4:
             return np.array(
-                [[1, -chain_coeff(0),               0,               0],
-                 [0,               1, -chain_coeff(2),               0],
-                 [0,               0,               1, -chain_coeff(4)]],
+                [[               1, -chain_coeff(0),               0,               0],
+                 [               0,               1, -chain_coeff(2),               0],
+                 [               0,               0,               1, -chain_coeff(4)]],
                 dtype=np.float64,
             )
         else:

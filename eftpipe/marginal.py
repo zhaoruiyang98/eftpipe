@@ -2,7 +2,7 @@ from __future__ import annotations
 import inspect
 import time
 import numpy as np
-from typing import Any, TYPE_CHECKING
+from typing import Any, Literal, overload, TYPE_CHECKING
 from cobaya.log import HasLogger
 from cobaya.log import LoggedError
 
@@ -76,20 +76,42 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         np.fill_diagonal(self._sigma_inv, 1 / np.array(std, dtype=np.float64) ** 2)
         return self._sigma_inv
 
+    @overload
     def marginalized_logp(self) -> float:
+        ...
+
+    @overload
+    def marginalized_logp(self, return_bGbest: Literal[False] = ...) -> float:
+        ...
+
+    @overload
+    def marginalized_logp(
+        self, return_bGbest: Literal[True] = ...
+    ) -> tuple[float, float, dict[str, float]]:
+        ...
+
+    @overload
+    def marginalized_logp(
+        self, return_bGbest: bool = ...
+    ) -> float | tuple[float, float, dict[str, float]]:
+        ...
+
+    def marginalized_logp(
+        self, return_bGbest: bool = False
+    ) -> float | tuple[float, float, dict[str, float]]:
         R"""calculate marginalized posterior
 
         Parameters
         ----------
-        dvector : NDArray, 1d
-            data vector
-        invcov : NDArray, 2d
-            inverse covariance matrix of data vector
+        return_bGbest : bool
+            whether to return fullchi2 and bestfit bG parameters dict, default False
 
         Returns
         -------
         float
             marginalized log-posterior
+        float | tuple[float, float, dict[str, float]]
+            marginalized log-posterior, fullchi2 and bestfit bG parameters dict
 
         Notes
         -----
@@ -110,11 +132,28 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
             raise RuntimeError(
                 "det of F2ij <= 0, please consider tighter prior on gaussian parameters"
             )
-        chi2 = -F1i @ np.linalg.solve(F2ij, F1i) + F0 + logdet
+        bGbest = np.linalg.solve(F2ij, F1i)
+        chi2 = -F1i @ bGbest + F0 + logdet
 
+        if not return_bGbest:
+            end = time.perf_counter()
+            self.mpi_debug("marginalized_logp: time used: %s", end - start)
+            return -0.5 * chi2
+
+        # FIXME: reconstructed Pall is different from that computed by full model
+        # I don't know why...Though practically it doesn't matter, because finally
+        # we will run the minimizer (full model) to get bestfit point
+        Pall = bGbest @ PG + PNG
+        res = Pall - dvector
+        fullchi2 = np.einsum("i,ij,j->", res, invcov, res, optimize=True)
+        retval = (
+            -0.5 * chi2,
+            fullchi2,
+            {bG: val for bG, val in zip(self.valid_prior.keys(), bGbest)},
+        )
         end = time.perf_counter()
         self.mpi_debug("marginalized_logp: time used: %s", end - start)
-        return -0.5 * chi2
+        return retval
 
     def setup_prior(self, prior: dict[str, dict[str, Any]]) -> None:
         """setup self.valid_prior, self.mu_G and self.sigma_inv"""
@@ -129,15 +168,16 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
             self.mpi_info(f"  loc: {dct['loc']}")
             self.mpi_info(f"  scale: {dct['scale']}")
 
-    def bG_bestfit(self) -> dict[str, float]:
+    def bG_bestfit(self, F1i=None, F2ij=None) -> dict[str, float]:
         """helper method to extract bestfit bG parameters"""
-        PNG = self.PNG()
-        PG = self.PG()
-        mu_G, sigma_inv = self.mu_G, self.sigma_inv
-        dvector, invcov = self.get_data_vector(), self.get_invcov()
-        F1i = self.calc_F1i(PG, PNG, invcov, dvector, mu_G, sigma_inv)
-        F2ij = self.calc_F2ij(PG, invcov, sigma_inv)
-        ret = np.linalg.inv(F2ij) @ F1i
+        if F1i is None or F2ij is None:
+            PNG = self.PNG()
+            PG = self.PG()
+            mu_G, sigma_inv = self.mu_G, self.sigma_inv
+            dvector, invcov = self.get_data_vector(), self.get_invcov()
+            F1i = self.calc_F1i(PG, PNG, invcov, dvector, mu_G, sigma_inv)
+            F2ij = self.calc_F2ij(PG, invcov, sigma_inv)
+        ret = np.linalg.solve(F2ij, F1i)
         return {bG: val for bG, val in zip(self.valid_prior.keys(), ret)}
 
     def calc_F2ij(self, PG, invcov, sigma_inv) -> NDArray:

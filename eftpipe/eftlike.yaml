@@ -1,4 +1,5 @@
 likelihood_prefix:
+marg_param_prefix: marg_
 tracer:  # [tracerA, tracerB, tracerC, ...]
 data:
   # also support list, or neglecting `tracerA` if there is only one tracer

@@ -5,6 +5,7 @@ import logging
 import re
 import numpy as np
 import pandas as pd
+from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass, field
 from typing import Any, Iterable, List, TYPE_CHECKING, Union
@@ -262,6 +263,7 @@ class EFTLike(Likelihood, Marginalizable):
     file_base_name = "eftlike"
     # fmt: off
     likelihood_prefix: str
+    marg_param_prefix: str
     tracers: list[str]  # also support str
     data: dict[str, dict[str, Any]]  # also support dict[str, Any] | list[dict[str, Any]]
     cov: dict[str, Any]  # also support str for path
@@ -274,7 +276,7 @@ class EFTLike(Likelihood, Marginalizable):
     def initialize(self) -> None:
         super().initialize()
         if self.likelihood_prefix is None:
-            self.likelihood_prefix = self.get_name()
+            self.likelihood_prefix = self.get_name() + "_"
         self.regularize_attributes()
         self.minfodict = {
             t: MultipoleInfo.load(**self.data[t], logger=self.log) for t in self.tracers
@@ -543,17 +545,51 @@ class EFTLike(Likelihood, Marginalizable):
         return super().update_prior(processed)
 
     def calculate(self, state, want_derived=True, **params_values_dict):
+        return_bGbest = True if self.required_bGbest_related_derived_params() else False
+        fullchi2, bGbest = -1, defaultdict(lambda: 0.0)
         if self.marg:
-            logp = self.marginalized_logp()
+            tmp = self.marginalized_logp(return_bGbest=return_bGbest)
+            if isinstance(tmp, tuple):
+                logp, fullchi2, bGbest = tmp
+            else:
+                logp = tmp
             state["logp"] = logp
             # in this case, the chi2 is meaningless...
             chi2 = -2 * logp
         else:
             res = self.data_vector - self.PNG()
             chi2 = res @ self.invcov @ res
+            fullchi2 = chi2
             state["logp"] = -0.5 * chi2
         if want_derived:
-            state["derived"][self.likelihood_prefix + "_chi2"] = chi2
+            state["derived"][self.likelihood_prefix + "chi2"] = chi2
+            if return_bGbest:
+                state["derived"][self.likelihood_prefix + "fullchi2"] = fullchi2
+                for p in self.output_params:
+                    if p.startswith(self.marg_param_prefix):
+                        nlen = len(self.marg_param_prefix)
+                        state["derived"][p] = bGbest[p[nlen:]]
 
     def get_can_provide_params(self) -> list[str]:
-        return [self.likelihood_prefix + "_chi2"]
+        return [
+            self.likelihood_prefix + p for p in ("chi2", "fullchi2")
+        ] + self.estimated_can_provide_params()
+
+    def estimated_can_provide_params(self) -> list[str]:
+        retval = []
+        if marg := self.marg:
+            for p, config in marg.items():
+                if valid_prior_config(config):
+                    retval.append(self.marg_param_prefix + p)
+                if isinstance(config, dict):
+                    for param, subconfig in config.items():
+                        retval.append(self.marg_param_prefix + p + param)
+                else:
+                    raise ValueError(f"invalid prior config: {config}")
+        return retval
+
+    def required_bGbest_related_derived_params(self) -> bool:
+        return (
+            any(p.startswith(self.marg_param_prefix) for p in self.output_params)
+            or (self.likelihood_prefix + "fullchi2") in self.output_params
+        )

@@ -491,7 +491,7 @@ class IntegralConstraint(HasLogger):
             axis=-1,
             kind="cubic",
             bounds_error=False,
-            fill_value="extrapolate",
+            fill_value="extrapolate",  # type: ignore
         )(self.p)
         # (multipole l, multipole ' p, k, k' m) , (multipole ', power pectra s, k' m)
         return np.einsum("alkp,lsp->ask", self.Waldk, Pk, optimize=True)
