@@ -15,9 +15,6 @@ from cobaya import get_model
 from cobaya.yaml import yaml_dump
 from cobaya.yaml import yaml_load_file
 from eftpipe.likelihood import EFTLike
-from eftpipe.likelihood import EFTLikeSingle
-from eftpipe.likelihood import EFTLikeDouble
-from eftpipe.likelihood import EFTLikeDoubleCross
 from eftpipe.likelihood import extract_multipole_info
 from eftpipe.likelihood import find_covariance_reader
 from eftpipe.tools import do_nothing
@@ -137,7 +134,7 @@ def generate_requires(
     return ret
 
 
-def get_cov(like: EFTLikeSingle | EFTLikeDouble | EFTLikeDoubleCross | EFTLike):
+def get_cov(like: EFTLike):
     cov = find_covariance_reader(
         like.cov.get("reader", "auto"),
         like.cov.get("reader_kwargs", {}),
@@ -156,17 +153,7 @@ def build_multipole_dataframe(minfo: MultipoleInfo, err):
 def collect_multipole_dataframe(model, tracers: list[str], likelihoods: list[str]):
     configdict: dict[str, tuple[MultipoleInfo, Any]] = {}
     for like in (v for k, v in model.likelihood.items() if k in likelihoods):
-        if isinstance(like, EFTLikeSingle):
-            configdict[like.tracer] = (like.minfo, np.sqrt(get_cov(like).diagonal()))
-        elif isinstance(like, (EFTLikeDouble, EFTLikeDoubleCross)):
-            indices = itertools.accumulate(
-                (len(x.ls_tot) * x.df.index.size for x in like.minfodict.values()),
-                initial=0,
-            )
-            indices = list(indices)[1:-1]
-            for k, err in zip(like.tracer, np.split(get_cov(like).diagonal(), indices)):
-                configdict[k] = (like.minfodict[k], np.sqrt(err))
-        elif isinstance(like, EFTLike):
+        if isinstance(like, EFTLike):
             indices = itertools.accumulate(
                 (len(x.ls_tot) * x.df.index.size for x in like.minfodict.values()),
                 initial=0,
@@ -356,9 +343,7 @@ def main(input_args: Sequence[str] | None = None, save: bool = False):
     sharey = False
     if args.sharey or args.ymin is not None or args.ymax is not None:
         sharey = True
-    fig, axes = plt.subplots(
-        nrows, ncols, figsize=(width, height), sharey=args.sharey
-    )
+    fig, axes = plt.subplots(nrows, ncols, figsize=(width, height), sharey=args.sharey)
     if len(args.tracers) == 1:
         axes: Any = [axes]
     freeze: dict[str, str] = {x[0]: x[1] for x in args.freeze}
