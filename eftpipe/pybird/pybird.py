@@ -1028,10 +1028,10 @@ class NonLinear(HasLogger):
             "ns,ln->ls", self.sPow, self.McfctNNLO, optimize="optimal"
         )[0]
         self.optipathC13 = np.einsum_path(
-            "ns,ms,blnm->bls", self.sPow, self.sPow, self.Mcf22, optimize="optimal"
+            "ns,ms,blnm->lbs", self.sPow, self.sPow, self.Mcf13, optimize="optimal"
         )[0]
         self.optipathC22 = np.einsum_path(
-            "ns,ms,blnm->bls", self.sPow, self.sPow, self.Mcf13, optimize="optimal"
+            "ns,ms,blnm->lbs", self.sPow, self.sPow, self.Mcf22, optimize="optimal"
         )[0]
 
     def setM22(self):
