@@ -5,6 +5,7 @@ import logging
 import re
 import numpy as np
 import pandas as pd
+import scipy
 from collections import defaultdict
 from copy import copy
 from dataclasses import dataclass, field
@@ -321,9 +322,13 @@ class EFTLike(Likelihood, Marginalizable):
     def set_invcov(self) -> None:
         if not isinstance(self.cov, dict):
             self.cov = {"path": self.cov}
-        cov = find_covariance_reader(
+        reader = find_covariance_reader(
             self.cov.get("reader", "auto"), self.cov.get("reader_kwargs", {})
-        )(self.cov["path"])
+        )
+        if isinstance(path := self.cov["path"], list):
+            cov = scipy.linalg.block_diag(*[reader(p) for p in path])
+        else:
+            cov = reader(path)
         args: Any = ()
         for minfo in self.minfodict.values():
             args += (
