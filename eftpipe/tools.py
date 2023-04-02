@@ -161,6 +161,12 @@ def disable_logging():
         logging.disable(logging.NOTSET)
 
 
+@contextmanager
+def verbose_guard(verbose: bool):
+    with do_nothing() if verbose else disable_logging():
+        yield
+
+
 class Initializer(Generic[_T]):
     """delayed initialization"""
 

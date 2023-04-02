@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 import scipy
 from collections import defaultdict
-from copy import copy
+from copy import copy, deepcopy
 from dataclasses import dataclass, field
 from typing import Any, Iterable, List, TYPE_CHECKING, Union
 from scipy.interpolate import interp1d
@@ -204,6 +204,35 @@ def flatten(
         istart += nlen
 
 
+def regularize_prior(prior: dict[str, dict[str, Any]]):
+    # support additional prefix form, e.g.
+    # ELG_NGC_b1:
+    #   loc: 0
+    #   scale: 1
+    # LRG_NGC:
+    #   b1:
+    #     loc: 0
+    #     scale: 1
+    #   b2:
+    #     loc: 0
+    #     scale: 1
+    # LRG_SGC:
+    #   b1:
+    #   ...
+    processed: dict[str, dict[str, Any]] = {}
+    for p, config in prior.items():
+        if valid_prior_config(config):
+            processed[p] = config
+            continue
+        if isinstance(config, dict):
+            config = deepcopy(config)
+            for param, subconfig in config.items():
+                processed[f"{p}{param}"] = subconfig
+        else:
+            raise ValueError(f"invalid prior config: {config}")
+    return processed
+
+
 @dataclass
 class MultipoleInfo:
     df: pd.DataFrame = field(repr=False)
@@ -338,13 +367,14 @@ class EFTLike(Likelihood, Marginalizable):
                 minfo.kmin,
                 minfo.kmax,
             )
-        cov = mask_covariance(cov, *args)
         cov /= self.cov.get("rescale", 1)
-        self.invcov = np.linalg.inv(cov)
         self.hartlap: float | None = None
         if (Nreal := self.cov.get("Nreal")) is not None:
             self.hartlap = hartlap(Nreal, self.ndata)
-            self.invcov *= self.hartlap
+            cov /= self.hartlap
+        self.full_covmat = cov
+        cov = mask_covariance(cov, *args)
+        self.invcov = np.linalg.inv(cov)
 
     def log_data_loading_info(self) -> None:
         for t, minfo in self.minfodict.items():
@@ -523,31 +553,7 @@ class EFTLike(Likelihood, Marginalizable):
     def update_prior(
         self, prior: dict[str, dict[str, Any]]
     ) -> dict[str, dict[str, float | str]]:
-        # support additional prefix form, e.g.
-        # ELG_NGC_b1:
-        #   loc: 0
-        #   scale: 1
-        # LRG_NGC:
-        #   b1:
-        #     loc: 0
-        #     scale: 1
-        #   b2:
-        #     loc: 0
-        #     scale: 1
-        # LRG_SGC:
-        #   b1:
-        #   ...
-        processed: dict[str, dict[str, Any]] = {}
-        for p, config in prior.items():
-            if valid_prior_config(config):
-                processed[p] = config
-                continue
-            if isinstance(config, dict):
-                for param, subconfig in config.items():
-                    processed[f"{p}{param}"] = subconfig
-            else:
-                raise ValueError(f"invalid prior config: {config}")
-        return super().update_prior(processed)
+        return super().update_prior(regularize_prior(prior))
 
     def calculate(self, state, want_derived=True, **params_values_dict):
         return_bGbest = True if self.required_bGbest_related_derived_params() else False

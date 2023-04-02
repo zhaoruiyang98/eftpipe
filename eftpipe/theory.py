@@ -58,13 +58,13 @@ def leaf_kernel_product_name(tracer: str):
     return f"eftleaf_kernel_{tracer}_results"
 
 
-@dataclass
+@dataclass(eq=False)
 class PlkInterpolator:
     ls: list[int]
     kgrid: InitVar[ndarrayf]
     Plk: InitVar[ndarrayf]
 
-    fn: Callable[[ArrayLike], ndarrayf] = field(init=False)
+    fn: Callable[[ArrayLike], ndarrayf] = field(init=False, repr=False)
 
     def __post_init__(self, kgrid: ndarrayf, Plk: ndarrayf):
         self.ls = self.ls.copy()

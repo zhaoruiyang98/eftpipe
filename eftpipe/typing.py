@@ -23,7 +23,7 @@ if TYPE_CHECKING:
 
     ndarrayf: TypeAlias = NDArray[np.float64]
 
-Location: TypeAlias = Union[str, Path]
+FilePath: TypeAlias = Union[str, Path]
 YamlElement: TypeAlias = Union[str, bool, int, float, None, datetime]
 SimpleYaml: TypeAlias = Union[YamlElement, List["SimpleYaml"], Dict[str, "SimpleYaml"]]
 
