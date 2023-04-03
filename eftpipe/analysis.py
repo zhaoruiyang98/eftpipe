@@ -360,7 +360,9 @@ class BestfitModel:
         requires: defaultdict[str, Any] = defaultdict(dict)
         tracers: list[str] = []
         chained: dict[str, bool] = {}
-        fullchi2 = []
+        fullchi2: list[str] = []
+        ndata: list[int] = []
+        hartlap: list[float] = []
         for likename, config in info["likelihood"].items():
             if not supported_likelihood(likename, config):
                 continue
@@ -378,6 +380,8 @@ class BestfitModel:
                     "chained": chained_,
                 }
             fullchi2.append(likename + "_fullchi2")
+            ndata.append(likelihood.ndata)
+            hartlap.append(likelihood.hartlap if likelihood.hartlap is not None else 1)
             requires[likename + "_fullchi2"] = None
         # step 3: evaluate full model
         fullinfo = marginfo_to_fullmodel(info)
@@ -407,7 +411,11 @@ class BestfitModel:
         with verbose_guard(False):
             self.multipoles = collect_multipoles(info)
         self.chained = chained
-        self.fullchi2 = {k: self.model.provider.get_param(k) for k in fullchi2}
+        # chi2 w/o hartlap correction
+        self.fullchi2 = {
+            k: f"{self.model.provider.get_param(k) / h:.3f}/{n}"
+            for k, h, n in zip(fullchi2, hartlap, ndata)
+        }
 
     def Plk_interpolator(self, tracer: str) -> PlkInterpolator:
         return self.model.provider.get_nonlinear_Plk_interpolator(

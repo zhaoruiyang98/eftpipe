@@ -88,9 +88,9 @@ def main(argv: Sequence[str] | None = None):
         model = BestfitModel(input_yaml, verbose=args.verbose)
     print("bestfit:")
     pprint(model.bestfit)
-    print("fullchi2:")
+    print("fullchi2 (w/o hartlap):")
     for k, v in model.fullchi2.items():
-        print(f"{k}: {v}")
+        print(f"{k}={v}")
 
     tracers = args.tracers
     if tracers[0] == "all":
