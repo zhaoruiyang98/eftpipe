@@ -19,6 +19,7 @@ from .tools import pairwise, verbose_guard
 
 if TYPE_CHECKING:
     from cobaya.model import Model
+    from .theory import PlkInterpolator
     from .typing import ndarrayf
 
 FilePath: TypeAlias = Union[str, os.PathLike]
@@ -163,7 +164,7 @@ class CobayaProducts:
 
     @classmethod
     def from_yaml_file(cls, yaml_file: str):
-        if yaml_file.endswith(".input.yaml"):
+        if yaml_file.endswith((".input.yaml", ".updated.yaml")):
             parent = Path(yaml_file).expanduser().resolve().parent
         else:
             parent = Path.cwd()
@@ -356,9 +357,10 @@ class BestfitModel:
         }
         # step 2: get requirements, tracers and chained
         info = yaml_load_file(self.yaml_file)
-        requires: defaultdict[str, dict[str, Any]] = defaultdict(dict)
+        requires: defaultdict[str, Any] = defaultdict(dict)
         tracers: list[str] = []
         chained: dict[str, bool] = {}
+        fullchi2 = []
         for likename, config in info["likelihood"].items():
             if not supported_likelihood(likename, config):
                 continue
@@ -375,6 +377,8 @@ class BestfitModel:
                     "ls": ells,
                     "chained": chained_,
                 }
+            fullchi2.append(likename + "_fullchi2")
+            requires[likename + "_fullchi2"] = None
         # step 3: evaluate full model
         fullinfo = marginfo_to_fullmodel(info)
         with verbose_guard(self.verbose):
@@ -403,12 +407,9 @@ class BestfitModel:
         with verbose_guard(False):
             self.multipoles = collect_multipoles(info)
         self.chained = chained
+        self.fullchi2 = {k: self.model.provider.get_param(k) for k in fullchi2}
 
-    def add_requirements(self, requirements):
-        with verbose_guard(self.verbose):
-            self.model.add_requirements(requirements)
-
-    def Plk_interpolator(self, tracer: str):
+    def Plk_interpolator(self, tracer: str) -> PlkInterpolator:
         return self.model.provider.get_nonlinear_Plk_interpolator(
             tracer, chained=self.chained[tracer]
         )

@@ -574,8 +574,8 @@ class EFTLike(Likelihood, Marginalizable):
             state["logp"] = -0.5 * chi2
         if want_derived:
             state["derived"][self.likelihood_prefix + "chi2"] = chi2
+            state["derived"][self.likelihood_prefix + "fullchi2"] = fullchi2
             if return_bGbest:
-                state["derived"][self.likelihood_prefix + "fullchi2"] = fullchi2
                 for p in self.output_params:
                     if p.startswith(self.marg_param_prefix):
                         nlen = len(self.marg_param_prefix)
@@ -600,7 +600,4 @@ class EFTLike(Likelihood, Marginalizable):
         return retval
 
     def required_bGbest_related_derived_params(self) -> bool:
-        return (
-            any(p.startswith(self.marg_param_prefix) for p in self.output_params)
-            or (self.likelihood_prefix + "fullchi2") in self.output_params
-        )
+        return any(p.startswith(self.marg_param_prefix) for p in self.output_params)
