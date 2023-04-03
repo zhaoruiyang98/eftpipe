@@ -5,7 +5,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 from scipy.interpolate import interp1d
-from eftpipe.pybird.pybird import Common, kbird, Window, window_kgrid
+from eftpipe.pybird.pybird import Common, kbird
+from eftpipe.window import window_kgrid, Window
 
 
 def plot_window(
@@ -47,10 +48,10 @@ def main():
     parser.add_argument("window", type=Path, help="window file")
     parser.add_argument("k", type=float, help="k")
     parser.add_argument("--hex", action="store_true", help="plot hexadecapole")
-    parser.add_argument("-xmin", type=float, default=None, help="xmin")
-    parser.add_argument("-xmax", type=float, default=None, help="xmax")
-    parser.add_argument("-ymin", type=float, default=None, help="ymin")
-    parser.add_argument("-ymax", type=float, default=None, help="ymax")
+    parser.add_argument("--kmin", type=float, default=None, help="xmin")
+    parser.add_argument("--kmax", type=float, default=None, help="xmax")
+    parser.add_argument("--ymin", type=float, default=None, help="ymin")
+    parser.add_argument("--ymax", type=float, default=None, help="ymax")
     group = parser.add_mutually_exclusive_group()
     group.add_argument(
         "--regen",
@@ -74,7 +75,7 @@ def main():
             args.k,
             window["Wal"] if args.icc else window,
             args.hex,
-            xlim=(args.xmin, args.xmax),
+            xlim=(args.kmin, args.kmax),
             ylim=(args.ymin, args.ymax),
             accboost=meta["accboost"],
         )
