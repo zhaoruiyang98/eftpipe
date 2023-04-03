@@ -115,6 +115,7 @@ def main(argv: Sequence[str] | None = None):
             ax.set_ylim(ymin=args.ymin)
         if args.ymax is not None:
             ax.set_ylim(ymax=args.ymax)
+    fig.tight_layout()
     if args.output is None:
         plt.show()
     else:
