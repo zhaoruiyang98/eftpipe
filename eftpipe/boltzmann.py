@@ -129,7 +129,6 @@ class InternalBoltzmannInterface(HasLogger, BoltzmannInterface):
 
     def initialize_with_provider(self, provider: Provider) -> None:
         self.provider: BoltzmannBase = provider  # type: ignore
-        self.cosmo_params_dict = {}
 
     def get_requirements(self) -> dict[str, Any]:
         raise NotImplementedError

@@ -381,11 +381,11 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
 
     def initialize_with_provider(self, provider: Provider):
         super().initialize_with_provider(provider)
+        self.boltzmann.initialize_with_provider(provider)
         # do not initialize if no power spectrum is required
         if not self.required_power_spectrum():
             return
 
-        self.boltzmann.initialize_with_provider(provider)
         self.mpi_info("EFT parameter basis: %s", self.basis.get_name())
         self.mpi_info("with_NNLO: %s", self.tracer_config.get("with_NNLO", False))
         counterform = self.tracer_config.get("counterform") or self.basis.counterform()
