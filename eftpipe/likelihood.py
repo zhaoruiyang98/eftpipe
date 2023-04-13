@@ -379,6 +379,8 @@ class EFTLike(Likelihood, Marginalizable):
     def log_data_loading_info(self) -> None:
         for t, minfo in self.minfodict.items():
             self.mpi_info("tracer %s:", t)
+            if self.chained[t]:
+                self.mpi_info("using chained power spectrum")
             for ell in minfo.ls:
                 kmasked = minfo.kout[minfo.kout_mask[ell]]
                 self.mpi_info(

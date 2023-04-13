@@ -13,12 +13,13 @@ from pathlib import Path
 from typing import Any, cast, Mapping, TypeVar, TYPE_CHECKING, Union
 from typing_extensions import TypeAlias
 from cobaya import get_model
+from cobaya.yaml import yaml_dump
+from cobaya.yaml import yaml_dump_file
 from cobaya.yaml import yaml_load_file
 from .reader import read_pkl
 from .tools import pairwise, verbose_guard
 
 if TYPE_CHECKING:
-    from cobaya.model import Model
     from .theory import PlkInterpolator
     from .typing import ndarrayf
 
@@ -30,7 +31,10 @@ _T = TypeVar("_T")
 class CobayaProducts:
     root: str
     root_dir: Path
+
     chains: pd.DataFrame = field(init=False, repr=False, compare=False)
+    input_info: dict[str, Any] = field(init=False, repr=False, compare=False)
+    updated_info: dict[str, Any] = field(init=False, repr=False, compare=False)
 
     def __post_init__(self):
         with open(self.root_dir / (self.root + ".1.txt")) as f:
@@ -39,6 +43,20 @@ class CobayaProducts:
         for i in range(1, self.nchains() + 1):
             chains.append(np.loadtxt(self.root_dir / f"{self.root}.{i}.txt"))
         self.chains = pd.DataFrame(np.vstack(chains), columns=names)
+        self.input_info = yaml_load_file(str(self.input_yaml_file()))
+        self.updated_info = yaml_load_file(str(self.updated_yaml_file()))
+
+    @classmethod
+    def from_yaml_file(cls, yaml_file: str):
+        if yaml_file.endswith((".input.yaml", ".updated.yaml")):
+            parent = Path(yaml_file).expanduser().resolve().parent
+        else:
+            parent = Path.cwd()
+        info = yaml_load_file(yaml_file)
+        output: Path = parent / info["output"]
+        root_dir = output.parent
+        root = output.name
+        return cls(root=root, root_dir=root_dir)
 
     def nchains(self) -> int:
         pattern = re.compile(r".*\.(\d+)\.txt")
@@ -49,9 +67,8 @@ class CobayaProducts:
         return n
 
     def sampled_params(self) -> dict[str, dict]:
-        info = yaml_load_file(str(self.updated_yaml()))
         retval: dict[str, dict] = {}
-        for param, config in info["params"].items():
+        for param, config in self.updated_info["params"].items():
             if "prior" in config:
                 tmp = deepcopy(config)
                 tmp.pop("renames", None)
@@ -59,9 +76,8 @@ class CobayaProducts:
         return retval
 
     def fixed_params(self) -> dict[str, dict]:
-        info = yaml_load_file(str(self.updated_yaml()))
         retval: dict[str, dict] = {}
-        for param, config in info["params"].items():
+        for param, config in self.updated_info["params"].items():
             if "value" in config and not config.get("derived", False):
                 tmp = deepcopy(config)
                 tmp.pop("renames", None)
@@ -74,9 +90,8 @@ class CobayaProducts:
         return {k: v["value"] for k, v in info.items()}
 
     def derived_params(self) -> dict[str, dict]:
-        info = yaml_load_file(str(self.updated_yaml()))
         retval: dict[str, dict] = {}
-        for param, config in info["params"].items():
+        for param, config in self.updated_info["params"].items():
             if config.get("derived", False):
                 tmp = deepcopy(config)
                 tmp.pop("renames", None)
@@ -129,50 +144,186 @@ class CobayaProducts:
         idx = cast(int, self.chains["minuslogpost"].idxmin())
         return self.iloc(idx, include_fixed, sampled_only, params_only)
 
-    def global_bestfit_if_possible(
-        self,
-        include_fixed: bool = True,
-        sampled_only: bool = False,
-        params_only: bool = False,
-    ) -> dict[str, float]:
-        fullchi2_names: list[str] = [
-            k for k in self.chains.columns if k.endswith("_fullchi2")
-        ]
-        if not fullchi2_names:
-            # best fit from (possibly-)marginalized posterior
-            return self.bestfit(include_fixed, sampled_only, params_only)
-        # best fit from full chi2
-        fullchi2 = sum(self.chains[name] for name in fullchi2_names)
-        idx: int = fullchi2.idxmin()  # type: ignore
-        return self.iloc(idx, include_fixed, sampled_only, params_only)
+    def root_string(self) -> str:
+        return str(self.root_dir / self.root)
 
-    def input_yaml(self) -> Path:
+    def input_yaml_file(self) -> Path:
         return self.root_dir / f"{self.root}.input.yaml"
 
-    def updated_yaml(self) -> Path:
+    def updated_yaml_file(self) -> Path:
         return self.root_dir / f"{self.root}.updated.yaml"
 
     def minimum_file(self) -> Path:
         return self.root_dir / f"{self.root}.minimum"
 
-    def samples(self, ignore_rows: float = 0):
+    def progress_file(self) -> Path:
+        return self.root_dir / f"{self.root}.progress"
+
+    def plot_progress(
+        self,
+        figure_kwargs: dict[str, Any] = {"figsize": (6, 4)},
+        legend_kwargs: dict[str, Any] = {"frameon": False},
+    ):
+        from cobaya.samplers.mcmc import plot_progress
+
+        plot_progress(
+            self.root_string(),
+            figure_kwargs=figure_kwargs,
+            legend_kwargs=legend_kwargs,
+        )
+        plt.tight_layout()
+        plt.show()
+
+    def samples(self, ignore_rows: float = 0, no_cache: bool = False):
         import getdist
 
         return getdist.loadMCSamples(
-            str(self.root_dir / self.root), settings={"ignore_rows": ignore_rows}
+            self.root_string(),
+            no_cache=no_cache,
+            settings={"ignore_rows": ignore_rows},
         )
 
-    @classmethod
-    def from_yaml_file(cls, yaml_file: str):
-        if yaml_file.endswith((".input.yaml", ".updated.yaml")):
-            parent = Path(yaml_file).expanduser().resolve().parent
-        else:
-            parent = Path.cwd()
-        info = yaml_load_file(yaml_file)
-        output: Path = parent / info["output"]
-        root_dir = output.parent
-        root = output.name
-        return cls(root=root, root_dir=root_dir)
+
+@dataclass
+class EFTLikeProducts(CobayaProducts):
+    def marg_param_prefix(self) -> str:
+        # XXX: hard-coded
+        return "marg_"
+
+    def fullchi2_suffix(self) -> str:
+        # XXX: hard-coded
+        return "_fullchi2"
+
+    def marginalized_params(
+        self, with_marg_prefix: bool = False
+    ) -> dict[str, dict[str, Any]]:
+        from .likelihood import regularize_prior
+
+        # step 1: collect marginalized params config
+        marg: dict[str, dict[str, Any]] = {}
+        for likename, config in self.input_info["likelihood"].items():
+            if not supported_likelihood(likename, config):
+                continue
+            if margconfig := config.get("marg", None):
+                marg.update(regularize_prior(margconfig))
+        # step 2: update marg and keep necessary info only
+        for p, config in marg.items():
+            marg[p] = {
+                "prior": {
+                    "dist": "norm",
+                    "loc": config.get("loc", 0),
+                    "scale": config["scale"],
+                },
+                "ref": config.get("loc", 0),
+                "proposal": config.get("proposal", 0.01),
+                "latex": config.get("latex", p.replace("_", " ")),
+            }
+        if with_marg_prefix:
+            prefix = self.marg_param_prefix()
+            return {prefix + p: config for p, config in marg.items()}
+        return marg
+
+    def marginalized_prior(self, with_marg_prefix: bool = True):
+        marg = self.marginalized_params(with_marg_prefix)
+
+        def prior_function(params_values_dict: dict[str, Any]):
+            chi2 = 0.0
+            for p, config in marg.items():
+                loc = config["prior"]["loc"]
+                scale = config["prior"]["scale"]
+                chi2 += (params_values_dict[p] - loc) ** 2 / scale**2
+            return chi2
+
+        return prior_function
+
+    def full_model_info(self) -> dict[str, Any]:
+        # XXX: may be better to use updated_info
+        info = deepcopy(self.input_info)
+        # remove marg block
+        for likename, config in info["likelihood"].items():
+            if not supported_likelihood(likename, config):
+                continue
+            config.pop("marg", None)
+        # update info["params"] and remove derived params
+        marg = self.marginalized_params()
+        params = info["params"]
+        for p, config in marg.items():
+            params[p] = config
+        marg_param_prefix = self.marg_param_prefix()
+        for p in marg.keys():
+            params.pop(marg_param_prefix + p, None)
+        return info
+
+    def dump_full_model_info(self, output: str | None = None, stream=None):
+        info = self.full_model_info()
+        if output:
+            info["output"] = output
+        return yaml_dump(info, stream)
+
+    def dump_full_model_yaml(
+        self,
+        file_name: str,
+        output: str | None = None,
+        comment=None,
+        error_if_exists=True,
+    ):
+        info = self.full_model_info()
+        if output:
+            info["output"] = output
+        return yaml_dump_file(
+            file_name,
+            info,
+            comment=comment,
+            error_if_exists=error_if_exists,
+        )
+
+    def global_bestfit(
+        self,
+        include_fixed: bool = True,
+        sampled_only: bool = False,
+        params_only: bool = False,
+        include_prior: bool = False,
+    ):
+        """
+        Note
+        ----
+        ``include_prior``=True is more consistent: assume bNG is best fit and then
+        compute the corresponding bG and -2logp; ``include_prior``=False does not
+        depend on prior, but is similar to randomly choose a point and compute chi2.
+        Anyway, both of them are approximate estimation of global best fit.
+        """
+        fullchi2_names: list[str] = [
+            k for k in self.chains.columns if k.endswith(self.fullchi2_suffix())
+        ]
+        # best fit from full chi2
+        fullchi2 = sum(self.chains[name] for name in fullchi2_names)
+        if include_prior:
+            prior_function = self.marginalized_prior()
+            fullchi2 += prior_function(self.chains.to_dict("series"))  # type: ignore
+        idx: int = fullchi2.idxmin()  # type: ignore
+        return self.iloc(idx, include_fixed, sampled_only, params_only)
+
+    def global_bestfit_if_possible(
+        self,
+        include_fixed: bool = True,
+        sampled_only: bool = False,
+        params_only: bool = False,
+        include_prior: bool = False,
+        error_if_not_possible: bool = False,
+    ) -> dict[str, float]:
+        fullchi2_names: list[str] = [
+            k for k in self.chains.columns if k.endswith(self.fullchi2_suffix())
+        ]
+        if not fullchi2_names:
+            if error_if_not_possible:
+                raise ValueError(
+                    f"no {self.fullchi2_suffix()} computed, cannot find global best fit"
+                )
+            # best fit from (possibly-)marginalized posterior
+            return self.bestfit(include_fixed, sampled_only, params_only)
+        return self.global_bestfit(
+            include_fixed, sampled_only, params_only, include_prior=include_prior
+        )
 
 
 @dataclass
@@ -181,6 +332,28 @@ class Multipole(Mapping[str, pd.Series]):
     k: ndarrayf = field(repr=False)
     ells: tuple[int, ...]
     symbol: str
+
+    @classmethod
+    def loadtxt(
+        cls,
+        path: FilePath,
+        cov_path: FilePath | None = None,
+        logger: logging.Logger | None = None,
+    ):
+        data = read_pkl(path, logger=logger)
+        k = data["k"].to_numpy()
+        pattern = re.compile(r"(?P<symbol>[A-Za-z]+)(?P<ell>\d+)")
+        db = defaultdict(list)
+        for name in data.columns:
+            if match := pattern.match(name):
+                db[match.group("symbol")].append(int(match.group("ell")))
+        cnt = Counter({k: len(v) for k, v in db.items()})
+        symbol = cnt.most_common(1)[0][0]
+        ells = tuple(sorted(db[symbol]))
+        multipole = cls(data, k, ells, symbol)
+        if cov_path:
+            multipole.apply_covariance(np.loadtxt(cov_path))
+        return multipole
 
     def mono(self) -> pd.Series:
         return self.data[self.symbol + "0"]
@@ -250,28 +423,6 @@ class Multipole(Mapping[str, pd.Series]):
             return self.data[name]
         raise AttributeError(f"no such attribute: {name}")
 
-    @classmethod
-    def loadtxt(
-        cls,
-        path: FilePath,
-        cov_path: FilePath | None = None,
-        logger: logging.Logger | None = None,
-    ):
-        data = read_pkl(path, logger=logger)
-        k = data["k"].to_numpy()
-        pattern = re.compile(r"(?P<symbol>[A-Za-z]+)(?P<ell>\d+)")
-        db = defaultdict(list)
-        for name in data.columns:
-            if match := pattern.match(name):
-                db[match.group("symbol")].append(int(match.group("ell")))
-        cnt = Counter({k: len(v) for k, v in db.items()})
-        symbol = cnt.most_common(1)[0][0]
-        ells = tuple(sorted(db[symbol]))
-        multipole = cls(data, k, ells, symbol)
-        if cov_path:
-            multipole.apply_covariance(np.loadtxt(cov_path))
-        return multipole
-
 
 def supported_likelihood(likename: str, config: dict[str, Any]) -> bool:
     supported = ["eftpipe.eftlike", "eftpipe.likelihood.EFTLike"]
@@ -303,40 +454,6 @@ def collect_multipoles(info: dict[str, dict]) -> dict[str, Multipole]:
     return tracer_multipoles
 
 
-def marginfo_to_fullmodel(info: dict[str, dict]) -> dict[str, dict]:
-    from .likelihood import regularize_prior
-
-    info = deepcopy(info)
-    # step 1: collect marginalized params config
-    marg: dict[str, dict[str, Any]] = {}
-    for likename, config in info["likelihood"].items():
-        if not supported_likelihood(likename, config):
-            continue
-        if margconfig := config.pop("marg", None):
-            marg.update(regularize_prior(margconfig))
-    # step 2: update marg and keep necessary info only
-    for p, config in marg.items():
-        marg[p] = {
-            "prior": {
-                "dist": "norm",
-                "loc": config.get("loc", 0),
-                "scale": config["scale"],
-            },
-            "ref": config.get("loc", 0),
-            "proposal": config.get("proposal", 0.01),
-            "latex": config.get("latex", p.replace("_", " ")),
-        }
-    # step 3: update info["params"] and remove derived params
-    params = info["params"]
-    # XXX: hard-coded here
-    marg_param_prefix = "marg_"
-    for p, config in marg.items():
-        params[p] = config
-    for p in marg.keys():
-        params.pop(marg_param_prefix + p, None)
-    return info
-
-
 @dataclass
 class BestfitModel:
     yaml_file: str
@@ -346,9 +463,8 @@ class BestfitModel:
         from .likelihood import EFTLike
 
         # step 1: get global bestfit
-        products = CobayaProducts.from_yaml_file(self.yaml_file)
-        # XXX: hard-coded here
-        marg_param_prefix = "marg_"
+        products = EFTLikeProducts.from_yaml_file(self.yaml_file)
+        marg_param_prefix = products.marg_param_prefix()
         itrim = len(marg_param_prefix)
         bestfit = products.global_bestfit_if_possible()
         bestfit = {
@@ -384,7 +500,7 @@ class BestfitModel:
             hartlap.append(likelihood.hartlap if likelihood.hartlap is not None else 1)
             requires[likename + "_fullchi2"] = None
         # step 3: evaluate full model
-        fullinfo = marginfo_to_fullmodel(info)
+        fullinfo = products.dump_full_model_info()
         with verbose_guard(self.verbose):
             model = get_model(fullinfo)  # type: ignore
             model.add_requirements(requires)

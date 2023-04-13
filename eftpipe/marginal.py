@@ -140,9 +140,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
             self.mpi_debug("marginalized_logp: time used: %s", end - start)
             return -0.5 * chi2
 
-        # FIXME: reconstructed Pall is different from that computed by full model
-        # I don't know why...Though practically it doesn't matter, because finally
-        # we will run the minimizer (full model) to get bestfit point
+        # TODO: bGbest w/o sigma_inv
         Pall = bGbest @ PG + PNG
         res = Pall - dvector
         fullchi2 = np.einsum("i,ij,j->", res, invcov, res, optimize=True)
