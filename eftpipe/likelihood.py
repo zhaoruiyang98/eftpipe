@@ -301,6 +301,7 @@ class EFTLike(Likelihood, Marginalizable):
     with_binning: dict[str, bool]  # also support bool | list[bool]
     binning: dict[str, dict[str, Any]]  # also support dict[str, Any] | list[dict[str, Any]]
     marg: dict[str, dict[str, Any]]
+    jeffreys: bool
     # fmt: on
 
     def initialize(self) -> None:
@@ -447,6 +448,11 @@ class EFTLike(Likelihood, Marginalizable):
         if self.marg:
             self.setup_prior(self.marg)
             self.report_marginalized()
+            if self.jeffreys:
+                self.mpi_info("Jeffreys prior is used for marginalized parameters")
+        else:
+            if self.jeffreys:
+                raise NotImplementedError
         self.set_cache()
 
     def set_cache(self) -> None:
@@ -561,7 +567,9 @@ class EFTLike(Likelihood, Marginalizable):
         return_bGbest = True if self.required_bGbest_related_derived_params() else False
         fullchi2, bGbest = -1, defaultdict(lambda: 0.0)
         if self.marg:
-            tmp = self.marginalized_logp(return_bGbest=return_bGbest)
+            tmp = self.marginalized_logp(
+                return_bGbest=return_bGbest, jeffreys=self.jeffreys
+            )
             if isinstance(tmp, tuple):
                 logp, fullchi2, bGbest = tmp
             else:

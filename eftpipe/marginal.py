@@ -2,12 +2,12 @@ from __future__ import annotations
 import inspect
 import time
 import numpy as np
-from typing import Any, Literal, overload, TYPE_CHECKING
+from typing import Any, TYPE_CHECKING
 from cobaya.log import HasLogger
 from cobaya.log import LoggedError
 
 if TYPE_CHECKING:
-    from numpy.typing import NDArray
+    from .typing import ndarrayf
 
 
 def eval_callable(s: str, globals: dict[str, Any]):
@@ -42,23 +42,23 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
     def marginalizable_params(self) -> list[str]:
         raise NotImplementedError
 
-    def PG(self) -> NDArray:
+    def PG(self) -> ndarrayf:
         raise NotImplementedError
 
-    def PNG(self) -> NDArray:
+    def PNG(self) -> ndarrayf:
         raise NotImplementedError
 
-    def get_data_vector(self) -> NDArray:
+    def get_data_vector(self) -> ndarrayf:
         raise NotImplementedError
 
-    def get_invcov(self) -> NDArray:
+    def get_invcov(self) -> ndarrayf:
         raise NotImplementedError
 
     def env(self) -> dict[str, Any]:
         return {"np": np}
 
     @property
-    def mu_G(self) -> NDArray:
+    def mu_G(self) -> ndarrayf:
         env = self.env()
         loc_it = [dct["loc"] for dct in self.valid_prior.values()]
         return np.array(
@@ -67,7 +67,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         )
 
     @property
-    def sigma_inv(self) -> NDArray:
+    def sigma_inv(self) -> ndarrayf:
         env = self.env()
         std_it = (dct["scale"] for dct in self.valid_prior.values())
         std = [eval_callable(x, env) if isinstance(x, str) else x for x in std_it]
@@ -76,28 +76,8 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         np.fill_diagonal(self._sigma_inv, 1 / np.array(std, dtype=np.float64) ** 2)
         return self._sigma_inv
 
-    @overload
-    def marginalized_logp(self) -> float:
-        ...
-
-    @overload
-    def marginalized_logp(self, return_bGbest: Literal[False] = ...) -> float:
-        ...
-
-    @overload
     def marginalized_logp(
-        self, return_bGbest: Literal[True] = ...
-    ) -> tuple[float, float, dict[str, float]]:
-        ...
-
-    @overload
-    def marginalized_logp(
-        self, return_bGbest: bool = ...
-    ) -> float | tuple[float, float, dict[str, float]]:
-        ...
-
-    def marginalized_logp(
-        self, return_bGbest: bool = False
+        self, return_bGbest: bool = False, jeffreys: bool = False
     ) -> float | tuple[float, float, dict[str, float]]:
         R"""calculate marginalized posterior
 
@@ -105,6 +85,8 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         ----------
         return_bGbest : bool
             whether to return fullchi2 and bestfit bG parameters dict, default False
+        jeffreys : bool
+            whether to use Jeffreys prior, default False
 
         Returns
         -------
@@ -129,11 +111,15 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         F0 = self.calc_F0(PNG, invcov, dvector, mu_G, sigma_inv)
         sign, logdet = np.linalg.slogdet(F2ij / (2 * np.pi))
         if sign <= 0:
-            raise RuntimeError(
-                "det of F2ij <= 0, please consider tighter prior on gaussian parameters"
-            )
+            # TODO: svd analysis
+            self.mpi_warning("det of F2ij <= 0")
+            raise RuntimeError("det of F2ij <= 0")
         bGbest = np.linalg.solve(F2ij, F1i)
-        chi2 = -F1i @ bGbest + F0 + logdet
+        chi2: float
+        if jeffreys:
+            chi2 = -F1i @ bGbest + F0  # type: ignore
+        else:
+            chi2 = -F1i @ bGbest + F0 + logdet
 
         if not return_bGbest:
             end = time.perf_counter()
@@ -178,7 +164,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         ret = np.linalg.solve(F2ij, F1i)
         return {bG: val for bG, val in zip(self.valid_prior.keys(), ret)}
 
-    def calc_F2ij(self, PG, invcov, sigma_inv) -> NDArray:
+    def calc_F2ij(self, PG, invcov, sigma_inv) -> ndarrayf:
         R"""calculate F2 matrix
 
         Notes
@@ -188,7 +174,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         """
         return np.einsum("ia,ab,jb->ij", PG, invcov, PG, optimize=True) + sigma_inv
 
-    def calc_F1i(self, PG, PNG, invcov, dvector, mu_G, sigma_inv) -> NDArray:
+    def calc_F1i(self, PG, PNG, invcov, dvector, mu_G, sigma_inv) -> ndarrayf:
         R"""calculate F1 vector
 
         Notes
@@ -201,7 +187,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
             + sigma_inv @ mu_G
         )
 
-    def calc_F0(self, PNG, invcov, dvector, mu_G, sigma_inv) -> NDArray:
+    def calc_F0(self, PNG, invcov, dvector, mu_G, sigma_inv) -> ndarrayf:
         R"""calculate F0
 
         Notes
@@ -245,7 +231,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
                 zip(idx, newdct.values(), newdct.keys()), key=lambda t: t[0]
             )
         }
-        if nscale_inf != 0 and nscale_inf != len(marginalizable_params):
+        if nscale_inf != 0 and nscale_inf != len(outdct):
             raise LoggedError(
                 self.log,
                 "only support setting infinite scale for all parameters",

@@ -244,10 +244,14 @@ class EFTLikeProducts(CobayaProducts):
             if not supported_likelihood(likename, config):
                 continue
             config.pop("marg", None)
+            config.pop("jeffreys", None)
         # update info["params"] and remove derived params
         marg = self.marginalized_params()
         params = info["params"]
         for p, config in marg.items():
+            if prior := config.get("prior"):
+                if prior.get("scale") is None:
+                    prior["scale"] = 1000
             params[p] = config
         marg_param_prefix = self.marg_param_prefix()
         for p in marg.keys():
