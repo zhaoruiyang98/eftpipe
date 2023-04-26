@@ -409,6 +409,7 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
         kmA, krA, ndA, kmB, krB, ndB = self.extract_km_kr_nd()
         self.co = pybird.Common(
             Nl=self.Nl(),
+            kmax=self.tracer_config.get("kmax", 0.3),
             optiresum=optiresum,
             kmA=kmA,
             krA=krA,

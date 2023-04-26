@@ -126,7 +126,7 @@ class Window(HasLogger):
         Na: int | None = None,
         Nl: int | None = None,
         Nq: int | None = 3,
-        pmax: float = 0.3,
+        pmax: float | None = None,
         accboost: int = 1,
         withmask: bool = True,
         windowk: float = 0.05,
@@ -172,6 +172,8 @@ class Window(HasLogger):
             )
         if Na > Nl:
             raise ValueError(f"dangerous settings Na={Na}, Nl={Nl}")
+        if pmax is None:
+            pmax = float(self.co.k.max())
         self.p = window_kgrid(kmax=pmax, accboost=accboost)
         self.meta: dict[str, Any] = dict(
             Na=Na,

@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from pathlib import Path
 from scipy.interpolate import interp1d
-from eftpipe.pybird.pybird import Common, kbird
+from eftpipe.pybird.pybird import Common, get_kbird
 from eftpipe.window import window_kgrid, Window
 
 
@@ -14,7 +14,7 @@ def plot_window(
     k: float,
     window,
     hex=False,
-    kbird=kbird,
+    kbird=get_kbird(),
     xlim=None,
     ylim=None,
     accboost: int = 1,
@@ -75,6 +75,7 @@ def main():
             args.k,
             window["Wal"] if args.icc else window,
             args.hex,
+            kbird=meta["k"],
             xlim=(args.kmin, args.kmax),
             ylim=(args.ymin, args.ymax),
             accboost=meta["accboost"],
@@ -82,7 +83,7 @@ def main():
         plt.show()
         if args.icc and args.PSN:
             # XXX: may not be correct
-            k = kbird
+            k = meta["k"]
             PSN = window["PSN"]
             fn = interp1d(k, PSN, kind="cubic", axis=-1)
             k = np.geomspace(k[0], k[-1], 1000)
@@ -120,6 +121,7 @@ def main():
         args.k,
         window,
         args.hex,
+        kbird=tmp.meta["k"],
         xlim=(args.xmin, args.xmax),
         ylim=(args.ymin, args.ymax),
         accboost=tmp.meta["accboost"],

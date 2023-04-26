@@ -50,6 +50,8 @@ theory:
         # cross: []
         ##effective redshift
         z:
+        ##max k to compute the theoretical power spectrum, default 0.3
+        # kmax:
         ##EFT nonlinear scale and renormalization scale, don't check if cross
         km:
         ##default kr=km, may not be accurate for some tracers, don't check if cross

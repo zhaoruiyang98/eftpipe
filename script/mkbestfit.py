@@ -21,6 +21,8 @@ class TypedNamespace(argparse.Namespace):
     sharey: bool
     ymin: float | None
     ymax: float | None
+    kmin: float | None
+    kmax: float | None
     nrows: int
     freeze: list[tuple[str, str]]
     freeze_binned: bool
@@ -57,6 +59,12 @@ def get_argparser():
     )
     parser.add_argument(
         "--ymax", type=float, help="set the maximum of y axis for all subplots"
+    )
+    parser.add_argument(
+        "--kmin", type=float, help="set the minimum of x axis for all subplots"
+    )
+    parser.add_argument(
+        "--kmax", type=float, help="set the maximum of x axis for all subplots"
     )
     parser.add_argument(
         "--nrows", type=int, default=1, help="number of rows in the plot (default 1)"
@@ -115,6 +123,10 @@ def main(argv: Sequence[str] | None = None):
             ax.set_ylim(ymin=args.ymin)
         if args.ymax is not None:
             ax.set_ylim(ymax=args.ymax)
+        if args.kmin is not None:
+            ax.set_xlim(xmin=args.kmin)
+        if args.kmax is not None:
+            ax.set_xlim(xmax=args.kmax)
     fig.tight_layout()
     if args.output is None:
         plt.show()

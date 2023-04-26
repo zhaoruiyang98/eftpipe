@@ -260,6 +260,11 @@ class EFTLikeProducts(CobayaProducts):
 
     def dump_full_model_info(self, output: str | None = None, stream=None):
         info = self.full_model_info()
+        info["theory"]["eftpipe.eftlss"]["tracers"]["default"]["kmax"] = 0.35
+        for tracer, config in info["theory"]["eftpipe.eftlss"]["tracers"].items():
+            if "window" in config:
+                config["window"].pop("window_fourier_file", None)
+                # config["window"]["pmax"] = 0.35
         if output:
             info["output"] = output
         return yaml_dump(info, stream)
