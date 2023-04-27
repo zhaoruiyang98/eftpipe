@@ -390,22 +390,24 @@ class Multipole(Mapping[str, pd.Series]):
         for ell, yerr in zip(self.ells, errs):
             self.data[f"{self.symbol}{ell}err"] = yerr
 
-    def plot(self, ax=None, errorbar_style: dict[str, Any] = {"capsize": 2}):
+    def plot(
+        self, ax=None, errorbar_style: dict[str, Any] = {"fmt": ".", "capsize": 2}
+    ):
         if ax is None:
             ax = plt.gca()
         k = self.k
         if (Pk := self.get(self.symbol + "4")) is not None:
             Pkerr = self.hex_err()
             Pkerr = None if Pkerr is None else k * Pkerr
-            ax.errorbar(k, k * Pk, yerr=Pkerr, c="g", fmt=".", **errorbar_style)
+            ax.errorbar(k, k * Pk, yerr=Pkerr, c="g", **errorbar_style)
         if (Pk := self.get(self.symbol + "2")) is not None:
             Pkerr = self.quad_err()
             Pkerr = None if Pkerr is None else k * Pkerr
-            ax.errorbar(k, k * Pk, yerr=Pkerr, c="b", fmt=".", **errorbar_style)
+            ax.errorbar(k, k * Pk, yerr=Pkerr, c="b", **errorbar_style)
         if (Pk := self.get(self.symbol + "0")) is not None:
             Pkerr = self.mono_err()
             Pkerr = None if Pkerr is None else k * Pkerr
-            ax.errorbar(k, k * Pk, yerr=Pkerr, c="k", fmt=".", **errorbar_style)
+            ax.errorbar(k, k * Pk, yerr=Pkerr, c="k", **errorbar_style)
         ax.set_xlabel(R"$k$ $[h\,\mathrm{Mpc}^{-1}]$")
         ax.set_ylabel(Rf"$k{self.symbol}_\ell(k)$ $[h^{-1}\,\mathrm{{Mpc}}]^2$")
         return ax
