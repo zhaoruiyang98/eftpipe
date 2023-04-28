@@ -545,7 +545,10 @@ class BestfitModel:
         )
 
     def plot(
-        self, tracer: str, ax=None, errorbar_style: dict[str, Any] = {"capsize": 2}
+        self,
+        tracer: str,
+        ax=None,
+        errorbar_style: dict[str, Any] = {"fmt": ".", "capsize": 2},
     ):
         if ax is None:
             ax = plt.gca()
