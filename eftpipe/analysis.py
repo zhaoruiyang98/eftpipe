@@ -296,6 +296,12 @@ class EFTLikeProducts(CobayaProducts):
         depend on prior, but is similar to randomly choose a point and compute chi2.
         Anyway, both of them are approximate estimation of global best fit.
         """
+        if self.using_jeffreys_prior():
+            return self.bestfit(
+                include_fixed=include_fixed,
+                sampled_only=sampled_only,
+                params_only=params_only,
+            )
         fullchi2_names: list[str] = [
             k for k in self.chains.columns if k.endswith(self.fullchi2_suffix())
         ]
@@ -329,6 +335,15 @@ class EFTLikeProducts(CobayaProducts):
             include_fixed, sampled_only, params_only, include_prior=include_prior
         )
 
+    def using_jeffreys_prior(self) -> bool:
+        """return True if all likelihoods are using Jeffreys prior"""
+        for likename, config in self.input_info["likelihood"].items():
+            if not supported_likelihood(likename, config):
+                return False
+            if not config.get("jeffreys", False):
+                return False
+        return True
+
 
 @dataclass
 class Multipole(Mapping[str, pd.Series]):
@@ -336,6 +351,9 @@ class Multipole(Mapping[str, pd.Series]):
     k: ndarrayf = field(repr=False)
     ells: tuple[int, ...]
     symbol: str
+    default_style: dict[str, Any] = field(
+        default_factory=lambda: {"fmt": ".", "capsize": 2}
+    )
 
     @classmethod
     def loadtxt(
@@ -390,24 +408,24 @@ class Multipole(Mapping[str, pd.Series]):
         for ell, yerr in zip(self.ells, errs):
             self.data[f"{self.symbol}{ell}err"] = yerr
 
-    def plot(
-        self, ax=None, errorbar_style: dict[str, Any] = {"fmt": ".", "capsize": 2}
-    ):
+    def plot(self, ax=None, label: str | None = None, **errorbar_style):
+        style = {**self.default_style, **errorbar_style}
         if ax is None:
             ax = plt.gca()
         k = self.k
         if (Pk := self.get(self.symbol + "4")) is not None:
             Pkerr = self.hex_err()
             Pkerr = None if Pkerr is None else k * Pkerr
-            ax.errorbar(k, k * Pk, yerr=Pkerr, c="g", **errorbar_style)
+            ax.errorbar(k, k * Pk, yerr=Pkerr, c="g", **style)
         if (Pk := self.get(self.symbol + "2")) is not None:
             Pkerr = self.quad_err()
             Pkerr = None if Pkerr is None else k * Pkerr
-            ax.errorbar(k, k * Pk, yerr=Pkerr, c="b", **errorbar_style)
+            ax.errorbar(k, k * Pk, yerr=Pkerr, c="b", **style)
         if (Pk := self.get(self.symbol + "0")) is not None:
             Pkerr = self.mono_err()
             Pkerr = None if Pkerr is None else k * Pkerr
-            ax.errorbar(k, k * Pk, yerr=Pkerr, c="k", **errorbar_style)
+            extra = {"label": label} if label else {}
+            ax.errorbar(k, k * Pk, yerr=Pkerr, c="k", label=label, **extra, **style)
         ax.set_xlabel(R"$k$ $[h\,\mathrm{Mpc}^{-1}]$")
         ax.set_ylabel(Rf"$k{self.symbol}_\ell(k)$ $[h^{-1}\,\mathrm{{Mpc}}]^2$")
         return ax
@@ -544,15 +562,10 @@ class BestfitModel:
             tracer, chained=self.chained[tracer]
         )
 
-    def plot(
-        self,
-        tracer: str,
-        ax=None,
-        errorbar_style: dict[str, Any] = {"fmt": ".", "capsize": 2},
-    ):
+    def plot(self, tracer: str, ax=None, **errorbar_style):
         if ax is None:
             ax = plt.gca()
-        self.multipoles[tracer].plot(ax, errorbar_style)
+        self.multipoles[tracer].plot(ax, **errorbar_style)
         k = np.linspace(0.0005, 0.3, 1000)
         Plk = self.Plk_interpolator(tracer)
         if 0 in Plk.ls:
