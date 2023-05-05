@@ -15,7 +15,7 @@ from typing import (
 )
 
 if TYPE_CHECKING:
-    from .typing import ndarrayf
+    from .etyping import ndarrayf
     from .pybird.pybird import BirdLike
 
 

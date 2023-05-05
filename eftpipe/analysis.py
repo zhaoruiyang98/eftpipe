@@ -10,7 +10,7 @@ from collections import Counter, defaultdict
 from copy import deepcopy
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, cast, Mapping, TypeVar, TYPE_CHECKING, Union
+from typing import Any, cast, Iterable, Mapping, TypeVar, TYPE_CHECKING, Union
 from typing_extensions import TypeAlias
 from cobaya import get_model
 from cobaya.yaml import yaml_dump
@@ -21,7 +21,7 @@ from .tools import pairwise, verbose_guard
 
 if TYPE_CHECKING:
     from .theory import PlkInterpolator
-    from .typing import ndarrayf
+    from .etyping import ndarrayf
 
 FilePath: TypeAlias = Union[str, os.PathLike]
 _T = TypeVar("_T")
@@ -347,13 +347,21 @@ class EFTLikeProducts(CobayaProducts):
 
 @dataclass
 class Multipole(Mapping[str, pd.Series]):
-    data: pd.DataFrame = field(repr=False, compare=False)
-    k: ndarrayf = field(repr=False)
     ells: tuple[int, ...]
-    symbol: str
-    default_style: dict[str, Any] = field(
-        default_factory=lambda: {"fmt": ".", "capsize": 2}
-    )
+    x: ndarrayf = field(repr=False)
+    data: pd.DataFrame = field(repr=False, compare=False)
+    symbol: str = "P"
+
+    @classmethod
+    def init(cls, **kwargs: ndarrayf):
+        if len(kwargs) < 2:
+            raise ValueError("at least two kwargs are required")
+        xname = next(iter(kwargs))
+        x = kwargs[xname]
+        symbol, ells = cls.infer_symbol_and_ells(kwargs)
+        data = pd.DataFrame(kwargs)
+        data.set_index(xname, drop=False, inplace=True)
+        return cls(ells, x, data, symbol)
 
     @classmethod
     def loadtxt(
@@ -362,20 +370,34 @@ class Multipole(Mapping[str, pd.Series]):
         cov_path: FilePath | None = None,
         logger: logging.Logger | None = None,
     ):
+        """load multipole from txt file, assume power spectrum by default"""
         data = read_pkl(path, logger=logger)
-        k = data["k"].to_numpy()
+        x = data.index.to_numpy()
+        symbol, ells = cls.infer_symbol_and_ells(data.columns)
+        multipole = cls(ells, x, data, symbol)
+        if cov_path:
+            multipole.apply_covariance(np.loadtxt(cov_path))
+        return multipole
+
+    @classmethod
+    def infer_symbol_and_ells(cls, names: Iterable[str]):
         pattern = re.compile(r"(?P<symbol>[A-Za-z]+)(?P<ell>\d+)")
         db = defaultdict(list)
-        for name in data.columns:
+        for name in names:
             if match := pattern.match(name):
                 db[match.group("symbol")].append(int(match.group("ell")))
         cnt = Counter({k: len(v) for k, v in db.items()})
         symbol = cnt.most_common(1)[0][0]
         ells = tuple(sorted(db[symbol]))
-        multipole = cls(data, k, ells, symbol)
-        if cov_path:
-            multipole.apply_covariance(np.loadtxt(cov_path))
-        return multipole
+        return symbol, ells
+
+    @property
+    def k(self):
+        return self.x
+
+    @property
+    def s(self):
+        return self.x
 
     def mono(self) -> pd.Series:
         return self.data[self.symbol + "0"]
@@ -398,6 +420,21 @@ class Multipole(Mapping[str, pd.Series]):
     def data_vector(self) -> ndarrayf:
         return np.hstack(list(self.values()))
 
+    def clone(self):
+        return self.__class__(
+            ells=self.ells,
+            x=self.x.copy(),
+            data=self.data.copy(),
+            symbol=self.symbol,
+        )
+
+    def maybe_power_spectrum(self) -> bool:
+        if self.symbol == "P":
+            return True
+        if self.x.max() < 10:
+            return True
+        return False
+
     def apply_covariance(self, cov: ndarrayf):
         sections = list(
             itertools.accumulate(
@@ -407,9 +444,14 @@ class Multipole(Mapping[str, pd.Series]):
         errs = np.split(np.sqrt(cov.diagonal()), sections)
         for ell, yerr in zip(self.ells, errs):
             self.data[f"{self.symbol}{ell}err"] = yerr
+        return self
 
-    def plot(self, ax=None, label: str | None = None, **errorbar_style):
-        style = {**self.default_style, **errorbar_style}
+    # plot
+    def default_style(self):
+        return {"fmt": ".", "capsize": 2}
+
+    def plot_pk(self, ax=None, label: str | None = None, **errorbar_style):
+        style = {**self.default_style(), **errorbar_style}
         if ax is None:
             ax = plt.gca()
         k = self.k
@@ -426,10 +468,42 @@ class Multipole(Mapping[str, pd.Series]):
             Pkerr = None if Pkerr is None else k * Pkerr
             extra = {"label": label} if label else {}
             ax.errorbar(k, k * Pk, yerr=Pkerr, c="k", label=label, **extra, **style)
-        ax.set_xlabel(R"$k$ $[h\,\mathrm{Mpc}^{-1}]$")
-        ax.set_ylabel(Rf"$k{self.symbol}_\ell(k)$ $[h^{-1}\,\mathrm{{Mpc}}]^2$")
         return ax
 
+    def plot_xi(self, ax=None, label: str | None = None, **errorbar_style):
+        style = {**self.default_style(), **errorbar_style}
+        if ax is None:
+            ax = plt.gca()
+        s = self.s
+        if (xi := self.get(self.symbol + "4")) is not None:
+            xierr = self.hex_err()
+            xierr = None if xierr is None else s**2 * xierr
+            ax.errorbar(s, s**2 * xi, yerr=xierr, c="g", **style)
+        if (xi := self.get(self.symbol + "2")) is not None:
+            xierr = self.quad_err()
+            xierr = None if xierr is None else s**2 * xierr
+            ax.errorbar(s, s**2 * xi, yerr=xierr, c="b", **style)
+        if (xi := self.get(self.symbol + "0")) is not None:
+            xierr = self.mono_err()
+            xierr = None if xierr is None else s**2 * xierr
+            extra = {"label": label} if label else {}
+            ax.errorbar(
+                s, s**2 * xi, yerr=xierr, c="k", label=label, **extra, **style
+            )
+        return ax
+
+    def plot(self, ax=None, label: str | None = None, **errorbar_style):
+        if self.maybe_power_spectrum():
+            ax = self.plot_pk(ax, label, **errorbar_style)
+            ax.set_xlabel(R"$k$ $[h\,\mathrm{Mpc}^{-1}]$")
+            ax.set_ylabel(Rf"$k{self.symbol}_\ell(k)$ $[h^{{-1}}\,\mathrm{{Mpc}}]^2$")
+        else:
+            ax = self.plot_xi(ax, label, **errorbar_style)
+            ax.set_xlabel(R"$s$ $[h^{-1}\,\mathrm{Mpc}]$")
+            ax.set_ylabel(Rf"$s^2{self.symbol}_\ell(s)$ $[h^{{-1}}\,\mathrm{{Mpc}}]^2$")
+        return ax
+
+    # Mapping interface
     def get(self, key: str, default: _T = None) -> pd.Series | _T:
         return self.data.get(key, default)  # type: ignore
 

@@ -29,7 +29,6 @@ def read_commented_csv(
 def read_pkl(
     path: str | os.PathLike, logger: logging.Logger | None = None
 ) -> pd.DataFrame:
-    """numpy compatible csv reader"""
     try:
         df = read_commented_csv(path)
     except NoHeaderError:
@@ -37,5 +36,5 @@ def read_pkl(
             logger.warning("No header found in %s, inferred instead", path)
         names = ["k"] + [f"P{2 * i}" for i in range(np.loadtxt(path).shape[1] - 1)]
         df = read_commented_csv(path, names=names)
-    df.set_index("k", drop=False, inplace=True)
+    df.set_index(df.columns[0], drop=False, inplace=True)
     return df
