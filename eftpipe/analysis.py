@@ -1,14 +1,19 @@
+"""
+anything related to analysis
+"""
 from __future__ import annotations
 import itertools
 import logging
 import os
 import re
+import math
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 from collections import Counter, defaultdict
 from copy import deepcopy
 from dataclasses import dataclass, field
+from functools import cached_property
 from pathlib import Path
 from typing import Any, cast, Iterable, Mapping, TypeVar, TYPE_CHECKING, Union
 from typing_extensions import TypeAlias
@@ -16,6 +21,8 @@ from cobaya import get_model
 from cobaya.yaml import yaml_dump
 from cobaya.yaml import yaml_dump_file
 from cobaya.yaml import yaml_load_file
+from scipy.integrate import quad
+from scipy.optimize import fsolve
 from .reader import read_pkl
 from .tools import pairwise, verbose_guard
 
@@ -650,3 +657,179 @@ class BestfitModel:
             ax.plot(k, k * Plk(4, k), c="g")
         ax.set_title(tracer.replace("_", " "))
         return ax
+
+
+def efunc(z: float, omegam: float) -> float:
+    """H(z) / H0"""
+    try:
+        return math.sqrt(omegam * (1 + z) ** 3 + 1 - omegam)
+    except ValueError:
+        return math.nan
+
+
+def DH(z: float, omegam: float) -> float:
+    """D_H(z) in hubble unit, Mpc/h"""
+    return 299792.458 / (100 * efunc(z, omegam))
+
+
+def DM(z: float, omegam: float) -> float:
+    """D_M(z) in hubble unit, Mpc/h"""
+    return quad(DH, 0, z, args=(omegam,))[0]
+
+
+def omegam_z(z: Any, omegam: Any) -> Any:
+    """Omega_m(z)"""
+    return omegam * (1 + z) ** 3 / (omegam * (1 + z) ** 3 + 1 - omegam)
+
+
+def growth_factor(z: float, omegam: float, normalize: bool = True) -> float:
+    """linear growth factor
+
+    References
+    ----------
+    Dodelson, Modern Cosmology, Eq. 8.77
+    """
+    # fmt: off
+    gz = (
+        5/2 * omegam * efunc(z, omegam)
+        * quad(lambda t: (1 + t) / efunc(t, omegam) ** 3, z, np.inf)[0]
+    )
+    norm = 1
+    if normalize:
+        norm = (
+            5/2 * omegam * efunc(0, omegam)
+            * quad(lambda t: (1 + t) / efunc(t, omegam) ** 3, 0, np.inf)[0]
+        )
+    # fmt: on
+    return gz / norm
+
+
+def growth_rate(z: float, omegam: float, fast: bool = False) -> float:
+    if fast:
+        return omegam_z(z, omegam) ** 0.55
+    # fmt: off
+    return (
+        3 * omegam / (2 * (omegam - 1) / (1 + z)**3 - 2 * omegam)
+        + 5/2 * omegam * (1 + z)**2 / efunc(z, omegam)**2 / growth_factor(z, omegam, normalize=False)
+    )
+    # fmt: on
+
+
+@dataclass(frozen=True)
+class LssConvertor:
+    """convert lss analysis results like fsigma8, alperp and alpara into suitable format
+
+    Parameters
+    ----------
+    alpara: float
+        BAO parameter along the line of sight
+    alperp: float
+        BAO parameter perpendicular to the line of sight
+    fsigma8: float
+        f * sigma_8
+    zeff: float
+        effective redshift
+    omegam_fid: float
+        fiducial Omega_m
+    rdrag_fid: float
+        fiducial r_drag, in Mpc unit
+    H0_fid: float
+        fiducial H0, in km/s/Mpc unit
+
+    Notes
+    -----
+    This class aims to provide a user-friendly interface to convert lss analysis results
+
+    References
+    ----------
+    -  https://arxiv.org/abs/2007.08991
+    """
+
+    alpara: float
+    alperp: float
+    fsigma8: float
+    zeff: float
+    omegam_fid: float
+    rdrag_fid: float
+    H0_fid: float
+
+    @classmethod
+    def from_cosmo(
+        cls,
+        omegam: float,
+        rdrag: float,
+        H0: float,
+        sigma8: float,
+        zeff: float,
+        omegam_fid: float,
+        rdrag_fid: float,
+        H0_fid: float,
+    ):
+        rdrag_hubble_unit = rdrag * H0 / 100
+        DH_over_rdrag_fid = DH(zeff, omegam_fid) / (rdrag_fid * H0_fid / 100)
+        DM_over_rdrag_fid = DM(zeff, omegam_fid) / (rdrag_fid * H0_fid / 100)
+        alpara = (DH(zeff, omegam) / rdrag_hubble_unit) / DH_over_rdrag_fid
+        alperp = (DM(zeff, omegam) / rdrag_hubble_unit) / DM_over_rdrag_fid
+        fsigma8 = growth_rate(zeff, omegam) * growth_factor(zeff, omegam) * sigma8
+        return cls(alpara, alperp, fsigma8, zeff, omegam_fid, rdrag_fid, H0_fid)
+
+    def h_fid(self):
+        return self.H0_fid / 100
+
+    def alpha(self) -> float:
+        """dilation / isotropic BAO parameter"""
+        return (self.alpara * self.alperp**2) ** (1 / 3)
+
+    def epsilon(self) -> float:
+        """warping / aniostropic BAO parameter"""
+        return (self.alpara / self.alperp) ** (1 / 3) - 1
+
+    def DH_over_rdrag(self) -> float:
+        """D_H / r_{drag}"""
+        return self.alpara * (
+            DH(self.zeff, self.omegam_fid) / (self.rdrag_fid * self.h_fid())
+        )
+
+    def DM_over_rdrag(self) -> float:
+        """D_M / r_{drag}"""
+        return self.alperp * (
+            DM(self.zeff, self.omegam_fid) / (self.rdrag_fid * self.h_fid())
+        )
+
+    def DV_over_rdrag(self) -> float:
+        """D_V / r_{drag}"""
+        return (self.zeff * self.DM_over_rdrag() ** 2 * self.DH_over_rdrag()) ** (1 / 3)
+
+    def H0rdrag(self):
+        omegam = self.omegam()
+        return 299792.458 / efunc(self.zeff, omegam) / self.DH_over_rdrag()
+
+    def H0(self, rdrag: float | None = None):
+        """H0 in km/s/Mpc
+
+        Parameters
+        ----------
+        rdrag: float, optional
+            r_drag in Mpc unit, default to rdrag_fid
+        """
+        if rdrag is None:
+            rdrag = self.rdrag_fid
+        return self.H0rdrag() / rdrag
+
+    @cached_property
+    def _omegam(self) -> float:
+        # fmt: off
+        constant = (self.alpara / self.alperp) * DH(self.zeff, self.omegam_fid) / DM(self.zeff, self.omegam_fid)
+        # fmt: on
+        return fsolve(
+            lambda om: DH(self.zeff, om) / DM(self.zeff, om) - constant, 0.31
+        )[0]
+
+    def omegam(self):
+        return self._omegam
+
+    def sigma8(self):
+        omegam = self.omegam()
+        gz = growth_factor(self.zeff, omegam)
+        fz = growth_rate(self.zeff, omegam)
+        return self.fsigma8 / (fz * gz)
