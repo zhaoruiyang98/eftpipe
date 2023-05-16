@@ -474,7 +474,7 @@ class Multipole(Mapping[str, pd.Series]):
             Pkerr = self.mono_err()
             Pkerr = None if Pkerr is None else k * Pkerr
             extra = {"label": label} if label else {}
-            ax.errorbar(k, k * Pk, yerr=Pkerr, c="k", label=label, **extra, **style)
+            ax.errorbar(k, k * Pk, yerr=Pkerr, c="k", **extra, **style)
         return ax
 
     def plot_xi(self, ax=None, label: str | None = None, **errorbar_style):
@@ -494,9 +494,7 @@ class Multipole(Mapping[str, pd.Series]):
             xierr = self.mono_err()
             xierr = None if xierr is None else s**2 * xierr
             extra = {"label": label} if label else {}
-            ax.errorbar(
-                s, s**2 * xi, yerr=xierr, c="k", label=label, **extra, **style
-            )
+            ax.errorbar(s, s**2 * xi, yerr=xierr, c="k", **extra, **style)
         return ax
 
     def plot(self, ax=None, label: str | None = None, **errorbar_style):
