@@ -27,6 +27,18 @@ class Everything:
 EVERYTHING = Everything()
 
 
+@dataclass
+class BirdComponent:
+    Plin: ndarrayf
+    Ploop: ndarrayf
+    Pct: ndarrayf
+    Pst: ndarrayf
+    Picc: ndarrayf
+
+    def sum(self) -> ndarrayf:
+        return self.Plin + self.Ploop + self.Pct + self.Pst + self.Picc
+
+
 def reduce_Plk(
     bird: BirdLike,
     bsA: Iterable[float],
@@ -34,7 +46,7 @@ def reduce_Plk(
     es: Iterable[float] = (0.0, 0.0, 0.0),
     cnnloA: Iterable[float] = (0.0, 0.0),
     cnnloB: Iterable[float] | None = None,
-) -> ndarrayf:
+) -> BirdComponent:
     R"""compute reduced power spectrum
 
     Parameters
@@ -119,29 +131,14 @@ def reduce_Plk(
     xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
     bstAB = np.array([ce0 * xfactor1, cemono * xfactor2, cequad * xfactor2])
 
-    Ps0 = np.einsum("b,lbx->lx", b11AB, bird.P11l)
-    Ps1 = np.einsum("b,lbx->lx", bloopAB, bird.Ploopl) + np.einsum(
-        "b,lbx->lx", bctAB, bird.Pctl
-    )
+    Plin = np.einsum("b,lbx->lx", b11AB, bird.P11l)
+    Ploop = np.einsum("b,lbx->lx", bloopAB, bird.Ploopl)
+    Pct = np.einsum("b,lbx->lx", bctAB, bird.Pctl)
     if bird.co.with_NNLO:
         assert bird.PctNNLOl is not None
-        Ps1 += np.einsum("b,lbx->lx", bctNNLOAB, bird.PctNNLOl)
-    Ps2 = np.einsum("b,lbx->lx", bstAB, bird.Pstl)
-    # from matplotlib import pyplot as plt
-    # k = bird.co.k
-    # plt.plot(k, k * Ps0[0], "k-", label="kaiser")
-    # plt.plot(k, k * Ps0[1], "b-")
-    # _Ploop = np.einsum("b,lbx->lx", bloopAB, Ploopl)
-    # _Pct = np.einsum("b,lbx->lx", bctAB, Pctl)
-    # plt.plot(k, k * _Ploop[0], "k--", label="loop")
-    # plt.plot(k, k * _Ploop[1], "b--")
-    # plt.plot(k, k * _Pct[0], "k:", label="counter")
-    # plt.plot(k, k * _Pct[1], "b:")
-    # plt.legend(frameon=False)
-    # plt.xlim(0, 0.3)
-    # plt.ylim(-300, 450)
-    # plt.show()
-    return Ps0 + Ps1 + Ps2 + bird.Picc
+        Pct += np.einsum("b,lbx->lx", bctNNLOAB, bird.PctNNLOl)
+    Pst = np.einsum("b,lbx->lx", bstAB, bird.Pstl)
+    return BirdComponent(Plin=Plin, Ploop=Ploop, Pct=Pct, Pst=Pst, Picc=bird.Picc)
 
 
 class EFTBasis(Protocol):
@@ -164,7 +161,7 @@ class EFTBasis(Protocol):
 
     def reduce_Plk(
         self, bird: BirdLike, params_values_dict: Mapping[str, float]
-    ) -> ndarrayf:
+    ) -> BirdComponent:
         ...
 
     def reduce_Plk_gaussian_table(
@@ -257,6 +254,14 @@ class WestCoastBasis(EFTBasis):
 
     # impl
     def reduce_Plk_gaussian_table(
+        self,
+        bird: BirdLike,
+        params_values_dict: Mapping[str, float],
+        requires: Container[str] | None = None,
+    ):
+        return self.derivative_table(bird, params_values_dict, requires)
+
+    def derivative_table(
         self,
         bird: BirdLike,
         params_values_dict: Mapping[str, float],

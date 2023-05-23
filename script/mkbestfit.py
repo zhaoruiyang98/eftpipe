@@ -18,6 +18,7 @@ class TypedNamespace(argparse.Namespace):
     output: str | None
     verbose: bool
     base: Path
+    component: bool
     sharey: bool
     ymin: float | None
     ymax: float | None
@@ -49,6 +50,11 @@ def get_argparser():
         type=Path,
         default=Path.cwd(),
         help="working path when loading yaml file (default cwd)",
+    )
+    parser.add_argument(
+        "--component",
+        action="store_true",
+        help="plot bird component for each tracer instead of final Plk",
     )
     # plot style
     parser.add_argument(
@@ -93,7 +99,7 @@ def main(argv: Sequence[str] | None = None):
         parser.exit(message="freeze_binned not implemented yet!\n")
     input_yaml = str(args.input_yaml.expanduser().resolve())
     with PathContext(args.base):
-        model = BestfitModel(input_yaml, verbose=args.verbose)
+        model = BestfitModel(input_yaml, verbose=args.verbose, component=args.component)
     print("bestfit:")
     pprint(model.bestfit)
     print("fullchi2 (w/o hartlap):")
@@ -118,7 +124,10 @@ def main(argv: Sequence[str] | None = None):
     )
     for i, tracer in enumerate(tracers):
         ax = plt.subplot(nrows, ncols, i + 1)
-        model.plot(tracer, ax=ax)
+        if args.component:
+            model.plot_component(tracer, ax=ax)
+        else:
+            model.plot(tracer, ax=ax)
         if args.ymin is not None:
             ax.set_ylim(ymin=args.ymin)
         if args.ymax is not None:

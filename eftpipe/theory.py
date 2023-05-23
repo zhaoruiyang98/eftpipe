@@ -32,7 +32,7 @@ if TYPE_CHECKING:
     from .boltzmann import BoltzmannInterface
     from .pybird.pybird import BirdLike
     from .pybird.pybird import BirdSnapshot
-    from .parambasis import EFTBasis
+    from .parambasis import BirdComponent, EFTBasis
 
     ndarrayf: TypeAlias = NDArray[np.float64]
 
@@ -47,6 +47,7 @@ from .tools import group_lists
 from .tools import int_or_list
 from .tools import Initializer
 from .tools import recursively_update_dict
+from .transformer import BirdCopier
 from .window import Window
 
 
@@ -257,6 +258,11 @@ class EFTLSS(Theory):
     def get_eft_params_values_dict(self, tracer: str) -> dict[str, float]:
         return self.retrieve_product_from_leaf(tracer, "eft_params_values_dict")
 
+    def get_bird_component(
+        self, tracer: str
+    ) -> tuple[list[int], ndarrayf, BirdComponent]:
+        return self.retrieve_product_from_leaf(tracer, "bird_component")
+
 
 class LeafKernelShared(Protocol):
     tracer: str
@@ -375,8 +381,13 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
             self.plugins["_icc"] = Initializer(
                 IntegralConstraint, self.tracer_config.get("icc", {}), self.log
             )
-        # allowed keys: Nl, binned, binning, chained
-        self._must_provide: dict[str, Any] = {"Nl": 0, "binned": [], "chained": []}
+        # allowed keys: Nl, binned, binning, chained, bird_component
+        self._must_provide: dict[str, Any] = {
+            "Nl": 0,
+            "binned": [],
+            "chained": [],
+            "bird_component": False,
+        }
         self._warned = set()
 
     def initialize_with_provider(self, provider: Provider):
@@ -484,7 +495,9 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
         reqs: dict[str, dict[str, Any]] = requirements.get(self.product_name(), {})
         # TODO: support dynamical plugin settings
         for product, config in reqs.items():
-            if product in (
+            if product == "bird_component":
+                self._must_provide["bird_component"] = True
+            elif product in (
                 "nonlinear_Plk_grid",
                 "nonlinear_Plk_interpolator",
                 "nonlinear_Plk_gaussian_grid",
@@ -553,6 +566,13 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
         plugins = cast(PluginsDict, self.plugins)
         if self.with_IRresum:
             plugins["IRresum"].Ps(bird)
+        bird_component_product = None
+        if self._must_provide["bird_component"]:
+            bird_component_product = (
+                [2 * i for i in range(self.Nl())],
+                bird.co.k.copy(),
+                BirdCopier().transform(bird),
+            )
         if self.with_APeffect:
             plugins["APeffect"].AP(bird)
         if self.with_window:
@@ -581,6 +601,7 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
         state[self.product_name()] = {
             "bird": bird,
             "birdlike_products": birdlike_products,
+            "bird_component_product": bird_component_product,
         }
 
     def calculate(self, state, want_derived=True, **params_values_dict):
@@ -789,6 +810,8 @@ class EFTLeaf(HelperTheory, LeafKernelShared):
                 self._must_provide[product] = set()
             elif product == "eft_params_values_dict":
                 self._must_provide[product] = set()
+            elif product == "bird_component":
+                self._must_provide[product] = set()
             else:
                 raise LoggedError(
                     self.log,
@@ -813,6 +836,10 @@ class EFTLeaf(HelperTheory, LeafKernelShared):
                         p: params_values_dict.get(p, 0.0)
                         for p in basis.gaussian_params() + basis.non_gaussian_params()
                     }
+                elif product == "bird_component":
+                    ls, k, birdlike = kernel_product[product + "_product"]
+                    component = basis.reduce_Plk(birdlike, params_values_dict)
+                    products[product] = (ls, k, component)
                 elif product == "nonlinear_Plk_gaussian_grid":
                     for key in keyset:
                         ls, k, birdlike = birdlike_products[key]
@@ -827,7 +854,7 @@ class EFTLeaf(HelperTheory, LeafKernelShared):
                         products[(product,) + key] = (
                             ls,
                             k,
-                            basis.reduce_Plk(birdlike, params_values_dict),
+                            basis.reduce_Plk(birdlike, params_values_dict).sum(),
                         )
                 elif product == "nonlinear_Plk_interpolator":
                     for key in keyset:
@@ -835,7 +862,7 @@ class EFTLeaf(HelperTheory, LeafKernelShared):
                         if tmp := products.get(("nonlinear_Plk_grid",) + key):
                             _, _, Plk = tmp
                         else:
-                            Plk = basis.reduce_Plk(birdlike, params_values_dict)
+                            Plk = basis.reduce_Plk(birdlike, params_values_dict).sum()
                         fn = PlkInterpolator(ls, k, Plk)
                         chained, binned = key
                         products[(product, chained)] = fn

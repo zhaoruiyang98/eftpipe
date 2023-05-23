@@ -15,19 +15,22 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import Any, cast, Iterable, Mapping, TypeVar, TYPE_CHECKING, Union
+from typing import Any, cast, Iterable, Mapping, Sequence, TypeVar, TYPE_CHECKING, Union
 from typing_extensions import TypeAlias
 from cobaya import get_model
 from cobaya.yaml import yaml_dump
 from cobaya.yaml import yaml_dump_file
 from cobaya.yaml import yaml_load_file
 from scipy.integrate import quad
+from scipy.interpolate import interp1d
 from scipy.optimize import fsolve
+from scipy.optimize import least_squares
 from .reader import read_pkl
+from .theory import PlkInterpolator
 from .tools import pairwise, verbose_guard
 
 if TYPE_CHECKING:
-    from .theory import PlkInterpolator
+    from .parambasis import BirdComponent
     from .etyping import ndarrayf
 
 FilePath: TypeAlias = Union[str, os.PathLike]
@@ -557,10 +560,31 @@ def collect_multipoles(info: dict[str, dict]) -> dict[str, Multipole]:
     return tracer_multipoles
 
 
+def paint_multipole(
+    ells: list[int],
+    k: ndarrayf,
+    Plk: PlkInterpolator,
+    ax=None,
+    label: str | None = None,
+    **style,
+):
+    if ax is None:
+        ax = plt.gca()
+    extra = {} if label is None else {"label": label}
+    if 0 in ells:
+        ax.plot(k, k * Plk(0, k), c="k", **style, **extra)
+    if 2 in ells:
+        ax.plot(k, k * Plk(2, k), c="b", **style)
+    if 4 in ells:
+        ax.plot(k, k * Plk(4, k), c="g", **style)
+    return ax
+
+
 @dataclass
 class BestfitModel:
     yaml_file: str
     verbose: bool = False
+    component: bool = False
 
     def __post_init__(self):
         from .likelihood import EFTLike
@@ -598,6 +622,8 @@ class BestfitModel:
                     "ls": ells,
                     "chained": chained_,
                 }
+                if self.component:
+                    requires["bird_component"][tracer] = None
             fullchi2.append(likename + "_fullchi2")
             ndata.append(likelihood.ndata)
             hartlap.append(likelihood.hartlap if likelihood.hartlap is not None else 1)
@@ -641,18 +667,35 @@ class BestfitModel:
             tracer, chained=self.chained[tracer]
         )
 
+    def bird_component(self, tracer: str) -> tuple[list[int], ndarrayf, BirdComponent]:
+        return self.model.provider.get_bird_component(tracer)
+
     def plot(self, tracer: str, ax=None, **errorbar_style):
         if ax is None:
             ax = plt.gca()
         self.multipoles[tracer].plot(ax, **errorbar_style)
         k = np.linspace(0.0005, 0.3, 1000)
         Plk = self.Plk_interpolator(tracer)
-        if 0 in Plk.ls:
-            ax.plot(k, k * Plk(0, k), c="k")
-        if 2 in Plk.ls:
-            ax.plot(k, k * Plk(2, k), c="b")
-        if 4 in Plk.ls:
-            ax.plot(k, k * Plk(4, k), c="g")
+        paint_multipole(Plk.ls, k, Plk, ax=ax)
+        ax.set_title(tracer.replace("_", " "))
+        return ax
+
+    def plot_component(self, tracer: str, ax=None):
+        if ax is None:
+            ax = plt.gca()
+        ls, kraw, component = self.bird_component(tracer)
+        Plin, Ploop, Pct = (
+            PlkInterpolator(ls, kraw, np.abs(p))
+            for p in (component.Plin, component.Ploop, component.Pct)
+        )
+
+        k = np.linspace(0.0005, 0.3, 1000)
+        paint_multipole(Plin.ls, k, Plin, ax=ax, label="linear", ls="-")
+        paint_multipole(Ploop.ls, k, Ploop, ax=ax, label="loop", ls="--")
+        paint_multipole(Pct.ls, k, Pct, ax=ax, label="counter", ls=":")
+        ax.legend(frameon=False)
+        ax.set_xlabel(R"$k$ $[h\,\mathrm{Mpc}^{-1}]$")
+        ax.set_ylabel(R"$|kP_\ell(k)|$ $[h^{-1}\,\mathrm{Mpc}]^2$")
         ax.set_title(tracer.replace("_", " "))
         return ax
 
@@ -831,3 +874,169 @@ class LssConvertor:
         gz = growth_factor(self.zeff, omegam)
         fz = growth_rate(self.zeff, omegam)
         return self.fsigma8 / (fz * gz)
+
+
+# TODO: check the correctness of this implementation
+@dataclass
+class KaiserModel:
+    """Kaiser model with PyBird-like counter terms"""
+
+    k: ndarrayf
+    Plin: ndarrayf
+    ells: tuple[int, ...] = (0, 2, 4)
+    km: float = 0.7
+    kr: float = 0.25
+    nd: float = 1e-3
+    default_params: dict[str, float | None] = field(
+        default_factory=lambda: {
+            "b1": None,
+            "f": None,
+            "cct": 0.0,
+            "cr1": 0.0,
+            "cr2": 0.0,
+            "Pshot": 0.0,
+        }
+    )
+
+    def __post_init__(self):
+        for ell in self.ells:
+            if ell % 2 != 0:
+                raise ValueError(f"ells must all be even, got {self.ells}")
+
+    def params(self, params_values_dict: dict[str, float]):
+        updated_params: dict[str, float] = {}
+        for k, v in self.default_params.items():
+            if (value := params_values_dict.get(k, v)) is None:
+                raise ValueError(f"missing parameter: {k}")
+            updated_params[k] = value
+        return updated_params
+
+    def Plk_linear_grid(self, params_values_dict: dict[str, float]) -> ndarrayf:
+        params = self.params(params_values_dict)
+        b1, f = params["b1"], params["f"]
+        coef = [
+            b1**2 + 2 / 3 * b1 * f + 1 / 5 * f**2,
+            4 / 3 * b1 * f + 4 / 7 * f**2,
+            8 / 35 * f**2,
+        ]
+        return np.outer(coef, self.Plin)
+
+    def Plk_counter_grid(self, params_values_dict: dict[str, float]) -> ndarrayf:
+        params = self.params(params_values_dict)
+        b1, f, cct, cr1, cr2 = (
+            params["b1"],
+            params["f"],
+            params["cct"],
+            params["cr1"],
+            params["cr2"],
+        )
+        cct /= self.km**2
+        cr1 /= self.kr**2
+        cr2 /= self.kr**2
+        # fmt: off
+        coef = [
+            b1*cct + 1/3*b1*cr1 + 1/5*b1*cr2 + 1/3*cct*f + 1/5*cr1*f+ 1/7*cr2*f,
+            2/3*b1*cr1 + 4/7*b1*cr2 + 2/3*cct*f + 4/7*cr1*f + 10/21*cr2*f,
+            8/35*b1*cr2 + 8/35*cr1*f + 24/77*cr2*f,
+        ]
+        # fmt: on
+        return np.outer(coef, self.k**2 * self.Plin)
+
+    def Plk_stochastic_grid(self, params_values_dict: dict[str, float]) -> ndarrayf:
+        retval = np.zeros((3, len(self.k)))
+        retval[0] = self.params(params_values_dict)["Pshot"] / self.nd
+        return retval
+
+    def Plk_grid(self, params_values_dict: dict[str, float]) -> ndarrayf:
+        # XXX: workaround
+        return (
+            self.Plk_linear_grid(params_values_dict)
+            + self.Plk_counter_grid(params_values_dict)
+            + self.Plk_stochastic_grid(params_values_dict)
+        )[[(0, 2, 4).index(ell) for ell in self.ells]]
+
+    def Plk(self, params_values_dict: dict[str, float], ells, k) -> ndarrayf:
+        is_1d = False if isinstance(ells, Iterable) else True
+        ells = np.atleast_1d(ells)  # type: ignore
+        if not set(ells).issubset(set(self.ells)):
+            raise ValueError(f"ells must be subset of {self.ells}")
+        k = np.atleast_1d(k)
+        grid = self.Plk_grid(params_values_dict) * self.k[None, :]
+        grid = np.insert(grid, 0, 0, axis=1)
+        retval = (
+            interp1d(np.hstack([0, self.k]), grid, axis=-1, kind="cubic")(k)
+            / k[None, :]
+        )
+        retval = np.array([retval[self.ells.index(ell)] for ell in ells])
+        return retval[0] if is_1d else retval
+
+    @property
+    def Plinear_interpolator(self):
+        x = np.hstack([0.0, self.k])
+        y = np.hstack([0.0, self.k * self.Plin])
+        tmp = interp1d(x, y, kind="cubic")
+        fn = lambda k: tmp(k) / k
+        return fn
+
+    def fit(
+        self,
+        ells: int | Sequence[int],
+        krange: tuple[float, float],
+        multipole: Multipole,
+        covariance: ndarrayf | None = None,
+        varied_params: Sequence[str] = ["b1", "cct", "Pshot"],
+        initial_point: ndarrayf | None = None,
+    ) -> dict[str, float]:
+        kmin, kmax = krange
+        ells = tuple(ells) if isinstance(ells, Iterable) else (ells,)
+        data = np.hstack(
+            [multipole[multipole.symbol + str(ell)][kmin:kmax] for ell in ells]
+        )
+        ileft, iright = multipole.k.searchsorted([kmin, kmax])  # [kmin, kmax)
+        k = multipole.k[ileft:iright]
+        Plin = self.Plinear_interpolator(k)
+        kaiser = self.__class__(
+            k=k,
+            Plin=Plin,
+            ells=ells,
+            km=self.km,
+            kr=self.kr,
+            nd=self.nd,
+            default_params=self.default_params.copy(),
+        )
+
+        if covariance is None:
+
+            def fn(x):
+                params = dict(zip(varied_params, x))
+                return kaiser.Plk_grid(params).reshape(-1) - data
+
+        else:
+            invcov = np.linalg.inv(covariance)
+
+            def fn(x):
+                params = dict(zip(varied_params, x))
+                res = kaiser.Plk_grid(params).reshape(-1) - data
+                return np.array([res @ invcov @ res]) ** 0.5
+
+        x0: Any = initial_point
+        if initial_point is None:
+            x0 = [kaiser.default_params[k] for k in varied_params]
+            if any(v is None for v in x0):
+                raise ValueError(
+                    f"missing initial point for {varied_params}, "
+                    "please provide initial_point"
+                )
+            x0 = np.array(x0)
+        return dict(zip(varied_params, least_squares(fn, x0).x))
+
+    def __repr__(self) -> str:
+        return (
+            f"{self.__class__.__name__}("
+            f"ells={self.ells}, "
+            f"kmin={self.k.min():.3f}, "
+            f"kmax={self.k.max():.3f}, "
+            f"km={self.km:.3f}, "
+            f"kr={self.kr:.3f}, "
+            f"nd={self.nd:.3e})"
+        )
