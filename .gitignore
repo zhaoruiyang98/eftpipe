@@ -148,3 +148,4 @@ dmypy.json
 /debug*
 /cobaya/yamls/
 Arnaud_ELG_data/
+/cobaya/data/BOSS/patchy

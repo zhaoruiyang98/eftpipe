@@ -27,6 +27,7 @@ class TypedNamespace(argparse.Namespace):
     nrows: int
     freeze: list[tuple[str, str]]
     freeze_binned: bool
+    compact: bool
 
 
 def get_argparser():
@@ -55,6 +56,9 @@ def get_argparser():
         "--component",
         action="store_true",
         help="plot bird component for each tracer instead of final Plk",
+    )
+    parser.add_argument(
+        "--compact", action="store_true", help="plot k^(3/2) * P(k) instead of k * P(k)"
     )
     # plot style
     parser.add_argument(
@@ -127,7 +131,7 @@ def main(argv: Sequence[str] | None = None):
         if args.component:
             model.plot_component(tracer, ax=ax)
         else:
-            model.plot(tracer, ax=ax)
+            model.plot(tracer, ax=ax, compact=args.compact)
         if args.ymin is not None:
             ax.set_ylim(ymin=args.ymin)
         if args.ymax is not None:

@@ -55,6 +55,8 @@ class EFTModel:
         use_cb: bool = True,
     ):
         self._done = False
+        self.z = z
+        self.use_cb = use_cb
         self.theory: dict[str, Any] = {"eftpipe.classynu": None, "eftpipe.eftlss": {}}
         self.params: dict[str, Any] = {}
         self.likelihood = {"one": None}
@@ -332,13 +334,21 @@ class EFTModel:
             "likelihood": self.likelihood,
             "params": self.params,
         }
-        with (do_nothing() if logging else disable_logging()) as f:
+        with do_nothing() if logging else disable_logging() as f:
             model = get_model(info, debug=debug)
             model.add_requirements(
                 {
                     "nonlinear_Plk_interpolator": {
                         "x": {"ls": [*range(0, ellmax + 1, 2)]}
-                    }
+                    },
+                    "Pk_interpolator": {
+                        "nonlinear": False,
+                        "z": [self.z],
+                        "k_max": 5,
+                        "vars_pairs": ("delta_nonu", "delta_nonu")
+                        if self.use_cb
+                        else ("delta_tot", "delta_tot"),
+                    },
                 }
             )
         self.model = model
@@ -351,6 +361,23 @@ class EFTModel:
         ret.likelihood = deepcopy(self.likelihood)
         ret.params = deepcopy(self.params)
         return ret
+
+    def Plinear(self):
+        if not self._done:
+            raise RuntimeError("need to call done()")
+        vars_pairs = (
+            ("delta_nonu", "delta_nonu") if self.use_cb else ("delta_tot", "delta_tot")
+        )
+        fn = self.model.provider.get_Pk_interpolator(
+            var_pair=vars_pairs, nonlinear=False, extrap_kmin=1e-6
+        )
+        h = self.params["H0"] / 100
+        return lambda kh: fn.P(self.z, kh * h) * h**3
+
+    def f(self):
+        return self.model.theory[
+            "eftpipe.classynu"
+        ].classy.scale_independent_growth_factor_f(self.z)
 
     # fmt: off
     def __call__(
