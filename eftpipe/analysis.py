@@ -460,24 +460,34 @@ class Multipole(Mapping[str, pd.Series]):
     def default_style(self):
         return {"fmt": ".", "capsize": 2}
 
-    def plot_pk(self, ax=None, label: str | None = None, **errorbar_style):
+    def plot_pk(
+        self, ax=None, label: str | None = None, compact: bool = True, **errorbar_style
+    ):
         style = {**self.default_style(), **errorbar_style}
         if ax is None:
             ax = plt.gca()
         k = self.k
+
+        def y_and_yerr(Pk, Pkerr):
+            y = k**1.5 * Pk if compact else k * Pk
+            if Pkerr is None:
+                return y, None
+            yerr = k**1.5 * Pkerr if compact else k * Pkerr
+            return y, yerr
+
         if (Pk := self.get(self.symbol + "4")) is not None:
             Pkerr = self.hex_err()
-            Pkerr = None if Pkerr is None else k * Pkerr
-            ax.errorbar(k, k * Pk, yerr=Pkerr, c="g", **style)
+            y, yerr = y_and_yerr(Pk, Pkerr)
+            ax.errorbar(k, y, yerr=yerr, c="g", **style)
         if (Pk := self.get(self.symbol + "2")) is not None:
             Pkerr = self.quad_err()
-            Pkerr = None if Pkerr is None else k * Pkerr
-            ax.errorbar(k, k * Pk, yerr=Pkerr, c="b", **style)
+            y, yerr = y_and_yerr(Pk, Pkerr)
+            ax.errorbar(k, y, yerr=yerr, c="b", **style)
         if (Pk := self.get(self.symbol + "0")) is not None:
             Pkerr = self.mono_err()
-            Pkerr = None if Pkerr is None else k * Pkerr
             extra = {"label": label} if label else {}
-            ax.errorbar(k, k * Pk, yerr=Pkerr, c="k", **extra, **style)
+            y, yerr = y_and_yerr(Pk, Pkerr)
+            ax.errorbar(k, y, yerr=yerr, c="k", **extra, **style)
         return ax
 
     def plot_xi(self, ax=None, label: str | None = None, **errorbar_style):
@@ -500,11 +510,20 @@ class Multipole(Mapping[str, pd.Series]):
             ax.errorbar(s, s**2 * xi, yerr=xierr, c="k", **extra, **style)
         return ax
 
-    def plot(self, ax=None, label: str | None = None, **errorbar_style):
+    def plot(
+        self, ax=None, label: str | None = None, compact: bool = False, **errorbar_style
+    ):
         if self.maybe_power_spectrum():
-            ax = self.plot_pk(ax, label, **errorbar_style)
+            ax = self.plot_pk(ax, label, compact=compact, **errorbar_style)
             ax.set_xlabel(R"$k$ $[h\,\mathrm{Mpc}^{-1}]$")
-            ax.set_ylabel(Rf"$k{self.symbol}_\ell(k)$ $[h^{{-1}}\,\mathrm{{Mpc}}]^2$")
+            if not compact:
+                ax.set_ylabel(
+                    Rf"$k{self.symbol}_\ell(k)$ $[h^{{-1}}\,\mathrm{{Mpc}}]^2$"
+                )
+            else:
+                ax.set_ylabel(
+                    Rf"$k^{{3/2}}{self.symbol}_\ell(k)$ $[h^{{-1}}\,\mathrm{{Mpc}}]^2$"
+                )
         else:
             ax = self.plot_xi(ax, label, **errorbar_style)
             ax.set_xlabel(R"$s$ $[h^{-1}\,\mathrm{Mpc}]$")
@@ -566,17 +585,21 @@ def paint_multipole(
     Plk: PlkInterpolator,
     ax=None,
     label: str | None = None,
+    compact: bool = False,
     **style,
 ):
     if ax is None:
         ax = plt.gca()
     extra = {} if label is None else {"label": label}
     if 0 in ells:
-        ax.plot(k, k * Plk(0, k), c="k", **style, **extra)
+        y = k**1.5 * Plk(0, k) if compact else k * Plk(0, k)
+        ax.plot(k, y, c="k", **style, **extra)
     if 2 in ells:
-        ax.plot(k, k * Plk(2, k), c="b", **style)
+        y = k**1.5 * Plk(2, k) if compact else k * Plk(2, k)
+        ax.plot(k, y, c="b", **style)
     if 4 in ells:
-        ax.plot(k, k * Plk(4, k), c="g", **style)
+        y = k**1.5 * Plk(4, k) if compact else k * Plk(4, k)
+        ax.plot(k, y, c="g", **style)
     return ax
 
 
@@ -670,13 +693,13 @@ class BestfitModel:
     def bird_component(self, tracer: str) -> tuple[list[int], ndarrayf, BirdComponent]:
         return self.model.provider.get_bird_component(tracer)
 
-    def plot(self, tracer: str, ax=None, **errorbar_style):
+    def plot(self, tracer: str, ax=None, compact: bool = False, **errorbar_style):
         if ax is None:
             ax = plt.gca()
-        self.multipoles[tracer].plot(ax, **errorbar_style)
+        self.multipoles[tracer].plot(ax, compact=compact, **errorbar_style)
         k = np.linspace(0.0005, 0.3, 1000)
         Plk = self.Plk_interpolator(tracer)
-        paint_multipole(Plk.ls, k, Plk, ax=ax)
+        paint_multipole(Plk.ls, k, Plk, ax=ax, compact=compact)
         ax.set_title(tracer.replace("_", " "))
         return ax
 
