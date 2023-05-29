@@ -522,7 +522,7 @@ class Multipole(Mapping[str, pd.Series]):
                 )
             else:
                 ax.set_ylabel(
-                    Rf"$k^{{3/2}}{self.symbol}_\ell(k)$ $[h^{{-1}}\,\mathrm{{Mpc}}]^2$"
+                    Rf"$k^{{3/2}}{self.symbol}_\ell(k)$ $[h^{{-1}}\,\mathrm{{Mpc}}]^{{3/2}}$"
                 )
         else:
             ax = self.plot_xi(ax, label, **errorbar_style)
