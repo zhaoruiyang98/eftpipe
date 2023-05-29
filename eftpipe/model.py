@@ -125,7 +125,7 @@ class EFTModel:
         H0: float = 67.77,
         omegabh2: float = 0.0224,
         omegach2: float = 0.12,
-        mnu: float = 0.06,
+        mnu: float | None = 0.06,
         neutrino_hierarchy: Literal["degenerate", "normal", "inverted"] = "degenerate",
         tau_reio: float = 0.055,
     ):
@@ -135,10 +135,19 @@ class EFTModel:
         self.params["H0"] = H0
         self.params["omegabh2"] = omegabh2
         self.params["omegach2"] = omegach2
-        self.params["mnu"] = mnu
-        self.theory["eftpipe.classynu"] = {
-            "extra_args": {"neutrino_hierarchy": neutrino_hierarchy}
-        }
+        if mnu is None:
+            self.theory["eftpipe.classynu"] = {
+                "extra_args": {
+                    "neutrino_hierarchy": "degenerate",
+                    "N_ncdm": 0,
+                    "N_ur": 3.046,
+                }
+            }
+        else:
+            self.params["mnu"] = mnu
+            self.theory["eftpipe.classynu"] = {
+                "extra_args": {"neutrino_hierarchy": neutrino_hierarchy}
+            }
         self.params["tau_reio"] = tau_reio
         return self
 

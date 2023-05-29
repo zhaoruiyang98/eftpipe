@@ -7,7 +7,7 @@ from pathlib import Path
 from pprint import pprint
 from typing import cast, Sequence
 from eftpipe.analysis import BestfitModel
-from eftpipe.tools import PathContext
+from eftpipe.tools import banner, PathContext
 
 plt.rcParams["text.usetex"] = True
 
@@ -101,8 +101,8 @@ def main(argv: Sequence[str] | None = None):
     args = cast(TypedNamespace, parser.parse_args(argv))
     if args.freeze_binned:
         parser.exit(message="freeze_binned not implemented yet!\n")
-    input_yaml = str(args.input_yaml.expanduser().resolve())
     with PathContext(args.base):
+        input_yaml = str(args.input_yaml.expanduser().resolve())
         model = BestfitModel(input_yaml, verbose=args.verbose, component=args.component)
     print("bestfit:")
     pprint(model.bestfit)
@@ -152,6 +152,14 @@ def main(argv: Sequence[str] | None = None):
         Plk = model.Plk_interpolator(tracer)
         output = np.vstack([k, *Plk(Plk.ls, k)]).T
         header = (" " * 5).join(["k"] + [f"{symbol}{ell}" for ell in Plk.ls])
+        PEP_WIDTH = 80
+
+        header += "\n" + banner(" sample info ", width=PEP_WIDTH - 2)
+        header += "\n" + f"tracer: {tracer}"
+        header += "\n" + f"yaml_file: {model.yaml_file}"
+
+        header += "\n" + banner(" bestfit info ", width=PEP_WIDTH - 2)
+        header += "\n" + "\n".join(f"{k}: {v}" for k, v in model.bestfit.items())
         np.savetxt(file, output, header=header)
 
 

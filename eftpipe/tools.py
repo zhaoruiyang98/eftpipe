@@ -32,6 +32,7 @@ if TYPE_CHECKING:
 
 _T = TypeVar("_T")
 
+
 # This Mixin is not reliable, do not use it
 class SampledParamsMixin:
     @property
@@ -211,6 +212,15 @@ def PathContext(path: str | os.PathLike):
         yield
     finally:
         os.chdir(current)
+
+
+def banner(msg: str, width: int, fill_symbol: str = "="):
+    mgs_len = len(msg)
+    if mgs_len > width:
+        raise ValueError("cannot fit message in banner")
+    nleft = (width - mgs_len) // 2
+    nright = width - mgs_len - nleft
+    return fill_symbol * nleft + msg + fill_symbol * nright
 
 
 class RandomParams:
