@@ -1,4 +1,6 @@
 from __future__ import annotations
+import importlib
+import functools
 import itertools
 import numpy as np
 from collections import defaultdict
@@ -57,6 +59,19 @@ def leaf_product_name(tracer: str):
 
 def leaf_kernel_product_name(tracer: str):
     return f"eftleaf_kernel_{tracer}_results"
+
+
+def find_window_constructor(name: str) -> Callable:
+    if name == "auto" or name == "default":
+        return Window
+    module_name, class_name = name.rsplit(".", 1)
+    try:
+        module = importlib.import_module(module_name)
+    except ModuleNotFoundError:
+        module_name, tmp = module_name.rsplit(".", 1)
+        class_name = f"{tmp}.{class_name}"
+        module = importlib.import_module(module_name)
+    return functools.reduce(getattr, class_name.split("."), module)
 
 
 @dataclass(eq=False)
@@ -365,10 +380,13 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
                 APeffect_config,
                 self.log,
             )
-        self.with_window: bool = self.tracer_config.get("with_window", False)
+        self.with_window: bool | str = self.tracer_config.get("with_window", False)
         if self.with_window:
+            window_name: str = "auto" if self.with_window is True else self.with_window
             self.plugins["_window"] = Initializer(
-                Window, self.tracer_config.get("window", {}), self.log
+                find_window_constructor(window_name),
+                self.tracer_config.get("window", {}),
+                self.log,
             )
         self.with_fiber: bool = self.tracer_config.get("with_fiber", False)
         if self.with_fiber:

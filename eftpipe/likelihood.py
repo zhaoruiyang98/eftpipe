@@ -298,6 +298,7 @@ class EFTLike(Likelihood, Marginalizable):
     data: dict[str, dict[str, Any]]  # also support dict[str, Any] | list[dict[str, Any]]
     cov: dict[str, Any]  # also support str for path
     chained: dict[str, bool]  # also support bool | list[bool]
+    with_interp: dict[str, bool] # also support bool | list[bool]
     with_binning: dict[str, bool]  # also support bool | list[bool]
     binning: dict[str, dict[str, Any]]  # also support dict[str, Any] | list[dict[str, Any]]
     marg: dict[str, dict[str, Any]]
@@ -345,6 +346,7 @@ class EFTLike(Likelihood, Marginalizable):
 
         self.data: dict[str, dict[str, Any]] = or_list_to_dict(self.data)
         self.chained: dict[str, bool] = or_list_to_dict(self.chained)
+        self.with_interp: dict[str, bool] = or_list_to_dict(self.with_interp)
         self.with_binning: dict[str, bool] = or_list_to_dict(self.with_binning)
         self.binning = self.binning or {t: {} for t in self.tracers}
         self.binning: dict[str, dict[str, Any]] = or_list_to_dict(self.binning)
@@ -404,10 +406,11 @@ class EFTLike(Likelihood, Marginalizable):
             "nonlinear_Plk_interpolator": {},
             "nonlinear_Plk_gaussian_grid": {},
         }
-        for t, minfo, chained, with_binning, binning in zip(
+        for t, minfo, chained, with_interp, with_binning, binning in zip(
             self.tracers,
             self.minfodict.values(),
             self.chained.values(),
+            self.with_interp.values(),
             self.with_binning.values(),
             self.binning.values(),
         ):
@@ -418,10 +421,17 @@ class EFTLike(Likelihood, Marginalizable):
                     "binned": True,
                     "binning": binning,
                 }
-            else:
+            elif with_interp:
                 reqs["nonlinear_Plk_interpolator"][t] = {
                     "ls": minfo.ls,
                     "chained": chained,
+                }
+            else:
+                reqs["nonlinear_Plk_grid"][t] = {
+                    "ls": minfo.ls,
+                    "chained": chained,
+                    "binned": False,
+                    "binning": binning,
                 }
             # XXX: require gaussian grid for all tracers, which may not be necessary,
             # but I don't know how to fix this, because tracers' prefixes are not known
@@ -492,10 +502,19 @@ class EFTLike(Likelihood, Marginalizable):
     # impl
     def PG(self):
         bG_idx = self._bGidx_cache
-        for tracer, minfo, chained, with_binning, bGlist, (istart, iend) in zip(
+        for (
+            tracer,
+            minfo,
+            chained,
+            with_interp,
+            with_binning,
+            bGlist,
+            (istart, iend),
+        ) in zip(
             self.tracers,
             self.minfodict.values(),
             self.chained.values(),
+            self.with_interp.values(),
             self.with_binning.values(),
             self._bG_group_cache,
             self._istart_iend_cache,
@@ -508,24 +527,31 @@ class EFTLike(Likelihood, Marginalizable):
             )
             for bG in bGlist:
                 plk = table[bG]
-                if not with_binning:
+                if not with_binning and with_interp:
                     interpfn = interp1d(kgrid, kgrid * plk, kind="cubic", axis=-1)
                     fn = lambda k: interpfn(k) / k
                     plk = fn(minfo.kout)
-                flatten(
-                    minfo.ls,
-                    plk,
-                    minfo.kout_mask,
-                    out=self._PG_cache[bG_idx[bG], istart:iend],
-                )
+                    print(minfo.kout)
+                if not with_binning and not with_interp:
+                    flatten(
+                        minfo.ls, plk, None, out=self._PG_cache[bG_idx[bG], istart:iend]
+                    )
+                else:
+                    flatten(
+                        minfo.ls,
+                        plk,
+                        minfo.kout_mask,
+                        out=self._PG_cache[bG_idx[bG], istart:iend],
+                    )
         # be careful, return a reference
         return self._PG_cache
 
     # impl
     def PNG(self) -> Any:
-        for t, minfo, with_binning, chained, (istart, iend) in zip(
+        for t, minfo, with_interp, with_binning, chained, (istart, iend) in zip(
             self.tracers,
             self.minfodict.values(),
+            self.with_interp.values(),
             self.with_binning.values(),
             self.chained.values(),
             self._istart_iend_cache,
@@ -535,10 +561,20 @@ class EFTLike(Likelihood, Marginalizable):
                 _, _, plk = self.provider.get_nonlinear_Plk_grid(
                     t, chained=chained, binned=True
                 )
-            else:
+                flatten(
+                    minfo.ls, plk, minfo.kout_mask, out=self._PNG_cache[istart:iend]
+                )
+            elif with_interp:
                 fn = self.provider.get_nonlinear_Plk_interpolator(t, chained=chained)
                 plk = fn(minfo.ls, minfo.kout)
-            flatten(minfo.ls, plk, minfo.kout_mask, out=self._PNG_cache[istart:iend])
+                flatten(
+                    minfo.ls, plk, minfo.kout_mask, out=self._PNG_cache[istart:iend]
+                )
+            else:
+                _, _, plk = self.provider.get_nonlinear_Plk_grid(
+                    t, chained=chained, binned=False
+                )
+                flatten(minfo.ls, plk, None, out=self._PNG_cache[istart:iend])
         # be careful, return a reference
         return self._PNG_cache
 

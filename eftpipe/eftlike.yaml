@@ -20,6 +20,7 @@ cov:
   # Nreal: 1000
   # rescale: 1
 chained: false  # also support list[bool] or dict[str, bool]
+with_interp: true # also support list[bool] or dict[str, bool]
 with_binning: false  # also support list[bool] or dict[str, bool]
 binning:  # also support list[dict]
 marg:

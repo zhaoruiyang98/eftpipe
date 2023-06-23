@@ -119,6 +119,8 @@ def main(argv: Sequence[str] | None = None):
             tracers = ["LRG_NGC", "X_NGC", "ELG_NGC"]
         elif tracers == ["LRG_SGC", "ELG_SGC", "X_SGC"]:
             tracers = ["LRG_SGC", "X_SGC", "ELG_SGC"]
+        elif tracers == ["LRG", "ELG", "X"]:
+            tracers = ["LRG", "X", "ELG"]
     nrows = args.nrows
     ncols = math.ceil(len(tracers) / nrows)
     width = 5.5 * ncols

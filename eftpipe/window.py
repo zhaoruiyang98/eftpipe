@@ -1,7 +1,9 @@
 from __future__ import annotations
 import json
 import numpy as np
-from typing import Any, cast, TYPE_CHECKING, Union
+from dataclasses import dataclass, field
+from functools import cached_property
+from typing import Any, cast, NamedTuple, TYPE_CHECKING, Union
 from pathlib import Path
 from cobaya.log import HasLogger
 from scipy.interpolate import interp1d
@@ -17,6 +19,7 @@ if TYPE_CHECKING:
     from typing_extensions import TypeAlias
     from .icc import IntegralConstraint
     from .pybird.pybird import Bird
+    from .etyping import ndarrayf
 
 Location: TypeAlias = Union[str, Path]
 
@@ -417,5 +420,169 @@ class Window(HasLogger):
                 bird.PctNNLOl = self.integrWindow(bird.PctNNLOl)
             if self.window_st:
                 bird.Pstl = self.integrWindow(bird.Pstl)
+        if self.snapshot:
+            bird.create_snapshot("window")
+
+
+@dataclass
+class PInfo:
+    ells: tuple[int, ...]
+    kmin: float
+    kmax: float
+    nbins: int
+
+
+def to_window_matrix(
+    matrix,
+    inpoles: PInfo,
+    outpoles: PInfo,
+    ells_in: tuple[int, ...],
+    kmax_in: float,
+    ells_out: tuple[int, ...],
+    kmin_out: float,
+    kmax_out: float,
+):
+    # XXX: didn't account for the order of ells
+    # step1: mask input
+    kedges = np.linspace(inpoles.kmin, inpoles.kmax, inpoles.nbins + 1)
+    kin = (kedges[1:] + kedges[:-1]) / 2
+    mask_in = np.zeros(inpoles.nbins * len(inpoles.ells), dtype=bool)
+    ileft, iright = 0, np.searchsorted(kin, kmax_in)
+    for ell in inpoles.ells:
+        if ell in ells_in:
+            mask_in[ileft:iright] = True
+        ileft, iright = ileft + inpoles.nbins, iright + inpoles.nbins
+
+    # step2: mask output
+    kedges = np.linspace(outpoles.kmin, outpoles.kmax, outpoles.nbins + 1)
+    kout = (kedges[1:] + kedges[:-1]) / 2
+    mask_out = np.zeros(outpoles.nbins * len(outpoles.ells), dtype=bool)
+    ileft, iright = np.searchsorted(kout, kmin_out), np.searchsorted(kout, kmax_out)
+    for ell in outpoles.ells:
+        if ell in ells_out:
+            mask_out[ileft:iright] = True
+        ileft, iright = ileft + outpoles.nbins, iright + outpoles.nbins
+
+    # step3: rearrange the shape
+    matrix = matrix[np.ix_(mask_out, mask_in)]
+    nk_out = matrix.shape[0] // len(ells_out)
+    nk_in = matrix.shape[1] // len(ells_in)
+    retval = np.zeros((len(ells_out), len(ells_in), nk_out, nk_in))
+    for i, _ in enumerate(ells_out):
+        for j, _ in enumerate(ells_in):
+            idx = np.ix_(
+                np.arange(i * nk_out, (i + 1) * nk_out),
+                np.arange(j * nk_in, (j + 1) * nk_in),
+            )
+            retval[i, j] = matrix[idx]
+    return retval
+
+
+class PolesInfo(NamedTuple):
+    nells: int
+    kstart: float
+    kend: float
+    nbin: int
+
+
+@dataclass
+class WindowMatrix(HasLogger):
+    matrix: ndarrayf
+    inpoles: PolesInfo
+    outpoles: PolesInfo
+    co: Common = field(default_factory=Common)
+    window_st: bool = False
+    icc: IntegralConstraint | None = None
+    name: str = "pybird.WindowMatrix"
+    snapshot: bool = False
+
+    def __post_init__(self):
+        self.set_logger(name=self.name)
+        if self.icc:
+            raise NotImplementedError("ICC not implemented for WindowMatrix")
+        if self.matrix.shape != (
+            self.outpoles.nells,
+            self.inpoles.nells,
+            self.outpoles.nbin,
+            self.inpoles.nbin,
+        ):
+            print(self.matrix.shape)
+            print(
+                self.outpoles.nells,
+                self.inpoles.nells,
+                self.outpoles.nbin,
+                self.inpoles.nbin,
+            )
+            raise ValueError("matrix shape does not match meta information")
+        if self.inpoles.nells != self.co.Nl:
+            raise ValueError("input poles do not match self.co.Nl")
+
+    @classmethod
+    def load(
+        cls,
+        path: str,
+        ells: list[int],
+        kmin: float,
+        kmax: float,
+        co: Common = Common(),
+        window_st: bool = False,
+        icc: IntegralConstraint | None = None,
+        name: str = "pybird.WindowMatrix",
+        snapshot: bool = False,
+    ):
+        # hard-coded to match Florian Window
+        matrix = np.loadtxt(path)
+        matrix = to_window_matrix(
+            matrix,
+            PInfo(ells=(0, 2, 4), kmin=0, kmax=0.4, nbins=400),
+            PInfo(ells=(0, 1, 2, 3, 4), kmin=0, kmax=0.4, nbins=40),
+            ells_in=tuple(2 * _ for _ in range(co.Nl)),
+            kmax_in=co.k.max(),
+            ells_out=tuple(ells),
+            kmin_out=kmin,
+            kmax_out=kmax,
+        )
+        return WindowMatrix(
+            matrix,
+            inpoles=PolesInfo(co.Nl, 0, co.k.max(), matrix.shape[3]),
+            outpoles=PolesInfo(len(ells), kmin, kmax, matrix.shape[2]),
+            co=co,
+            window_st=window_st,
+            icc=icc,
+            name=name,
+            snapshot=snapshot,
+        )
+
+    @cached_property
+    def kavg(self):
+        # hard-coded for test
+        return np.linspace(0, 0.4, 400)[:300]
+        kedges = np.linspace(
+            self.inpoles.kstart, self.inpoles.kend, self.inpoles.nbin + 1
+        )
+        khigh = kedges[1:]
+        klow = kedges[:-1]
+        return (1 / 4 * (khigh**4 - klow**4)) / (1 / 3 * (khigh**3 - klow**3))
+
+    def convolve(self, Plk):
+        # fmt: off
+        Plk = interp1d(
+            self.co.k, Plk,
+            axis=-1, kind="cubic", bounds_error=False, fill_value="extrapolate",
+        )(self.kavg)
+        # fmt: on
+        return np.einsum("alkp,l...p->a...k", self.matrix, Plk, optimize=True)
+
+    def Window(self, bird: Bird):
+        bird.P11l = self.convolve(bird.P11l)
+        bird.Pctl = self.convolve(bird.Pctl)
+        bird.Ploopl = self.convolve(bird.Ploopl)
+        if bird.co.with_NNLO:
+            bird.PctNNLOl = self.convolve(bird.PctNNLOl)
+        if self.window_st:
+            bird.Pstl = self.convolve(bird.Pstl)
+        # still include Picc...
+        bird.Picc = self.convolve(bird.Picc)
+        bird.Picc[...] = 0.0
         if self.snapshot:
             bird.create_snapshot("window")
