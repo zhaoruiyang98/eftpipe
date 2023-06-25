@@ -506,13 +506,13 @@ class WindowMatrix(HasLogger):
             self.outpoles.nbin,
             self.inpoles.nbin,
         ):
-            print(self.matrix.shape)
-            print(
-                self.outpoles.nells,
-                self.inpoles.nells,
-                self.outpoles.nbin,
-                self.inpoles.nbin,
-            )
+            # print(self.matrix.shape)
+            # print(
+            #     self.outpoles.nells,
+            #     self.inpoles.nells,
+            #     self.outpoles.nbin,
+            #     self.inpoles.nbin,
+            # )
             raise ValueError("matrix shape does not match meta information")
         if self.inpoles.nells != self.co.Nl:
             raise ValueError("input poles do not match self.co.Nl")

@@ -531,7 +531,7 @@ class EFTLike(Likelihood, Marginalizable):
                     interpfn = interp1d(kgrid, kgrid * plk, kind="cubic", axis=-1)
                     fn = lambda k: interpfn(k) / k
                     plk = fn(minfo.kout)
-                    print(minfo.kout)
+                    # print(minfo.kout)
                 if not with_binning and not with_interp:
                     flatten(
                         minfo.ls, plk, None, out=self._PG_cache[bG_idx[bG], istart:iend]
