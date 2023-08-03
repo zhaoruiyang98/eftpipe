@@ -365,6 +365,7 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
         # so that all dependencies can be quickly checked
         # check config
         self.plugins: dict[str, Any] = {}
+        self.with_RSD: bool = self.tracer_config.get("with_RSD", True)
         self.with_IRresum: bool = self.tracer_config.get("with_IRresum", True)
         if self.with_IRresum:
             self.plugins["_IRresum"] = Initializer(
@@ -448,6 +449,8 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
             ndB=ndB,
             counterform=counterform,
             with_NNLO=self.tracer_config.get("with_NNLO", False),
+            IRcutoff=self.tracer_config.get("IRcutoff", False),
+            kIR=self.tracer_config.get("kIR", None),
         )
         self.nonlinear = pybird.NonLinear(
             load=True,
@@ -459,6 +462,10 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
 
         # initialize plugins
         msg_pool = []
+        if self.co.IRcutoff:
+            msg_pool.append(
+                ("IRcutoff enabled: mode=%s, kIR = %.6f", self.co.IRcutoff, self.co.kIR)
+            )
         if self.with_IRresum:
             self.plugins["IRresum"] = self.plugins["_IRresum"].initialize(
                 co=self.co, name=self.get_name() + ".IRresum"
@@ -577,6 +584,8 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
         pkh = boltzmann.Pkh(kh)
         H, DA, f = boltzmann.H(), boltzmann.DA(), boltzmann.f()
         rdrag, h = boltzmann.rdrag(), boltzmann.h()
+        if not self.with_RSD:
+            f = 0.0
         bird = pybird.Bird(kh, pkh, f, DA, H, self.zeff, co=self.co, rdrag=rdrag, h=h)
         self.nonlinear.PsCf(bird)
         bird.setPsCfl()

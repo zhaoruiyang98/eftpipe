@@ -101,7 +101,7 @@ class FFTLog(object):
         self,
         xin,
         f,
-        extrap="extrap",
+        extrap: str | tuple[str, str] = "extrap",
         window: float | None = 1,
         log_interp: bool = False,
         kernel=one,
@@ -139,9 +139,11 @@ class FFTLog(object):
         else:
             _interpfunc = CubicSpline(np.log(xin), f, axis=-1, extrapolate=False)
             interpfunc = lambda x: _interpfunc(np.log(x))
+        if not isinstance(extrap, tuple):
+            extrap = (extrap,) * 2
         if (
             (kernel is not one)
-            and (extrap == "extrap")
+            and ("extrap" in extrap)
             and (xin[0] > self.x[0] and xin[-1] < self.x[-1])
         ):
             raise ValueError("kernel is not supported in 'extrap' mode")
@@ -150,31 +152,27 @@ class FFTLog(object):
         fx = np.zeros(_shape + (self.Nmax,), dtype=np.float64)
         Coef = np.empty(_shape + (self.Nmax + 1,), dtype=complex)
 
-        if extrap == "extrap":
-            ileft = np.searchsorted(self.x, xin[0])
-            iright = np.searchsorted(self.x, xin[-1], side="right")
-            efactor = exp(-self.bias * np.arange(self.Nmax) * self.dx)
-            fx[..., ileft:iright] = (
-                interpfunc(self.x[ileft:iright]) * efactor[ileft:iright]
-            )
-            if xin[0] > self.x[0]:
-                # print ('low extrapolation')
-                nslow = (log(f[1]) - log(f[0])) / (log(xin[1]) - log(xin[0]))
-                Aslow = f[0] / xin[0] ** nslow
-                fx[..., 0:ileft] = Aslow * self.x[0:ileft] ** nslow * efactor[0:ileft]
-            if xin[-1] < self.x[-1]:
-                # print ('high extrapolation')
-                nshigh = (log(f[-1]) - log(f[-2])) / (log(xin[-1]) - log(xin[-2]))
-                Ashigh = f[-1] / xin[-1] ** nshigh
-                fx[..., iright:] = Ashigh * self.x[iright:] ** nshigh * efactor[iright:]
-        elif extrap == "padding":
-            ileft = np.searchsorted(self.x, xin[0])
-            iright = np.searchsorted(self.x, xin[-1], side="right")
-            efactor = exp(-self.bias * np.arange(ileft, iright) * self.dx)
-            xtrunc = self.x[ileft:iright]
-            fx[..., ileft:iright] = interpfunc(xtrunc) * (efactor * kernel(xtrunc))
-        else:
+        if any(_ not in ["padding", "extrap"] for _ in extrap):
             raise ValueError(f"unexpected extrap = {extrap}")
+        ileft = np.searchsorted(self.x, xin[0])
+        iright = np.searchsorted(self.x, xin[-1], side="right")
+        xtrunc = self.x[ileft:iright]
+        efactor = exp(-self.bias * np.arange(ileft, iright) * self.dx)
+        if kernel is not one:
+            efactor *= kernel(xtrunc)
+        fx[..., ileft:iright] = interpfunc(xtrunc) * efactor
+        if extrap[0] == "extrap" and xin[0] > self.x[0]:
+            # low extrapolation
+            nslow = (log(f[1]) - log(f[0])) / (log(xin[1]) - log(xin[0]))
+            Aslow = f[0] / xin[0] ** nslow
+            efactor = exp(-self.bias * np.arange(0, ileft) * self.dx)
+            fx[..., 0:ileft] = Aslow * self.x[0:ileft] ** nslow * efactor
+        if extrap[-1] == "extrap" and xin[-1] < self.x[-1]:
+            # high extrapolation
+            nshigh = (log(f[-1]) - log(f[-2])) / (log(xin[-1]) - log(xin[-2]))
+            Ashigh = f[-1] / xin[-1] ** nshigh
+            efactor = exp(-self.bias * np.arange(iright, self.Nmax) * self.dx)
+            fx[..., iright:] = Ashigh * self.x[iright:] ** nshigh * efactor
 
         tmp = rfft(fx, axis=-1)  # numpy
         # tmp = rfft(fx, planner_effort='FFTW_ESTIMATE')() ### pyfftw

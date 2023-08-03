@@ -1,4 +1,5 @@
 from __future__ import annotations
+import math
 import tempfile
 import weakref
 from copy import deepcopy
@@ -34,6 +35,8 @@ class EFTModel:
         path to cache directory, default to temporary directory
     use_cb : bool
         if true, use the linear power spectrum of cdm + baryon as input, default True
+    IRcutoff : "all", "loop", "resum" or bool
+    kIR : float, optional
 
     Examples
     --------
@@ -53,6 +56,9 @@ class EFTModel:
         krB: float = 0.25,
         cache_dir_path: str | None = None,
         use_cb: bool = True,
+        with_RSD: bool = True,
+        IRcutoff: Literal["all", "loop", "resum"] | bool = False,
+        kIR: float | None = None,
     ):
         self._done = False
         self.z = z
@@ -80,6 +86,9 @@ class EFTModel:
             "provider": "classynu",
             "use_cb": use_cb,
             "with_IRresum": False,
+            "IRcutoff": IRcutoff,
+            "kIR": kIR,
+            "with_RSD": with_RSD,
         }
         d = self.params
         if self.cross:
@@ -387,6 +396,17 @@ class EFTModel:
         return self.model.theory[
             "eftpipe.classynu"
         ].classy.scale_independent_growth_factor_f(self.z)
+
+    def Plk_mm(self):
+        return self(
+            b1A=1,
+            c2A=math.sqrt(2) / 2,
+            b3A=1,
+            c4A=math.sqrt(2) / 2,
+            cctA=0,
+            cr1A=0,
+            cr2A=0,
+        )
 
     # fmt: off
     def __call__(

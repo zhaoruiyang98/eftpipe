@@ -7,7 +7,7 @@ from scipy import special
 from scipy.interpolate import interp1d
 from scipy.special import legendre, j1, loggamma
 from scipy.integrate import quad
-from typing import Literal, Protocol, TYPE_CHECKING
+from typing import cast, Literal, Protocol, TYPE_CHECKING
 
 # local
 from .fftlog import FFTLog
@@ -524,6 +524,8 @@ class Common(object):
         ndB: float | None = None,
         counterform: Literal["westcoast", "eastcoast"] = "westcoast",
         with_NNLO: bool = False,
+        kIR: float | None = None,
+        IRcutoff: Literal["all", "resum", "loop"] | bool = False,
     ):
         self.optiresum = optiresum
         # set kmB and ndB when computing cross power spectrum
@@ -538,6 +540,12 @@ class Common(object):
         self.ndB = ndB
         self.counterform = counterform  # reuse self.lct
         self.with_NNLO = with_NNLO
+        if IRcutoff and kIR is None:
+            raise ValueError("kIR must be specified when doing IRcutoff")
+        if IRcutoff is True:
+            IRcutoff = "all"
+        self.IRcutoff = IRcutoff
+        self.kIR = cast(float, kIR)  # IR cut off when doing the IR-resummation
         self.Nl = Nl
         self.N11 = 3
         self.Nct = 6
@@ -1166,7 +1174,7 @@ class NonLinear(HasLogger):
             )
         )
 
-    def Coef(self, bird, window=None):
+    def Coef(self, bird, window=None, IRcut: bool = False):
         """Perform the FFTLog (i.e. calculate the coefficients of the FFTLog) of the input linear power spectrum in the given a Bird().
 
         Parameters
@@ -1174,35 +1182,13 @@ class NonLinear(HasLogger):
         bird : class
             an object of type Bird()
         """
-        return self.fft.Coef(bird.kin, bird.Pin, window=window)
-
-    def Ps(self, bird, window=0.2):
-        """Compute the loop power spectrum given a Bird(). Perform the FFTLog and the matrix multiplications.
-
-        Parameters
-        ----------
-        bird : class
-            an object of type Bird()
-        """
-        coef = self.Coef(bird, window=window)
-        coefkPow = self.CoefkPow(coef)
-        self.makeP22(coefkPow, bird)
-        self.makeP13(coefkPow, bird)
-
-    def Cf(self, bird, window=0.2):
-        """Compute the loop correlation function given a Bird(). Perform the FFTLog and the matrix multiplications.
-
-        Parameters
-        ----------
-        bird : class
-            an object of type Bird()
-        """
-        coef = self.Coef(bird, window=window)
-        coefsPow = self.CoefsPow(coef)
-        self.makeC11(coefsPow, bird)
-        self.makeCct(coefsPow, bird)
-        self.makeC22(coefsPow, bird)
-        self.makeC13(coefsPow, bird)
+        k, Pin = bird.kin, bird.Pin
+        extrap = ("extrap",) * 2
+        if IRcut:
+            idx = np.searchsorted(k, self.co.kIR)
+            k, Pin = k[idx:], Pin[idx:]
+            extrap = ("padding", "extrap")
+        return self.fft.Coef(k, Pin, window=window, extrap=extrap)
 
     def PsCf(self, bird, window=0.2):
         """Compute the loop power spectrum and correlation function given a Bird(). Perform the FFTLog and the matrix multiplications.
@@ -1212,9 +1198,19 @@ class NonLinear(HasLogger):
         bird : class
             an object of type Bird()
         """
-        coef = self.Coef(bird, window=window)
-        coefkPow = self.CoefkPow(coef)
-        coefsPow = self.CoefsPow(coef)
+        if (IRcutoff := self.co.IRcutoff) == "all" or IRcutoff is False:
+            coef_cf = coef_pk = self.Coef(bird, window=window, IRcut=bool(IRcutoff))
+        elif IRcutoff == "loop":
+            coef_pk = self.Coef(bird, window=window, IRcut=True)
+            coef_cf = self.Coef(bird, window=window, IRcut=False)
+        elif IRcutoff == "resum":
+            coef_pk = self.Coef(bird, window=window, IRcut=False)
+            coef_cf = self.Coef(bird, window=window, IRcut=True)
+        else:
+            raise ValueError(f"unexpected IRcutoff option: {IRcutoff}")
+
+        coefkPow = self.CoefkPow(coef_pk)
+        coefsPow = self.CoefsPow(coef_cf)
         self.makeP22(coefkPow, bird)
         self.makeP13(coefkPow, bird)
         self.makeC11(coefsPow, bird)
@@ -1372,11 +1368,21 @@ class Resum(HasLogger):
         """Compute the IR-filters X and Y."""
         if LambdaIR is None:
             LambdaIR = self.LambdaIR
-        Coef = self.Xfft.Coef(
-            bird.kin,
-            bird.Pin * exp(-bird.kin**2 / LambdaIR**2) / bird.kin**2,
-            window=window,
-        )
+        if (IRcutoff := self.co.IRcutoff) == "loop" or IRcutoff is False:
+            Coef = self.Xfft.Coef(
+                bird.kin,
+                bird.Pin * exp(-bird.kin**2 / LambdaIR**2) / bird.kin**2,
+                window=window,
+            )
+        else:
+            idx = np.searchsorted(bird.kin, self.co.kIR)
+            kin, Pin = bird.kin[idx:], bird.Pin[idx:]
+            Coef = self.Xfft.Coef(
+                kin,
+                Pin * exp(-(kin**2) / LambdaIR**2) / kin**2,
+                window=window,
+                extrap=("padding", "extrap"),
+            )
         CoefsPow = np.einsum("n,ns->ns", Coef, self.XsPow)
         X02 = np.real(np.einsum("ns,ln->ls", CoefsPow, self.XM))
         X0offset = np.real(
@@ -1389,6 +1395,12 @@ class Resum(HasLogger):
         X02[0] = X0offset - X02[0]
         X = RescaleIR * 2.0 / 3.0 * (X02[0] - X02[1])
         Y = 2.0 * X02[1]
+        # import matplotlib.pyplot as plt
+        # plt.plot(self.co.sr, X, label="X")
+        # plt.plot(self.co.sr, Y, label="Y")
+        # plt.xscale("log")
+        # plt.legend()
+        # plt.show()
         return X, Y
 
     def setM(self):
@@ -1510,7 +1522,7 @@ class Resum(HasLogger):
             )
             bird.PctNNLOl += self.IRctNNLOresum
         # stochastic term doesn't matter, it appears at very small scale
-        # and the constant term is delta function in configuration space, so
+        # for example, the constant term is delta function in configuration space, so
         # it does not contribute
         bird.Ploopl += self.IRloopresum
         if self.snapshot:
