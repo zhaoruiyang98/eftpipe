@@ -15,7 +15,19 @@ from copy import deepcopy
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
-from typing import Any, cast, Iterable, Mapping, Sequence, TypeVar, TYPE_CHECKING, Union
+from typing import (
+    Any,
+    cast,
+    Dict,
+    Iterable,
+    Literal,
+    Mapping,
+    Sequence,
+    Tuple,
+    TypeVar,
+    TYPE_CHECKING,
+    Union,
+)
 from typing_extensions import TypeAlias
 from cobaya import get_model
 from cobaya.yaml import yaml_dump
@@ -34,7 +46,76 @@ if TYPE_CHECKING:
     from .etyping import ndarrayf
 
 FilePath: TypeAlias = Union[str, os.PathLike]
+MultipoleStyle: TypeAlias = Dict[
+    Union[int, Literal["default"]], "MultipoleStyleElement"
+]
 _T = TypeVar("_T")
+
+
+@dataclass
+class MultipoleStyleElement:
+    line: dict[str, Any]
+    errorbar: dict[str, Any]
+
+
+CLASSICAL_STYLE: MultipoleStyle = {
+    0: MultipoleStyleElement(line={"c": "k"}, errorbar={"c": "k"}),
+    2: MultipoleStyleElement(line={"c": "b"}, errorbar={"c": "b"}),
+    4: MultipoleStyleElement(line={"c": "g"}, errorbar={"c": "g"}),
+    "default": MultipoleStyleElement(
+        line={"fmt": "-"}, errorbar={"fmt": ".", "capsize": 2}
+    ),
+}
+
+MODERN_STYLE: MultipoleStyle = {
+    0: MultipoleStyleElement(
+        line=dict(c="#993732"),
+        errorbar=dict(
+            fmt="o",
+            c="#993732",
+            mfc="#f1a83b",
+            mec="#993732",
+            ecolor="#993732",
+        ),
+    ),
+    2: MultipoleStyleElement(
+        line=dict(c="#5580b0"),
+        errorbar=dict(
+            fmt="D",
+            c="#5580b0",
+            mfc="#97ccf6",
+            mec="#5580b0",
+            ecolor="#5580b0",
+        ),
+    ),
+    4: MultipoleStyleElement(
+        line=dict(c="#818181"),
+        errorbar=dict(
+            fmt="s",
+            c="#818181",
+            mfc="#c0c0c0",
+            mec="#818181",
+            ecolor="#818181",
+        ),
+    ),
+    "default": MultipoleStyleElement(
+        line=dict(alpha=0.7),
+        errorbar=dict(capsize=1.3, markersize=4),
+    ),
+}
+
+
+def update_style(style: MultipoleStyle, default: dict = {}):
+    if not style.get("default"):
+        style["default"] = MultipoleStyleElement(line={}, errorbar={})
+    style["default"].line.update(deepcopy(default))
+    style["default"].errorbar.update(deepcopy(default))
+    for ell, element in style.items():
+        if ell == "default":
+            continue
+        element.line.update(deepcopy(style["default"].line))
+        element.errorbar.update(deepcopy(style["default"].errorbar))
+    return style
 
 
 @dataclass
@@ -361,9 +442,10 @@ class Multipole(Mapping[str, pd.Series]):
     x: ndarrayf = field(repr=False)
     data: pd.DataFrame = field(repr=False, compare=False)
     symbol: str = "P"
+    style: MultipoleStyle = field(default_factory=lambda: deepcopy(MODERN_STYLE))
 
     @classmethod
-    def init(cls, **kwargs: ndarrayf):
+    def init(cls, style: MultipoleStyle | None = None, **kwargs: ndarrayf):
         if len(kwargs) < 2:
             raise ValueError("at least two kwargs are required")
         xname = next(iter(kwargs))
@@ -371,7 +453,7 @@ class Multipole(Mapping[str, pd.Series]):
         symbol, ells = cls.infer_symbol_and_ells(kwargs)
         data = pd.DataFrame(kwargs)
         data.set_index(xname, drop=False, inplace=True)
-        return cls(ells, x, data, symbol)
+        return cls(ells, x, data, symbol, style=style or deepcopy(MODERN_STYLE))
 
     @classmethod
     def loadtxt(
@@ -379,12 +461,13 @@ class Multipole(Mapping[str, pd.Series]):
         path: FilePath,
         cov_path: FilePath | None = None,
         logger: logging.Logger | None = None,
+        style: MultipoleStyle | None = None,
     ):
         """load multipole from txt file, assume power spectrum by default"""
         data = read_pkl(path, logger=logger)
         x = data.index.to_numpy()
         symbol, ells = cls.infer_symbol_and_ells(data.columns)
-        multipole = cls(ells, x, data, symbol)
+        multipole = cls(ells, x, data, symbol, style=style or deepcopy(MODERN_STYLE))
         if cov_path:
             multipole.apply_covariance(np.loadtxt(cov_path))
         return multipole
@@ -397,8 +480,8 @@ class Multipole(Mapping[str, pd.Series]):
             if match := pattern.match(name):
                 db[match.group("symbol")].append(int(match.group("ell")))
         cnt = Counter({k: len(v) for k, v in db.items()})
-        symbol = cnt.most_common(1)[0][0]
-        ells = tuple(sorted(db[symbol]))
+        symbol = cast(str, cnt.most_common(1)[0][0])
+        ells = cast(Tuple[int, ...], tuple(sorted(db[symbol])))
         return symbol, ells
 
     @property
@@ -436,6 +519,7 @@ class Multipole(Mapping[str, pd.Series]):
             x=self.x.copy(),
             data=self.data.copy(),
             symbol=self.symbol,
+            style=deepcopy(self.style),
         )
 
     def maybe_power_spectrum(self) -> bool:
@@ -457,13 +541,21 @@ class Multipole(Mapping[str, pd.Series]):
         return self
 
     # plot
-    def default_style(self):
-        return {"fmt": ".", "capsize": 2}
-
-    def plot_pk(
-        self, ax=None, label: str | None = None, compact: bool = True, **errorbar_style
+    def _plot(
+        self, ax, ell, x, y, yerr, style: MultipoleStyle, label: str | None = None
     ):
-        style = {**self.default_style(), **errorbar_style}
+        extra = {}
+        if label and ell == min(self.ells):
+            extra["label"] = label
+        if yerr is None:
+            ax.plot(x, y, **style.get(ell, style["default"]).line, **extra)
+        else:
+            ax.errorbar(
+                x, y, yerr=yerr, **style.get(ell, style["default"]).errorbar, **extra
+            )
+
+    def plot_pk(self, ax=None, label: str | None = None, compact: bool = True, **style):
+        style = update_style(self.style, style)
         if ax is None:
             ax = plt.gca()
         k = self.k
@@ -476,45 +568,38 @@ class Multipole(Mapping[str, pd.Series]):
             return y, yerr
 
         if (Pk := self.get(self.symbol + "4")) is not None:
-            Pkerr = self.hex_err()
-            y, yerr = y_and_yerr(Pk, Pkerr)
-            ax.errorbar(k, y, yerr=yerr, c="g", **style)
+            y, yerr = y_and_yerr(Pk, self.hex_err())
+            self._plot(ax, 4, k, y, yerr, style, label)
         if (Pk := self.get(self.symbol + "2")) is not None:
-            Pkerr = self.quad_err()
-            y, yerr = y_and_yerr(Pk, Pkerr)
-            ax.errorbar(k, y, yerr=yerr, c="b", **style)
+            y, yerr = y_and_yerr(Pk, self.quad_err())
+            self._plot(ax, 2, k, y, yerr, style, label)
         if (Pk := self.get(self.symbol + "0")) is not None:
-            Pkerr = self.mono_err()
-            extra = {"label": label} if label else {}
-            y, yerr = y_and_yerr(Pk, Pkerr)
-            ax.errorbar(k, y, yerr=yerr, c="k", **extra, **style)
+            y, yerr = y_and_yerr(Pk, self.mono_err())
+            self._plot(ax, 0, k, y, yerr, style, label)
         return ax
 
-    def plot_xi(self, ax=None, label: str | None = None, **errorbar_style):
-        style = {**self.default_style(), **errorbar_style}
+    def plot_xi(self, ax=None, label: str | None = None, **style):
+        style = update_style(self.style, style)
         if ax is None:
             ax = plt.gca()
         s = self.s
         if (xi := self.get(self.symbol + "4")) is not None:
             xierr = self.hex_err()
             xierr = None if xierr is None else s**2 * xierr
-            ax.errorbar(s, s**2 * xi, yerr=xierr, c="g", **style)
+            self._plot(ax, 4, s, s**2 * xi, xierr, style, label)
         if (xi := self.get(self.symbol + "2")) is not None:
             xierr = self.quad_err()
             xierr = None if xierr is None else s**2 * xierr
-            ax.errorbar(s, s**2 * xi, yerr=xierr, c="b", **style)
+            self._plot(ax, 2, s, s**2 * xi, xierr, style, label)
         if (xi := self.get(self.symbol + "0")) is not None:
             xierr = self.mono_err()
             xierr = None if xierr is None else s**2 * xierr
-            extra = {"label": label} if label else {}
-            ax.errorbar(s, s**2 * xi, yerr=xierr, c="k", **extra, **style)
+            self._plot(ax, 0, s, s**2 * xi, xierr, style, label)
         return ax
 
-    def plot(
-        self, ax=None, label: str | None = None, compact: bool = False, **errorbar_style
-    ):
+    def plot(self, ax=None, label: str | None = None, compact: bool = False, **style):
         if self.maybe_power_spectrum():
-            ax = self.plot_pk(ax, label, compact=compact, **errorbar_style)
+            ax = self.plot_pk(ax, label, compact=compact, **style)
             ax.set_xlabel(R"$k$ $[h\,\mathrm{Mpc}^{-1}]$")
             if not compact:
                 ax.set_ylabel(
@@ -525,7 +610,7 @@ class Multipole(Mapping[str, pd.Series]):
                     Rf"$k^{{3/2}}{self.symbol}_\ell(k)$ $[h^{{-1}}\,\mathrm{{Mpc}}]^{{3/2}}$"
                 )
         else:
-            ax = self.plot_xi(ax, label, **errorbar_style)
+            ax = self.plot_xi(ax, label, **style)
             ax.set_xlabel(R"$s$ $[h^{-1}\,\mathrm{Mpc}]$")
             ax.set_ylabel(Rf"$s^2{self.symbol}_\ell(s)$ $[h^{{-1}}\,\mathrm{{Mpc}}]^2$")
         return ax
@@ -586,20 +671,20 @@ def paint_multipole(
     ax=None,
     label: str | None = None,
     compact: bool = False,
-    **style,
+    style: MultipoleStyle = MODERN_STYLE,
 ):
     if ax is None:
         ax = plt.gca()
     extra = {} if label is None else {"label": label}
     if 0 in ells:
         y = k**1.5 * Plk(0, k) if compact else k * Plk(0, k)
-        ax.plot(k, y, c="k", **style, **extra)
+        ax.plot(k, y, **style[0].line, **extra)
     if 2 in ells:
         y = k**1.5 * Plk(2, k) if compact else k * Plk(2, k)
-        ax.plot(k, y, c="b", **style)
+        ax.plot(k, y, **style[2].line)
     if 4 in ells:
         y = k**1.5 * Plk(4, k) if compact else k * Plk(4, k)
-        ax.plot(k, y, c="g", **style)
+        ax.plot(k, y, **style[4].line)
     return ax
 
 
@@ -684,6 +769,10 @@ class BestfitModel:
             k: f"{self.model.provider.get_param(k) / h:.3f}/{n}"
             for k, h, n in zip(fullchi2, hartlap, ndata)
         }
+        self.fullchi2_hartlap = {
+            k: f"{self.model.provider.get_param(k):.3f}/{n}"
+            for k, n in zip(fullchi2, ndata)
+        }
 
     def Plk_interpolator(self, tracer: str) -> PlkInterpolator:
         return self.model.provider.get_nonlinear_Plk_interpolator(
@@ -699,8 +788,24 @@ class BestfitModel:
         self.multipoles[tracer].plot(ax, compact=compact, **errorbar_style)
         k = np.linspace(0.0005, 0.3, 1000)
         Plk = self.Plk_interpolator(tracer)
-        paint_multipole(Plk.ls, k, Plk, ax=ax, compact=compact)
-        ax.set_title(tracer.replace("_", " "))
+        _style = update_style(self.multipoles[tracer].style, errorbar_style)
+        paint_multipole(Plk.ls, k, Plk, ax=ax, compact=compact, style=_style)
+        # ax.set_title(tracer.replace("_", " ").replace("X", "Cross"))
+        text = tracer.replace("_", " ").replace("X", "Cross")
+        ax.text(
+            0.94,
+            0.90,
+            text,
+            fontdict={"fontsize": 12},
+            transform=ax.transAxes,
+            ha="right",
+            va="center",
+        )
+        # ax.minorticks_on()
+        ax.tick_params(which="both", direction="in")
+        ax.xaxis.set_ticks_position("both")
+        ax.yaxis.set_ticks_position("both")
+        # ax.grid(c="c", ls="--", lw=1)
         return ax
 
     def plot_component(self, tracer: str, ax=None):
