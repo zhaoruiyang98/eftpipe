@@ -137,6 +137,7 @@ class EFTModel:
         mnu: float | None = 0.06,
         neutrino_hierarchy: Literal["degenerate", "normal", "inverted"] = "degenerate",
         tau_reio: float = 0.055,
+        N_ur: float | None = None,
     ):
         self.params["logA"] = {"value": logA, "drop": True}
         self.params["As"] = {"value": "lambda logA: 1e-10*np.exp(logA)"}
@@ -149,13 +150,16 @@ class EFTModel:
                 "extra_args": {
                     "neutrino_hierarchy": "degenerate",
                     "N_ncdm": 0,
-                    "N_ur": 3.046,
+                    "N_ur": 3.046 if N_ur is None else N_ur,
                 }
             }
         else:
             self.params["mnu"] = mnu
             self.theory["eftpipe.classynu"] = {
-                "extra_args": {"neutrino_hierarchy": neutrino_hierarchy}
+                "extra_args": {
+                    "neutrino_hierarchy": neutrino_hierarchy,
+                    **({} if N_ur is None else {"N_ur": N_ur}),
+                }
             }
         self.params["tau_reio"] = tau_reio
         return self
@@ -343,7 +347,11 @@ class EFTModel:
         return self
 
     def done(
-        self, ellmax: Literal[2, 4] = 2, debug: bool = False, logging: bool = False
+        self,
+        ellmax: Literal[2, 4] = 2,
+        debug: bool = False,
+        logging: bool = False,
+        zextra: list[float] = [],
     ):
         if self._done:
             raise RuntimeError("already done")
@@ -361,7 +369,7 @@ class EFTModel:
                     },
                     "Pk_interpolator": {
                         "nonlinear": False,
-                        "z": [self.z],
+                        "z": [self.z, *zextra],
                         "k_max": 5,
                         "vars_pairs": ("delta_nonu", "delta_nonu")
                         if self.use_cb
@@ -380,7 +388,7 @@ class EFTModel:
         ret.params = deepcopy(self.params)
         return ret
 
-    def Plinear(self):
+    def Plinear(self, z: float | None = None):
         if not self._done:
             raise RuntimeError("need to call done()")
         vars_pairs = (
@@ -390,7 +398,7 @@ class EFTModel:
             var_pair=vars_pairs, nonlinear=False, extrap_kmin=1e-6
         )
         h = self.params["H0"] / 100
-        return lambda kh: fn.P(self.z, kh * h) * h**3
+        return lambda kh: fn.P(self.z if z is None else z, kh * h) * h**3
 
     def f(self):
         return self.model.theory[
