@@ -327,6 +327,31 @@ class EFTLikeProducts(CobayaProducts):
 
         return prior_function
 
+    def cosmo_info(self):
+        info = deepcopy(self.input_info)
+        eftinfo = info["theory"].pop("eftpipe.eftlss", None)
+        toremove_prefix = []
+        if eftinfo:
+            for t, v in eftinfo["tracers"].items():
+                if t == "default":
+                    continue
+                toremove_prefix.append(v["prefix"])
+        toremove_prefix = toremove_prefix + ["marg_" + _ for _ in toremove_prefix]
+        info["likelihood"] = {"one": None}
+        info.pop("output", None)
+        info.pop("sampler", None)
+        params = {
+            p: v
+            for p, v in info["params"].items()
+            if (not any(p.startswith(_) for _ in toremove_prefix))
+            and not p.endswith(self.fullchi2_suffix())
+        }
+        info["params"] = params
+        return info
+
+    def cosmo_model(self, debug: bool | None = None):
+        return get_model(self.cosmo_info(), debug=debug)  # type: ignore
+
     def full_model_info(self) -> dict[str, Any]:
         # XXX: may be better to use updated_info
         info = deepcopy(self.input_info)
@@ -555,7 +580,7 @@ class Multipole(Mapping[str, pd.Series]):
             )
 
     def plot_pk(self, ax=None, label: str | None = None, compact: bool = True, **style):
-        style = update_style(self.style, style)
+        style = update_style(deepcopy(self.style), style)
         if ax is None:
             ax = plt.gca()
         k = self.k
@@ -579,7 +604,7 @@ class Multipole(Mapping[str, pd.Series]):
         return ax
 
     def plot_xi(self, ax=None, label: str | None = None, **style):
-        style = update_style(self.style, style)
+        style = update_style(deepcopy(self.style), style)
         if ax is None:
             ax = plt.gca()
         s = self.s
@@ -882,6 +907,33 @@ def growth_rate(z: float, omegam: float, fast: bool = False) -> float:
         + 5/2 * omegam * (1 + z)**2 / efunc(z, omegam)**2 / growth_factor(z, omegam, normalize=False)
     )
     # fmt: on
+
+
+def cosmo_to_fsigma8(z, cosmo_model, chains: pd.DataFrame, output: str | None = None):
+    assert isinstance(chains.index, pd.RangeIndex)
+    assert chains.index.start == 0
+
+    def format_array(arr):
+        fn = lambda x: f"{x:.16f}"
+        return " ".join(map(fn, arr))
+
+    if not isinstance(z, list):
+        z = [z]
+    cosmo_model.add_requirements({"fsigma8": {"z": z}})
+    fsigma8 = []
+    point = cosmo_model.parameterization.sampled_params()
+    with open(output if output else os.devnull, "w") as f:
+        if output:
+            f.write(f"# {' '.join(map(str, z))}\n")
+        for i in range(chains.shape[0]):
+            for k in point.keys():
+                point[k] = chains.loc[i, k]  # type: ignore
+            cosmo_model.logpost(point)
+            _fsigma8 = cosmo_model.provider.get_fsigma8(z)
+            fsigma8.append(_fsigma8)
+            if output:
+                f.write(format_array(_fsigma8) + "\n")
+    return np.array(fsigma8)
 
 
 @dataclass(frozen=True)
