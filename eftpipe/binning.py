@@ -60,6 +60,7 @@ class Binning(BirdTransformer, HasLogger):
             self.kout[0],
             self.kout[-1],
         )
+        # XXX: only suitable for dk like: 0.01, 0.005, 0.001, ...
         kspaces = np.around(self.kout[1:] - self.kout[:-1], decimals=decimals)  # type: ignore
         kspace_diff = kspaces[1:] - kspaces[:-1]
         if not np.allclose(kspace_diff, 0, rtol=0, atol=1e-6):

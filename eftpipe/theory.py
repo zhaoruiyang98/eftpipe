@@ -431,11 +431,7 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
             [2 * i for i in range(self.Nl())],
         )
 
-        optiresum: bool = self.tracer_config.get("IRresum", {}).pop("optiresum", False)
-        if optiresum:
-            self.mpi_warning(
-                "no test on ``optiresum = true``, use it only if you know what you are doing"
-            )
+        optiresum: bool = self.tracer_config.get("optiresum", False)
         kmA, krA, ndA, kmB, krB, ndB = self.extract_km_kr_nd()
         self.co = pybird.Common(
             Nl=self.Nl(),

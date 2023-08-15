@@ -63,6 +63,7 @@ class Config(TypedDict):
     kr: float
     nd: float
     Nl: Literal[2, 3]
+    optiresum: bool
 
     with_IRresum: bool
     with_APeffect: bool
@@ -82,6 +83,7 @@ CONFIG: Config = {
     "kr": 0.25,
     "nd": 7.91e-05,
     "Nl": 3,
+    "optiresum": False,
     "with_IRresum": True,
     "with_APeffect": True,
     "with_window": True,
@@ -197,7 +199,7 @@ class PybirdTh:
             kr=config["kr"],
             nd=config["nd"],
             with_stoch=True,
-            optiresum=config.get("IRresum", {"optiresum": False})["optiresum"],
+            optiresum=config.get("optiresum", False),
             with_resum=config["with_IRresum"],
             with_bias=False,
             kmax=0.3,

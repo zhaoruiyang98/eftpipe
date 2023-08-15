@@ -564,6 +564,7 @@ class Common(object):
         self.Nkr = self.kr.shape[0]
         self.Nklow = self.Nk - self.Nkr
         # for resummation
+        # FIXME: when kmax > 0.25, IR resummation is not accurate if NIR = 8
         if self.Nl == 3:  # or np.max(self.k) > 0.25:
             self.NIR = 16
         else:
@@ -601,17 +602,6 @@ class Common(object):
             self.l13[i] = np.array(
                 [2 * [mu[0][l]] + 4 * [mu[2][l]] + 3 * [mu[4][l]] + [mu[6][l]]]
             )
-
-        if self.optiresum is True:
-            self.sLow = 70.0
-            self.sHigh = 190.0
-            self.idlow = np.where(self.s > self.sLow)[0][0]
-            self.idhigh = np.where(self.s > self.sHigh)[0][0]
-            self.sbao = self.s[self.idlow : self.idhigh]
-            self.snobao = np.concatenate([self.s[: self.idlow], self.s[self.idhigh :]])
-            self.sr = self.sbao
-        else:
-            self.sr = self.s
 
 
 common = Common()
@@ -1279,7 +1269,7 @@ class Resum(HasLogger):
 
     def __init__(
         self,
-        LambdaIR: float = 1.0,
+        LambdaIR: float = 0.2,
         NFFT: int = 192,
         co: Common = common,
         name: str = "pybird.IRresum",
@@ -1287,13 +1277,20 @@ class Resum(HasLogger):
     ):
         self.set_logger(name=name)
         self.co = co
+        self.LambdaIR = LambdaIR
 
-        if self.co.optiresum is True:
-            self.LambdaIR = LambdaIR
+        if self.co.optiresum:
+            self.sLow = 70.0
+            self.sHigh = 190.0
+            self.idlow = np.where(self.co.s > self.sLow)[0][0]
+            self.idhigh = np.where(self.co.s > self.sHigh)[0][0]
+            self.sbao = self.co.s[self.idlow : self.idhigh]
+            self.snobao = np.concatenate(
+                [self.co.s[: self.idlow], self.co.s[self.idhigh :]]
+            )
+            self.sr = self.sbao
         else:
-            self.LambdaIR = 0.2
-
-        self.NIR = 32 - 4  # legacy
+            self.sr = self.co.s
 
         k2pi = np.array([self.co.kr ** (2 * (p + 1)) for p in range(self.co.NIR)])
         self.k2p = np.concatenate((k2pi, k2pi))
@@ -1324,20 +1321,7 @@ class Resum(HasLogger):
             shape=(self.co.Nl, self.co.Nloop, self.co.Nn, self.co.Nk)
         )
 
-        self.IRresum = np.zeros(shape=(self.co.Nl, self.co.N11, self.co.Nk))
-        self.IRctresum = np.zeros(shape=(self.co.Nl, self.co.Nct, self.co.Nk))
-        self.IRloopresum = np.zeros(shape=(self.co.Nl, self.co.Nloop, self.co.Nk))
-
-        self.IRcorr = np.zeros(shape=(2, self.co.Nl, self.NIR, self.co.Nkr))
-
-        # keep these to zeros for padding zeros at low k
-        self.IRresum = np.zeros(shape=(2, self.co.Nl, self.co.Nk))
-
-        if self.co.optiresum is True:
-            self.fftsettings = dict(Nmax=NFFT, xmin=0.1, xmax=1000.0, bias=-0.6)
-        else:
-            self.fftsettings = dict(Nmax=NFFT, xmin=0.1, xmax=10000.0, bias=-0.6)
-
+        self.fftsettings = dict(Nmax=NFFT, xmin=0.1, xmax=10000.0, bias=-0.6)
         self.fft = FFTLog(**self.fftsettings)
         self.setM()
         self.setkPow()
@@ -1346,13 +1330,14 @@ class Resum(HasLogger):
         self.Xfft = FFTLog(**self.Xfftsettings)
         self.setXM()
         self.setXsPow()
+
         self.snapshot = snapshot
         if self.snapshot:
             self.mpi_info("snapshot is enabled")
 
     def setXsPow(self):
         """Multiply the coefficients with the s's to the powers of the FFTLog to evaluate the IR-filters X and Y."""
-        self.XsPow = exp(np.einsum("n,s->ns", -self.Xfft.Pow - 3.0, log(self.co.sr)))
+        self.XsPow = exp(np.einsum("n,s->ns", -self.Xfft.Pow - 3.0, log(self.sr)))
 
     def setkPow(self):
         """Multiply the coefficients with the k's to the powers of the FFTLog to evaluate the IR-corrections."""
@@ -1440,18 +1425,18 @@ class Resum(HasLogger):
             return cf
 
         cfnobao = np.concatenate(
-            [cf[..., : self.co.idlow], cf[..., self.co.idhigh :]], axis=-1
+            [cf[..., : self.idlow], cf[..., self.idhigh :]], axis=-1
         )
         nobao = (
             interp1d(
-                self.co.snobao,
-                self.co.snobao**2 * cfnobao,
+                self.snobao,
+                self.snobao**2 * cfnobao,  # type: ignore
                 kind="linear",
                 axis=-1,
-            )(self.co.sbao)
-            * self.co.sbao**-2
+            )(self.sbao)
+            * self.sbao**-2
         )
-        bao = cf[..., self.co.idlow : self.co.idhigh] - nobao
+        bao = cf[..., self.idlow : self.idhigh] - nobao
         return bao
 
     def setXpYp(self, bird):
@@ -1463,7 +1448,7 @@ class Resum(HasLogger):
 
     def precomputedCoef(self, XpYp: NDArray, Carray: NDArray, window=None) -> NDArray:
         input = np.einsum("jk,...k->...jk", XpYp, Carray)
-        return self.fft.Coef(self.co.sr, input, extrap="padding", window=window)
+        return self.fft.Coef(self.sr, input, extrap="padding", window=window)
 
     def Ps(self, bird: Bird, window=None):
         """This is the main method of the class. Compute the IR-corrections."""

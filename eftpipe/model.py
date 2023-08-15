@@ -164,16 +164,19 @@ class EFTModel:
         self.params["tau_reio"] = tau_reio
         return self
 
-    def set_IRresum(self, NFFT: int = 192):
+    def set_IRresum(self, optiresum: bool = False, NFFT: int = 192):
         """
         Parameters
         ----------
+        optiresum : bool
+            set it True to use optimized IR resummation, default False
         NFFT: int
             FFTLog nodes, deafult 192
         """
         d = self.theory["eftpipe.eftlss"]["tracers"]["x"]
         d["with_IRresum"] = True
         d["IRresum"] = {"NFFT": NFFT}
+        d["optiresum"] = optiresum
         return self
 
     def set_window(
@@ -405,15 +408,15 @@ class EFTModel:
             "eftpipe.classynu"
         ].classy.scale_independent_growth_factor_f(self.z)
 
-    def Plk_mm(self):
+    def Plk_mm(self, cct: float = 0, cr1: float = 0, cr2: float = 0):
         return self(
             b1A=1,
             c2A=math.sqrt(2) / 2,
             b3A=1,
             c4A=math.sqrt(2) / 2,
-            cctA=0,
-            cr1A=0,
-            cr2A=0,
+            cctA=cct,
+            cr1A=cr1,
+            cr2A=cr2,
         )
 
     # fmt: off
