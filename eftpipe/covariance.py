@@ -1,13 +1,13 @@
 from __future__ import annotations
-import argparse
-import logging
 import numpy as np
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
-from eftpipe.analysis import Multipole
 
 if TYPE_CHECKING:
-    from eftpipe.etyping import ndarrayf
+    from numpy.typing import NDArray
+    from typing_extensions import TypeAlias
+
+    ndarrayf: TypeAlias = NDArray[np.float64]
 
 # integration of the product of four legendre polynomials
 # \int_{-1}^{1} d\mu L_a(\mu) L_b(\mu) L_c(\mu) L_d(\mu)
@@ -96,247 +96,218 @@ Gabcd: dict[tuple[int, int, int, int], float] = {
 }
 
 
-@dataclass
-class MultipoleMeasurement:
-    shotnoise: float
-    k: ndarrayf
-    mono: ndarrayf
-    quad: ndarrayf
-    hex: ndarrayf
+@dataclass(repr=False, eq=False)
+class Multipole:
+    P0: ndarrayf
+    P2: ndarrayf
+    P4: ndarrayf = field(default=None)  # type: ignore
 
-    @classmethod
-    def from_multipole(cls, multipole: Multipole, shotnoise: float = 0):
-        hex = multipole.get("hex")
-        if hex is None:
-            hex = np.zeros(multipole.k.size)
+    def __post_init__(self):
+        if self.P4 is None:
+            self.P4 = np.zeros_like(self.P0)
+        if self.P0.shape != self.P2.shape != self.P4.shape:
+            raise ValueError("P0, P2, P4 should have the same shape")
+
+
+def parse_subscripts(subscripts: str):
+    import re
+
+    pattern = re.compile(r"([a-zA-Z0-9]{2})((,[a-zA-Z0-9]{2})*)->([a-zA-Z0-9]{4})")
+    subscripts = "".join(subscripts.split())  # remove whitespace
+    match = pattern.match(subscripts)
+    if not match:
+        raise ValueError("invalid subscripts")
+    op1, ops, _, result = match.groups()
+    ops = ops or ","
+    ops = [op1, *(_ for _ in ops[1:].split(",") if _)]
+
+    # parity even
+    def normalize(s):
+        return "".join(sorted(s))
+
+    ops = [normalize(_) for _ in ops]
+    a, b, c, d = result
+    requires = [normalize(_) for _ in (a + c, b + d, a + d, b + c)]
+    for x in requires:
+        if x not in ops:
+            raise ValueError(f"invalid subscripts: input multipole {x} is missing")
+    indices = tuple(ops.index(_) for _ in requires)
+    return indices
+
+
+class GaussianCovariance:
+    """Gaussian Covariance matrix for simulations"""
+
+    kedges: ndarrayf
+    thin_shell: bool
+
+    def __init__(
+        self,
+        kedges,
+        nmodes=None,
+        volume: float | None = None,
+        kavg=None,
+        thin_shell: bool = True,
+    ):
+        """
+        Parameters
+        ----------
+        kedges : array_like
+            Edges of the k-bins.
+        volume : float, optional
+            Volume of the simulation box in the unit of (Gpc/h)^3.
+        nmodes : array_like, optional
+            Number of modes in each k-bin. If not given, estimated from volume.
+        kavg : array_like, optional
+            Averaged k in each k-bin. If not given, estimated from kedges.
+            Only affect the case when thin_shell=True.
+        thin_shell : bool
+            use thin shell approximation, default is False
+        """
+        if not thin_shell:
+            raise NotImplementedError
+        self.thin_shell = thin_shell
+        self.kedges = np.asarray(kedges, dtype=np.float64)
+        self._kavg = np.asarray(kavg, dtype=np.float64) if kavg is not None else None
+
+        if nmodes is not None:
+            self.nmodes = nmodes
         else:
-            hex = hex.to_numpy()
-        return cls(
-            shotnoise=shotnoise,
-            k=multipole.k.copy(),
-            mono=multipole.mono().to_numpy(),
-            quad=multipole.quad().to_numpy(),
-            hex=hex,
+            if volume is None:
+                raise ValueError("either nmodes or volume should be given")
+            self._nmodes = volume * 1e9 * self.kvolume / (2 * np.pi) ** 3
+
+    @property
+    def nmodes(self):
+        return self._nmodes
+
+    @nmodes.setter
+    def nmodes(self, value):
+        nmodes = np.asarray(value, dtype=np.float64)
+        if nmodes.size != self.kedges.size - 1:
+            raise ValueError("nmodes should have length kedges.size - 1")
+        self._nmodes = nmodes
+
+    @property
+    def kvolume(self):
+        lower, upper = self.kedges[:-1], self.kedges[1:]
+        return (4 * np.pi / 3) * (upper**3 - lower**3)
+
+    @property
+    def kavg(self):
+        if self._kavg is not None:
+            return self._kavg
+        lower, upper = self.kedges[:-1], self.kedges[1:]
+        return (3 / 4) * (upper**4 - lower**4) / (upper**3 - lower**3)
+
+    def fullcov(
+        self,
+        Paa: Multipole,
+        Pbb: Multipole,
+        Pab: Multipole,
+        ells: list[int] = [0, 2, 4],
+    ):
+        aaaa = self(ells, ells, "aa->aaaa", Paa)
+        aabb = self(ells, ells, "aa,bb,ab->aabb", Paa, Pbb, Pab)
+        aaab = self(ells, ells, "aa,bb,ab->aaab", Paa, Pbb, Pab)
+        bbbb = self(ells, ells, "bb->bbbb", Pbb)
+        bbba = self(ells, ells, "aa,bb,ab->bbba", Paa, Pbb, Pab)
+        abab = self(ells, ells, "aa,bb,ab->abab", Paa, Pbb, Pab)
+        # fmt: off
+        return np.block(
+            [[aaaa, aabb, aaab],
+             [aabb, bbbb, bbba],
+             [aaab, bbba, abab]]
         )
+        # fmt: on
 
-    def __repr__(self) -> str:
-        return (
-            f"MultipoleMeasurement(shotnoise={self.shotnoise:.3e}, "
-            f"kmin={self.k[0]:.3f}, "
-            f"kmax={self.k[-1]:.3f})"
-        )
+    def __call__(self, ell1, ell2, subscripts: str, /, *multipoles: Multipole):
+        """
+        Parameters
+        ----------
+        ell1 : int or array_like
+            multipole index
+        ell2 : int or array_like
+            multipole index
+        subscripts : str
+            specifies the subscripts for covariance matrix calculation.
+            For example, "aa,bb,ab->abbb" means computing Cov[P_ab, P_bb]
+            using P_aa, P_bb and P_ab as input multipoles.
+        multipoles : Multipole
+            input multipoles, **SHOULD INCLUDE SHOTNOISE!**
 
-
-def cov_XXXX(l: int, ll: int, mXX: MultipoleMeasurement):
-    P0, P2, P4, SN = mXX.mono, mXX.quad, mXX.hex, mXX.shotnoise
-    P0 = P0 + SN
-    coef = (2 * l + 1) * (2 * ll + 1)
-    cov = coef * (
-        P0**2 * Gabcd[(0, 0, l, ll)]
-        + 2 * P0 * P2 * Gabcd[(0, 2, l, ll)]
-        + P2**2 * Gabcd[(2, 2, l, ll)]
-        + 2 * P0 * P4 * Gabcd[(0, 4, l, ll)]
-        + 2 * P2 * P4 * Gabcd[(2, 4, l, ll)]
-        + P4**2 * Gabcd[(4, 4, l, ll)]
-    )
-    return np.diag(cov)
-
-
-def cov_YYYY(l: int, ll: int, mYY: MultipoleMeasurement):
-    return cov_XXXX(l, ll, mYY)
-
-
-def cov_XXYY(l: int, ll: int, mXY: MultipoleMeasurement):
-    P0, P2, P4 = mXY.mono, mXY.quad, mXY.hex
-    coef = (2 * l + 1) * (2 * ll + 1)
-    cov = coef * (
-        P0**2 * Gabcd[(0, 0, l, ll)]
-        + 2 * P0 * P2 * Gabcd[(0, 2, l, ll)]
-        + P2**2 * Gabcd[(2, 2, l, ll)]
-        + 2 * P0 * P4 * Gabcd[(0, 4, l, ll)]
-        + 2 * P2 * P4 * Gabcd[(2, 4, l, ll)]
-        + P4**2 * Gabcd[(4, 4, l, ll)]
-    )
-    return np.diag(cov)
-
-
-def cov_XXXY(l: int, ll: int, mXX: MultipoleMeasurement, mXY: MultipoleMeasurement):
-    P0X, P2X, P4X, SN = mXX.mono, mXX.quad, mXX.hex, mXX.shotnoise
-    P0X = P0X + SN
-    P0XY, P2XY, P4XY = mXY.mono, mXY.quad, mXY.hex
-    coef = (2 * l + 1) * (2 * ll + 1)
-    cov = coef * (
-        P0X * P0XY * Gabcd[(0, 0, l, ll)]
-        + P2X * P2XY * Gabcd[(2, 2, l, ll)]
-        + (P0X * P2XY + P2X * P0XY) * Gabcd[(0, 2, l, ll)]
-        + P4X * P4XY * Gabcd[(4, 4, l, ll)]
-        + (P0X * P4XY + P4X * P0XY) * Gabcd[(0, 4, l, ll)]
-        + (P2X * P4XY + P4X * P2XY) * Gabcd[(2, 4, l, ll)]
-    )
-    return np.diag(cov)
-
-
-def cov_YYYX(l: int, ll: int, mYY: MultipoleMeasurement, mXY: MultipoleMeasurement):
-    return cov_XXXY(l, ll, mYY, mXY)
-
-
-def cov_XYXY(
-    l: int,
-    ll: int,
-    mXX: MultipoleMeasurement,
-    mYY: MultipoleMeasurement,
-    mXY: MultipoleMeasurement,
-):
-    P0X, P2X, P4X, SNX = mXX.mono, mXX.quad, mXX.hex, mXX.shotnoise
-    P0X = P0X + SNX
-    P0Y, P2Y, P4Y, SNY = mYY.mono, mYY.quad, mYY.hex, mYY.shotnoise
-    P0Y = P0Y + SNY
-    P0XY, P2XY, P4XY = mXY.mono, mXY.quad, mXY.hex
-    coef = (2 * l + 1) * (2 * ll + 1) * 1 / 2
-    cov = coef * (
-        (P0XY**2 + P0X * P0Y) * Gabcd[(0, 0, l, ll)]
-        + (P0X * P2Y + P0Y * P2X + 2 * P0XY * P2XY) * Gabcd[(0, 2, l, ll)]
-        + (P2XY**2 + P2X * P2Y) * Gabcd[(2, 2, l, ll)]
-        + (P0X * P4Y + P0Y * P4X + 2 * P0XY * P4XY) * Gabcd[(0, 4, l, ll)]
-        + (P2X * P4Y + P2Y * P4X + 2 * P2XY * P4XY) * Gabcd[(2, 4, l, ll)]
-        + (P4XY**2 + P4X * P4Y) * Gabcd[(4, 4, l, ll)]
-    )
-    return np.diag(cov)
-
-
-def gaussian_covariance(
-    volume: float,
-    kbin_width: float,
-    PXX: MultipoleMeasurement,
-    PYY: MultipoleMeasurement | None = None,
-    PXY: MultipoleMeasurement | None = None,
-):
-    """gaussian covariance in a simulation box
-
-    Notes
-    -----
-    P11, P22 and P12 should share the same k bins.
-    """
-    is_multi_tracer: bool = (PYY is not None) and (PXY is not None)
-    if is_multi_tracer:
-        k = (PXX.k + PYY.k + PXY.k) / 3  # type: ignore
-    else:
-        k = PXX.k
-    if PYY is None or PXY is None:
-        k = PXX.k
-    else:
-        k = (PXX.k + PYY.k + PXY.k) / 3
-    number_of_k_modes = (
-        4 * np.pi * k**2 * kbin_width / ((2 * np.pi) / volume ** (1 / 3)) ** 3
-    )
-    nkinv = np.diag(1 / number_of_k_modes)
-    nkinv = np.block(
-        [[nkinv, nkinv, nkinv], [nkinv, nkinv, nkinv], [nkinv, nkinv, nkinv]]
-    )
-    CXXXX = np.block(
-        [
-            [cov_XXXX(0, 0, PXX), cov_XXXX(0, 2, PXX), cov_XXXX(0, 4, PXX)],
-            [cov_XXXX(2, 0, PXX), cov_XXXX(2, 2, PXX), cov_XXXX(2, 4, PXX)],
-            [cov_XXXX(4, 0, PXX), cov_XXXX(4, 2, PXX), cov_XXXX(4, 4, PXX)],
-        ]
-    )
-    if not is_multi_tracer:
-        return CXXXX * nkinv
-    assert PYY is not None and PXY is not None
-    # fmt: off
-    CYYYY = np.block(
-        [
-            [cov_YYYY(0, 0, PYY), cov_YYYY(0, 2, PYY), cov_YYYY(0, 4, PYY)],
-            [cov_YYYY(2, 0, PYY), cov_YYYY(2, 2, PYY), cov_YYYY(2, 4, PYY)],
-            [cov_YYYY(4, 0, PYY), cov_YYYY(4, 2, PYY), cov_YYYY(4, 4, PYY)],
-        ]
-    )
-    CXYXY = np.block(
-        [
-            [cov_XYXY(0, 0, PXX, PYY, PXY), cov_XYXY(0, 2, PXX, PYY, PXY), cov_XYXY(0, 4, PXX, PYY, PXY)],
-            [cov_XYXY(2, 0, PXX, PYY, PXY), cov_XYXY(2, 2, PXX, PYY, PXY), cov_XYXY(2, 4, PXX, PYY, PXY)],
-            [cov_XYXY(4, 0, PXX, PYY, PXY), cov_XYXY(4, 2, PXX, PYY, PXY), cov_XYXY(4, 4, PXX, PYY, PXY)],
-        ]
-    )
-    CXXYY = np.block(
-        [
-            [cov_XXYY(0, 0, PXY), cov_XXYY(0, 2, PXY), cov_XXYY(0, 4, PXY)],
-            [cov_XXYY(2, 0, PXY), cov_XXYY(2, 2, PXY), cov_XXYY(2, 4, PXY)],
-            [cov_XXYY(4, 0, PXY), cov_XXYY(4, 2, PXY), cov_XXYY(4, 4, PXY)],
-        ]
-    )
-    CXXXY = np.block(
-        [
-            [cov_XXXY(0, 0, PXX, PXY), cov_XXXY(0, 2, PXX, PXY), cov_XXXY(0, 4, PXX, PXY)],
-            [cov_XXXY(2, 0, PXX, PXY), cov_XXXY(2, 2, PXX, PXY), cov_XXXY(2, 4, PXX, PXY)],
-            [cov_XXXY(4, 0, PXX, PXY), cov_XXXY(4, 2, PXX, PXY), cov_XXXY(4, 4, PXX, PXY)],
-        ]
-    )
-    CYYYX = np.block(
-        [
-            [cov_YYYX(0, 0, PYY, PXY), cov_YYYX(0, 2, PYY, PXY), cov_YYYX(0, 4, PYY, PXY)],
-            [cov_YYYX(2, 0, PYY, PXY), cov_YYYX(2, 2, PYY, PXY), cov_YYYX(2, 4, PYY, PXY)],
-            [cov_YYYX(4, 0, PYY, PXY), cov_YYYX(4, 2, PYY, PXY), cov_YYYX(4, 4, PYY, PXY)],
-        ]
-    )
-    nkinv = np.block(
-        [[nkinv, nkinv, nkinv], [nkinv, nkinv, nkinv], [nkinv, nkinv, nkinv]]
-    )
-    cov = np.block(
-        [[  CXXXX,   CXXYY, CXXXY],
-         [CXXYY.T,   CYYYY, CYYYX],
-         [CXXXY.T, CYYYX.T, CXYXY]]
-    )
-    # fmt: on
-    return cov * nkinv
-
-
-def main():
-    parser = argparse.ArgumentParser(
-        description="Compute the gaussian covariance matrix for a given set of multipoles."
-    )
-    parser.add_argument("--PXX", required=True, help="path to XX multipole file")
-    parser.add_argument("--PYY", help="path to YY multipole file")
-    parser.add_argument("--PXY", help="path to XY multipole file")
-    parser.add_argument(
-        "--volume", type=float, required=True, help="volume of the box, in Gpc^3"
-    )
-    parser.add_argument("--kbin", type=float, required=True, help="k bin width")
-    parser.add_argument("--SNXX", type=float, required=True, help="shotnoise of XX")
-    parser.add_argument("--SNYY", type=float, help="shotnoise of YY")
-    parser.add_argument("-o", "--output", required=True, help="output file")
-    args = parser.parse_args()
-
-    is_multi_tracer = args.PYY and args.PXY
-    if is_multi_tracer and args.SNYY is None:
-        parser.error("--SNYY is required for multi-tracer covariance")
-
-    # setup logger
-    logger = logging.getLogger(parser.prog)
-    ch = logging.StreamHandler()
-    formatter = logging.Formatter("[%(name)s: %(levelname)s] %(message)s")
-    ch.setFormatter(formatter)
-    logger.addHandler(ch)
-
-    if not is_multi_tracer:
-        PXX = MultipoleMeasurement.from_multipole(
-            Multipole.loadtxt(args.PXX, logger=logger), args.SNXX
-        )
-        cov = gaussian_covariance(args.volume * 10**9, args.kbin, PXX)
-        np.savetxt(args.output, cov)
-        return
-    PXX = MultipoleMeasurement.from_multipole(
-        Multipole.loadtxt(args.PXX, logger=logger), args.SNXX
-    )
-    PYY = MultipoleMeasurement.from_multipole(
-        Multipole.loadtxt(args.PYY, logger=logger), args.SNYY
-    )
-    PXY = MultipoleMeasurement.from_multipole(
-        Multipole.loadtxt(args.PXY, logger=logger)
-    )
-    cov = gaussian_covariance(args.volume * 10**9, args.kbin, PXX, PYY, PXY)
-    np.savetxt(args.output, cov)
+        Returns
+        -------
+        1d ndarray if ell1 and ell2 are both int, otherwise 2d ndarray
+        """
+        try:
+            Pac, Pbd, Pad, Pbc = (multipoles[i] for i in parse_subscripts(subscripts))
+        except IndexError:
+            raise ValueError("missing input multipole")
+        if any(
+            _.size != self.kedges.size - 1 for _ in (Pac.P0, Pbd.P0, Pad.P0, Pbc.P0)
+        ):
+            raise ValueError("input multipoles have incorrect shape")
+        ell1, ell2 = np.atleast_1d(ell1), np.atleast_1d(ell2)
+        db = {}
+        for l1, l2 in ((x, y) for x in ell1 for y in ell2):
+            key = tuple(sorted((l1, l2)))
+            if key in db:
+                # symmetry
+                continue
+            # fmt: off
+            sigmak = (
+                (2 * l1 + 1) * (2 * l2 + 1) / 2
+                * (
+                    (Pac.P0 * Pbd.P0 + Pad.P0 * Pbc.P0) * Gabcd[(l1, l2, 0, 0)]
+                    + (Pac.P2 * Pbd.P2 + Pad.P2 * Pbc.P2) * Gabcd[(l1, l2, 2, 2)]
+                    + (Pac.P4 * Pbd.P4 + Pad.P4 * Pbc.P4) * Gabcd[(l1, l2, 4, 4)]
+                    + (Pac.P0 * Pbd.P2 + Pad.P0 * Pbc.P2) * Gabcd[(l1, l2, 0, 2)]
+                    + (Pac.P2 * Pbd.P0 + Pad.P2 * Pbc.P0) * Gabcd[(l1, l2, 2, 0)]
+                    + (Pac.P0 * Pbd.P4 + Pad.P0 * Pbc.P4) * Gabcd[(l1, l2, 0, 4)]
+                    + (Pac.P4 * Pbd.P0 + Pad.P4 * Pbc.P0) * Gabcd[(l1, l2, 4, 0)]
+                    + (Pac.P2 * Pbd.P4 + Pad.P2 * Pbc.P4) * Gabcd[(l1, l2, 2, 4)]
+                    + (Pac.P4 * Pbd.P2 + Pad.P4 * Pbc.P2) * Gabcd[(l1, l2, 4, 2)]
+                )
+            )
+            # fmt: on
+            db[key] = sigmak / self.nmodes
+        if len(ell1) == len(ell2) == 1:
+            return db[ell1[0], ell2[0]]
+        toret = []
+        for l1 in ell1:
+            tmp = []
+            for l2 in ell2:
+                key = tuple(sorted((l1, l2)))
+                tmp.append(np.diag(db[key]))
+            toret.append(tmp)
+        return np.block(toret)
 
 
 if __name__ == "__main__":
-    main()
+    # examples
+    kedges = np.linspace(0, 0.3, 30 + 1)
+    volume = 2.0**3
+    gcov = GaussianCovariance(kedges, volume=volume)
+    Paa = Multipole(
+        P0=10000 * np.random.random(kedges.size - 1) + 1 / 1e-4,
+        P2=10000 * np.random.random(kedges.size - 1),
+        P4=10000 * np.random.random(kedges.size - 1),
+    )
+    Pbb = Multipole(
+        P0=1000 * np.random.random(kedges.size - 1) + 1 / 1e-4,
+        P2=1000 * np.random.random(kedges.size - 1),
+        P4=1000 * np.random.random(kedges.size - 1),
+    )
+    Pab = Multipole(
+        P0=4000 * np.random.random(kedges.size - 1) + 0,
+        P2=4000 * np.random.random(kedges.size - 1),
+        P4=4000 * np.random.random(kedges.size - 1),
+    )
+    # diagonal term
+    sigma_00_aa = gcov(0, 0, "aa->aa", Paa)
+    sigma_02_abba = gcov(0, 2, "aa,bb,ab->abba", Paa, Pbb, Pab)
+    # single covariance matrix
+    cov_aaaa = gcov([0, 2, 4], [0, 2, 4], "aa->aaaa", Paa)
+    # full covariance matrix
+    cov_all = gcov.fullcov(Paa, Pbb, Pab)
