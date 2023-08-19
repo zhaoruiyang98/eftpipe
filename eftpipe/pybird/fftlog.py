@@ -159,7 +159,7 @@ class FFTLog(object):
         xtrunc = self.x[ileft:iright]
         efactor = exp(-self.bias * np.arange(ileft, iright) * self.dx)
         if kernel is not one:
-            efactor *= kernel(xtrunc)
+            efactor = efactor * kernel(xtrunc)
         fx[..., ileft:iright] = interpfunc(xtrunc) * efactor
         if extrap[0] == "extrap" and xin[0] > self.x[0]:
             # low extrapolation
