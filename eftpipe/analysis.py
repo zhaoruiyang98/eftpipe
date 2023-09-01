@@ -106,6 +106,7 @@ MODERN_STYLE: MultipoleStyle = {
 
 
 def update_style(style: MultipoleStyle, default: dict = {}):
+    style = deepcopy(style)
     if not style.get("default"):
         style["default"] = MultipoleStyleElement(line={}, errorbar={})
     style["default"].line.update(deepcopy(default))
@@ -831,6 +832,17 @@ class BestfitModel:
         ax.xaxis.set_ticks_position("both")
         ax.yaxis.set_ticks_position("both")
         # ax.grid(c="c", ls="--", lw=1)
+        return ax
+
+    def plot_theory(
+        self, tracer: str, ax=None, compact: bool = False, **errorbar_style
+    ):
+        if ax is None:
+            ax = plt.gca()
+        k = np.linspace(0.0005, 0.3, 1000)
+        Plk = self.Plk_interpolator(tracer)
+        _style = update_style(self.multipoles[tracer].style, errorbar_style)
+        paint_multipole(Plk.ls, k, Plk, ax=ax, compact=compact, style=_style)
         return ax
 
     def plot_component(self, tracer: str, ax=None):

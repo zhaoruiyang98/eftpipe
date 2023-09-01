@@ -109,6 +109,9 @@ def main(argv: Sequence[str] | None = None):
     print("fullchi2 (w/o hartlap):")
     for k, v in model.fullchi2.items():
         print(f"{k}={v}")
+    print("fullchi2 (w/ hartlap):")
+    for k, v in model.fullchi2_hartlap.items():
+        print(f"{k}={v}")
 
     tracers = args.tracers
     if tracers[0] == "all":
@@ -123,10 +126,17 @@ def main(argv: Sequence[str] | None = None):
             tracers = ["LRG", "X", "ELG"]
     nrows = args.nrows
     ncols = math.ceil(len(tracers) / nrows)
+    # width = 3.5 * ncols
+    # height = 2.5 * nrows
     width = 5.5 * ncols
     height = 4 * nrows
     fig, axes = plt.subplots(
-        nrows, ncols, figsize=(width, height), sharey=args.sharey, sharex=True
+        nrows,
+        ncols,
+        figsize=(width, height),
+        sharey=args.sharey,
+        sharex=True,
+        gridspec_kw={"hspace": 0},
     )
     for i, tracer in enumerate(tracers):
         ax = plt.subplot(nrows, ncols, i + 1)
