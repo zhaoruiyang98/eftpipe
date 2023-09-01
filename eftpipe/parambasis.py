@@ -131,14 +131,15 @@ def reduce_Plk(
     xfactor2 = 0.5 * (1.0 / ndA / kmA**2 + 1.0 / ndB / kmB**2)
     bstAB = np.array([ce0 * xfactor1, cemono * xfactor2, cequad * xfactor2])
 
-    Plin = np.einsum("b,lbx->lx", b11AB, bird.P11l)
-    Ploop = np.einsum("b,lbx->lx", bloopAB, bird.Ploopl)
-    Pct = np.einsum("b,lbx->lx", bctAB, bird.Pctl)
+    No = bird.co.No
+    Plin = np.einsum("b,lbx->lx", b11AB, bird.P11l[:No])
+    Ploop = np.einsum("b,lbx->lx", bloopAB, bird.Ploopl[:No])
+    Pct = np.einsum("b,lbx->lx", bctAB, bird.Pctl[:No])
     if bird.co.with_NNLO:
         assert bird.PctNNLOl is not None
-        Pct += np.einsum("b,lbx->lx", bctNNLOAB, bird.PctNNLOl)
-    Pst = np.einsum("b,lbx->lx", bstAB, bird.Pstl)
-    return BirdComponent(Plin=Plin, Ploop=Ploop, Pct=Pct, Pst=Pst, Picc=bird.Picc)
+        Pct += np.einsum("b,lbx->lx", bctNNLOAB, bird.PctNNLOl[:No])
+    Pst = np.einsum("b,lbx->lx", bstAB, bird.Pstl[:No])
+    return BirdComponent(Plin=Plin, Ploop=Ploop, Pct=Pct, Pst=Pst, Picc=bird.Picc[:No])
 
 
 class EFTBasis(Protocol):
@@ -267,6 +268,7 @@ class WestCoastBasis(EFTBasis):
         params_values_dict: Mapping[str, float],
         requires: Container[str] | None = None,
     ):
+        No = bird.co.No
         f = bird.f
         kmA, krA, ndA, kmB, krB, ndB = (
             bird.co.kmA,
@@ -280,7 +282,9 @@ class WestCoastBasis(EFTBasis):
             b1A, b1B = (params_values_dict[_ + "b1"] for _ in self.cross_prefix)
         else:
             b1A = b1B = params_values_dict[self.prefix + "b1"]
-        Ploopl, Pctl, PctNNLOl, Pstl = bird.Ploopl, bird.Pctl, bird.PctNNLOl, bird.Pstl
+        Ploopl, Pctl, PctNNLOl, Pstl = (
+            _[:No] for _ in (bird.Ploopl, bird.Pctl, bird.PctNNLOl, bird.Pstl)
+        )
 
         if requires is None:
             requires = EVERYTHING
@@ -427,6 +431,7 @@ class EastCoastBasis(EFTBasis):
         params_values_dict: Mapping[str, float],
         requires: Container[str] | None = None,
     ):
+        No = bird.co.No
         f = bird.f
         kmA, krA, ndA, kmB, krB, ndB = (
             bird.co.kmA,
@@ -437,7 +442,9 @@ class EastCoastBasis(EFTBasis):
             bird.co.ndB,
         )
         b1A = b1B = params_values_dict[self.prefix + "b1"]
-        Ploopl, Pctl, PctNNLOl, Pstl = bird.Ploopl, bird.Pctl, bird.PctNNLOl, bird.Pstl
+        Ploopl, Pctl, PctNNLOl, Pstl = (
+            _[:No] for _ in (bird.Ploopl, bird.Pctl, bird.PctNNLOl, bird.Pstl)
+        )
 
         if requires is None:
             requires = EVERYTHING

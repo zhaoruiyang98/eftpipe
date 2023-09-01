@@ -509,11 +509,17 @@ class Common(object):
     ----------
     Nl : int
         The maximum multipole to calculate (default 2)
+    No: int
+        The maximum output multipole (default Nl)
     """
+
+    Nl: int
+    No: int
 
     def __init__(
         self,
-        Nl: int = 2,
+        Nl: int | None = None,
+        No: int | None = None,
         kmax: float = 0.3,
         optiresum: bool = False,
         kmA: float = 0.7,
@@ -546,7 +552,17 @@ class Common(object):
             IRcutoff = "all"
         self.IRcutoff = IRcutoff
         self.kIR = cast(float, kIR)  # IR cut off when doing the IR-resummation
-        self.Nl = Nl
+        if Nl is None and No is None:
+            # default to 2
+            self.Nl = self.No = 2
+        elif not (Nl is None or No is None):
+            self.Nl = Nl
+            self.No = No
+        else:
+            self.Nl = self.No = Nl or No  # type: ignore
+        assert isinstance(self.Nl, int) and isinstance(self.No, int)
+        if self.No > self.Nl:
+            raise ValueError("No should always be smaller than Nl")
         self.N11 = 3
         self.Nct = 6
         self.NctNNLO = 3
@@ -563,19 +579,6 @@ class Common(object):
         self.kr = self.k[0.02 <= self.k]
         self.Nkr = self.kr.shape[0]
         self.Nklow = self.Nk - self.Nkr
-        # for resummation
-        # FIXME: when kmax > 0.25, IR resummation is not accurate if NIR = 8
-        if self.Nl == 3:  # or np.max(self.k) > 0.25:
-            self.NIR = 16
-        else:
-            self.NIR = 8
-
-        if self.NIR == 16:
-            self.Na = 3
-        elif self.NIR == 8:
-            self.Na = 2
-
-        self.Nn = self.NIR * self.Na * 2
 
         self.l11 = np.empty(shape=(self.Nl, self.N11))
         self.lct = np.empty(shape=(self.Nl, self.Nct))
@@ -1292,7 +1295,22 @@ class Resum(HasLogger):
         else:
             self.sr = self.co.s
 
-        k2pi = np.array([self.co.kr ** (2 * (p + 1)) for p in range(self.co.NIR)])
+        # FIXME: when kmax > 0.25, IR resummation is not accurate if NIR = 8
+        if self.co.Nl == 3:  # or np.max(self.k) > 0.25:
+            self.NIR = 16
+        else:
+            self.NIR = 8
+
+        if self.NIR == 16:
+            self.Na = 3
+        elif self.NIR == 8:
+            self.Na = 2
+        else:
+            raise NotImplementedError
+
+        self.Nn = self.NIR * self.Na * 2
+
+        k2pi = np.array([self.co.kr ** (2 * (p + 1)) for p in range(self.NIR)])
         self.k2p = np.concatenate((k2pi, k2pi))
 
         self.alllpr = [
@@ -1313,13 +1331,11 @@ class Resum(HasLogger):
         ]
 
         # can put those to empty
-        self.Q = np.zeros(shape=(2, self.co.Nl, self.co.Nl, self.co.Nn))
-        self.IR11 = np.zeros(shape=(self.co.Nl, self.co.Nn, self.co.Nk))
-        self.IRct = np.zeros(shape=(self.co.Nl, self.co.Nn, self.co.Nk))
-        self.IRctNNLO = np.zeros(shape=(self.co.Nl, self.co.Nn, self.co.Nk))
-        self.IRloop = np.zeros(
-            shape=(self.co.Nl, self.co.Nloop, self.co.Nn, self.co.Nk)
-        )
+        self.Q = np.zeros(shape=(2, self.co.Nl, self.co.Nl, self.Nn))
+        self.IR11 = np.zeros(shape=(self.co.Nl, self.Nn, self.co.Nk))
+        self.IRct = np.zeros(shape=(self.co.Nl, self.Nn, self.co.Nk))
+        self.IRctNNLO = np.zeros(shape=(self.co.Nl, self.Nn, self.co.Nk))
+        self.IRloop = np.zeros(shape=(self.co.Nl, self.co.Nloop, self.Nn, self.co.Nk))
 
         self.fftsettings = dict(Nmax=NFFT, xmin=0.1, xmax=10000.0, bias=-0.6)
         self.fft = FFTLog(**self.fftsettings)
@@ -1398,24 +1414,24 @@ class Resum(HasLogger):
         # CoefkPow = np.einsum("n,nk->nk", Coef, self.kPow)
         # return np.real(np.einsum("nk,ln->lk", CoefkPow, self.M[: self.co.Na]))
         # precomputed np.einsum_path does not improve the performance
-        return np.real(self.M[: self.co.Na] @ (Coef[:, newaxis] * self.kPow))
+        return np.real(self.M[: self.Na] @ (Coef[:, newaxis] * self.kPow))
 
     def makeQ(self, f):
-        """Compute the bulk coefficients Q^{ll'}_{||N-j}(n, \alpha, f)"""
+        R"""Compute the bulk coefficients Q^{ll'}_{||N-j}(n, \alpha, f)"""
         for a in range(2):
             for l in range(self.co.Nl):
                 for lpr in range(self.co.Nl):
-                    for u in range(self.co.Nn):
-                        if self.co.NIR == 8:
+                    for u in range(self.Nn):
+                        if self.NIR == 8:
                             self.Q[a][l][lpr][u] = Qa[1 - a][2 * l][2 * lpr][u](f)
-                        elif self.co.NIR == 16:
+                        elif self.NIR == 16:
                             self.Q[a][l][lpr][u] = Qawithhex[1 - a][2 * l][2 * lpr][u](
                                 f
                             )
-                        elif self.co.NIR == 20:
+                        elif self.NIR == 20:
                             raise NotImplementedError
                         else:
-                            raise ValueError(f"unexpected co.NIR == {self.co.NIR}")
+                            raise ValueError(f"unexpected co.NIR == {self.NIR}")
 
     def extractBAO(self, cf):
         """Given a correlation function cf,
@@ -1441,8 +1457,8 @@ class Resum(HasLogger):
 
     def setXpYp(self, bird):
         X, Y = self.IRFilters(bird)
-        Xp = np.array([X ** (p + 1) for p in range(self.co.NIR)])
-        XpY = np.array([Y * X**p for p in range(self.co.NIR)])
+        Xp = np.array([X ** (p + 1) for p in range(self.NIR)])
+        XpY = np.array([Y * X**p for p in range(self.NIR)])
         XpYp = np.concatenate((Xp, XpY))
         return XpYp
 
@@ -1462,19 +1478,15 @@ class Resum(HasLogger):
         for l, cl in enumerate(extracted_C11):
             for j, xy in enumerate(XpYp):
                 IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(CoefArray[l, j, :])
-                for v in range(self.co.Na):
-                    self.IR11[l, j * self.co.Na + v, self.co.Nklow :] = IRcorrUnsorted[
-                        v
-                    ]
+                for v in range(self.Na):
+                    self.IR11[l, j * self.Na + v, self.co.Nklow :] = IRcorrUnsorted[v]
         extracted_Cct = self.extractBAO(bird.Cct)
         CoefArray = self.precomputedCoef(XpYp, extracted_Cct, window=window)
         for l, cl in enumerate(extracted_Cct):
             for j, xy in enumerate(XpYp):
                 IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(CoefArray[l, j, :])
-                for v in range(self.co.Na):
-                    self.IRct[l, j * self.co.Na + v, self.co.Nklow :] = IRcorrUnsorted[
-                        v
-                    ]
+                for v in range(self.Na):
+                    self.IRct[l, j * self.Na + v, self.co.Nklow :] = IRcorrUnsorted[v]
         extracted_Cloopl = self.extractBAO(bird.Cloopl)
         CoefArray = self.precomputedCoef(XpYp, extracted_Cloopl, window=window)
         for l, cl in enumerate(extracted_Cloopl):
@@ -1483,9 +1495,9 @@ class Resum(HasLogger):
                     IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(
                         CoefArray[l, i, j, :]
                     )
-                    for v in range(self.co.Na):
+                    for v in range(self.Na):
                         self.IRloop[
-                            l, i, j * self.co.Na + v, self.co.Nklow :
+                            l, i, j * self.Na + v, self.co.Nklow :
                         ] = IRcorrUnsorted[v]
         self.IR11resum = np.einsum("lpn,pnk,pi->lik", self.Q[0], self.IR11, self.co.l11)
         self.IRctresum = np.einsum("lpn,pnk,pi->lik", self.Q[1], self.IRct, self.co.lct)
@@ -1498,9 +1510,9 @@ class Resum(HasLogger):
             for l, cl in enumerate(extracted_CctNNLO):
                 for j, xy in enumerate(XpYp):
                     IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(CoefArray[l, j, :])
-                    for v in range(self.co.Na):
+                    for v in range(self.Na):
                         self.IRctNNLO[
-                            l, j * self.co.Na + v, self.co.Nklow :
+                            l, j * self.Na + v, self.co.Nklow :
                         ] = IRcorrUnsorted[v]
             self.IRctNNLOresum = np.einsum(
                 "lpn,pnk,pi->lik", self.Q[1], self.IRctNNLO, self.co.lctNNLO

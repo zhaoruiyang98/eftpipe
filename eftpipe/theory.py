@@ -402,7 +402,8 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
             )
         # allowed keys: Nl, binned, binning, chained, bird_component
         self._must_provide: dict[str, Any] = {
-            "Nl": 0,
+            "Nl": self.tracer_config.get("Nl", 0) or 0,
+            "No": 0,
             "binned": [],
             "chained": [],
             "bird_component": False,
@@ -435,6 +436,7 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
         kmA, krA, ndA, kmB, krB, ndB = self.extract_km_kr_nd()
         self.co = pybird.Common(
             Nl=self.Nl(),
+            No=self.No(),
             kmax=self.tracer_config.get("kmax", 0.3),
             optiresum=optiresum,
             kmA=kmA,
@@ -533,6 +535,7 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
                     raise LoggedError(self.log, "Unsupported multipoles: %s", ls)
                 Nl = max(ls) // 2 + 1
                 self._must_provide["Nl"] = max(Nl, self._must_provide["Nl"])
+                self._must_provide["No"] = max(Nl, self._must_provide["No"])
                 # step 2: configure chained
                 self._must_provide["chained"] = group_lists(
                     bool_or_list(config.get("chained", False)),
@@ -616,10 +619,10 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
             else:
                 kreturn = bird.co.k.copy()
             if chained:
-                ls = [2 * l for l in range(self.Nl() - 1)]
+                ls = [2 * l for l in range(self.No() - 1)]
                 birdlike = self.chained_tranformer.transform(birdlike)
             else:
-                ls = [2 * l for l in range(self.Nl())]
+                ls = [2 * l for l in range(self.No())]
             birdlike_products[(chained, binned)] = (ls, kreturn, birdlike)
         state[self.product_name()] = {
             "bird": bird,
@@ -725,8 +728,11 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
     def Nl(self) -> int:
         return self._must_provide["Nl"]
 
+    def No(self) -> int:
+        return self._must_provide["No"]
+
     def required_power_spectrum(self) -> bool:
-        return self.Nl() != 0
+        return self.No() != 0
 
     def required_binning(self) -> bool:
         return True in self._must_provide["binned"]

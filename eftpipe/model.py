@@ -37,6 +37,8 @@ class EFTModel:
         if true, use the linear power spectrum of cdm + baryon as input, default True
     IRcutoff : "all", "loop", "resum" or bool
     kIR : float, optional
+    Nl : 2 or 3, optional
+        number of multipoles internally computed, default None
 
     Examples
     --------
@@ -59,6 +61,7 @@ class EFTModel:
         with_RSD: bool = True,
         IRcutoff: Literal["all", "loop", "resum"] | bool = False,
         kIR: float | None = None,
+        Nl: Literal[2, 3] | None = None,
     ):
         self._done = False
         self.z = z
@@ -89,6 +92,7 @@ class EFTModel:
             "IRcutoff": IRcutoff,
             "kIR": kIR,
             "with_RSD": with_RSD,
+            "Nl": Nl,
         }
         d = self.params
         if self.cross:
