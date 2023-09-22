@@ -382,6 +382,7 @@ class EFTModel:
                         if self.use_cb
                         else ("delta_tot", "delta_tot"),
                     },
+                    "sigma8": None,
                 }
             )
         self.model = model
@@ -406,6 +407,9 @@ class EFTModel:
         )
         h = self.params["H0"] / 100
         return lambda kh: fn.P(self.z if z is None else z, kh * h) * h**3
+
+    def sigma8(self):
+        return self.model.provider.get_param("sigma8")
 
     def f(self):
         return self.model.theory[

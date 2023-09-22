@@ -1,5 +1,4 @@
 from __future__ import annotations
-import importlib
 import itertools
 import logging
 import re
@@ -9,11 +8,12 @@ import scipy
 from collections import defaultdict
 from copy import copy, deepcopy
 from dataclasses import dataclass, field
-from typing import Any, Iterable, List, TYPE_CHECKING, Union
+from typing import Any, Callable, Iterable, List, TYPE_CHECKING, Union
 from scipy.interpolate import interp1d
 from cobaya.likelihood import Likelihood
 from .marginal import Marginalizable
 from .marginal import valid_prior_config
+from .reader import find_reader_else_default
 from .reader import read_pkl
 from .tools import int_or_list
 from .tools import str_or_list
@@ -26,28 +26,25 @@ FloatBound_T = Union[float, List[float], None]
 
 
 def find_data_reader(
-    name: str, kwargs: dict[str, Any], logger: logging.Logger | None = None
+    name: str | None, logger: logging.Logger | None = None, **kwargs
+) -> Callable[[str], pd.DataFrame]:
+    return find_reader_else_default(
+        name=name,
+        default=lambda path: read_pkl(path, logger=logger, **kwargs),
+        logger=logger,
+        **kwargs,
+    )
+
+
+def find_covariance_reader(
+    name: str | None, logger: logging.Logger | None = None, **kwargs
 ):
-    if name == "auto":
-
-        def ret(path):
-            return read_pkl(path, logger=logger)
-
-    else:
-        module_name, class_name = name.rsplit(".", 1)
-        module = importlib.import_module(module_name)
-        ret = getattr(module, class_name)(**kwargs)
-    return ret
-
-
-def find_covariance_reader(name: str, kwargs: dict[str, Any]):
-    if name == "auto":
-        ret = np.loadtxt
-    else:
-        module_name, class_name = name.rsplit(".", 1)
-        module = importlib.import_module(module_name)
-        ret = getattr(module, class_name)(**kwargs)
-    return ret
+    return find_reader_else_default(
+        name=name,
+        default=lambda path: np.loadtxt(path, **kwargs),
+        logger=logger,
+        **kwargs,
+    )
 
 
 def extract_multipole_info(names: Iterable[str]) -> tuple[str, list[int]]:
@@ -253,15 +250,11 @@ class MultipoleInfo:
         ls: int | list[int],
         kmin: FloatBound_T = None,
         kmax: FloatBound_T = None,
-        reader: str = "auto",
+        reader: str | None = "default",
         reader_kwargs: dict[str, Any] = {},
         logger: logging.Logger | None = None,
     ):
-        df = find_data_reader(
-            reader,
-            reader_kwargs,
-            logger=logger,
-        )(path)
+        df = find_data_reader(reader, logger=logger, **reader_kwargs)(path)
         symbol, ls_tot = extract_multipole_info(df.columns.to_list())
         ls = int_or_list(ls)
         if not_existed_ls := set(ls).difference(ls_tot):
@@ -355,7 +348,7 @@ class EFTLike(Likelihood, Marginalizable):
         if not isinstance(self.cov, dict):
             self.cov = {"path": self.cov}
         reader = find_covariance_reader(
-            self.cov.get("reader", "auto"), self.cov.get("reader_kwargs", {})
+            self.cov.get("reader"), logger=self.log, **self.cov.get("reader_kwargs", {})
         )
         if isinstance(path := self.cov["path"], list):
             cov = scipy.linalg.block_diag(*[reader(p) for p in path])

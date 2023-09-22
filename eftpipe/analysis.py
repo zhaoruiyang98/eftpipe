@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import (
     Any,
     cast,
+    Callable,
     Dict,
     Iterable,
     Literal,
@@ -482,6 +483,11 @@ class Multipole(Mapping[str, pd.Series]):
         return cls(ells, x, data, symbol, style=style or deepcopy(MODERN_STYLE))
 
     @classmethod
+    def from_dataframe(cls, df):
+        symbol, ells = cls.infer_symbol_and_ells(df.columns)
+        return cls(ells, df.index.to_numpy(), df)
+
+    @classmethod
     def loadtxt(
         cls,
         path: FilePath,
@@ -547,6 +553,22 @@ class Multipole(Mapping[str, pd.Series]):
             symbol=self.symbol,
             style=deepcopy(self.style),
         )
+
+    def savetxt(
+        self,
+        fname: FilePath,
+        fmt: str | Callable[[Any], str] | None = "%.18e",
+        extra_info: str = "",
+    ):
+        with open(fname, "w") as f:
+            column_names = self.data.columns.to_list()
+            if self.data.index.name not in column_names:
+                column_names = [self.data.index.name] + column_names
+            header = (" " * 5).join(column_names)
+            f.write(f"# {header}\n")
+            if extra_info:
+                f.write("# " + extra_info.replace("\n", "\n# ") + "\n")
+            self.data.to_csv(f, sep=" ", header=False, index=True, float_format=fmt)
 
     def maybe_power_spectrum(self) -> bool:
         if self.symbol == "P":
@@ -666,7 +688,7 @@ def supported_likelihood(likename: str, config: dict[str, Any]) -> bool:
 
 
 def collect_multipoles(info: dict[str, dict]) -> dict[str, Multipole]:
-    from .likelihood import EFTLike
+    from .likelihood import EFTLike, find_data_reader
 
     tracer_multipoles: dict[str, Multipole] = {}
     for likename, config in info["likelihood"].items():
@@ -679,7 +701,10 @@ def collect_multipoles(info: dict[str, dict]) -> dict[str, Multipole]:
 
         nsize = []
         for tracer in tracers:
-            multipole = Multipole.loadtxt(likelihood.data[tracer]["path"])
+            _d = likelihood.data[tracer]
+            reader = find_data_reader(_d.get("reader"), **_d.get("reader_kwargs", {}))
+            df = reader(_d["path"])
+            multipole = Multipole.from_dataframe(df)
             tracer_multipoles[tracer] = multipole
             nsize.append(multipole.data_vector().size)
         for (istart, iend), tracer in zip(
@@ -1187,7 +1212,7 @@ class KaiserModel:
         ileft, iright = multipole.k.searchsorted([kmin, kmax])  # [kmin, kmax)
         k = multipole.k[ileft:iright]
         Plin = self.Plinear_interpolator(k)
-        kaiser = self.__class__(
+        kaiser = type(self)(
             k=k,
             Plin=Plin,
             ells=ells,

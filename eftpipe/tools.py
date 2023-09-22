@@ -33,6 +33,14 @@ if TYPE_CHECKING:
 _T = TypeVar("_T")
 
 
+class _Missing:
+    def __bool__(self):
+        return False
+
+
+MISSING = _Missing()
+
+
 # This Mixin is not reliable, do not use it
 class SampledParamsMixin:
     @property
