@@ -108,4 +108,4 @@ def elephant_cov_reader(root, logger: logging.Logger | None = None, z=1.0):
     )
     # fmt: on
     mpi_info(logger, "Read the elephant halo covariance at z=%.3f", z)
-    return cov / 10  # rescale by 10
+    return cov
