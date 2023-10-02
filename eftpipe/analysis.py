@@ -744,6 +744,7 @@ class BestfitModel:
     yaml_file: str
     verbose: bool = False
     component: bool = False
+    remove_window: bool = False
 
     def __post_init__(self):
         from .likelihood import EFTLike
@@ -789,6 +790,11 @@ class BestfitModel:
             requires[likename + "_fullchi2"] = None
         # step 3: evaluate full model
         fullinfo = products.dump_full_model_info()
+        if self.remove_window:
+            fullinfo = products.full_model_info()
+            fullinfo["theory"]["eftpipe.eftlss"]["tracers"]["default"][
+                "with_window"
+            ] = False
         with verbose_guard(self.verbose):
             model = get_model(fullinfo)  # type: ignore
             model.add_requirements(requires)

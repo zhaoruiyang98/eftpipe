@@ -109,3 +109,68 @@ def elephant_cov_reader(root, logger: logging.Logger | None = None, z=1.0):
     # fmt: on
     mpi_info(logger, "Read the elephant halo covariance at z=%.3f", z)
     return cov
+
+
+def bestfit_reader(yaml_file, logger: logging.Logger | None = None, *, tracer):
+    from .analysis import BestfitModel, Multipole
+
+    model = BestfitModel(yaml_file, remove_window=True)
+    k = model.multipoles[tracer].k
+    fn = model.Plk_interpolator(tracer)
+    P0, P2, P4 = fn([0, 2, 4], k)
+    return Multipole.init(k=k, P0=P0, P2=P2, P4=P4).data
+
+
+def bestfit_cov_reader(yaml_file, logger: logging.Logger | None = None, *, tracers):
+    from .analysis import BestfitModel, Multipole
+    from .covariance import Multipole as Mult
+    from .covariance import GaussianCovariance
+
+    model = BestfitModel(yaml_file, remove_window=True)
+    truncate = False
+    if len(tracers) == 2:
+        if "NGC" in tracers[0]:
+            tracers.append("X_NGC")
+        elif "SGC" in tracers[0]:
+            tracers.append("X_SGC")
+        else:
+            raise NotImplementedError
+        truncate = True
+    ms = {}
+    for tracer in tracers:
+        if "LRG" in tracer:
+            key = "Paa"
+        elif "ELG" in tracer:
+            key = "Pbb"
+        elif "X" in tracer:
+            key = "Pab"
+        else:
+            raise NotImplementedError
+        k = model.multipoles[tracer].k
+        fn = model.Plk_interpolator(tracer)
+        P0, P2, P4 = fn([0, 2, 4], k)
+        if tracer == "LRG_NGC":
+            Pshot = 13261.982517118122
+        elif tracer == "LRG_SGC":
+            Pshot = 12508.022132075843
+        elif tracer == "ELG_NGC":
+            Pshot = 5297.853491193601
+        elif tracer == "ELG_SGC":
+            Pshot = 5146.4906395934795
+        elif tracer == "X_NGC" or tracer == "X_SGC":
+            Pshot = 0.0
+        else:
+            raise NotImplementedError
+        ms[key] = Mult(P0=P0 + Pshot, P2=P2, P4=P4)
+    gcov = GaussianCovariance(
+        kedges=np.linspace(0, 0.3, 30 + 1), volume=(0.43 + 0.41) * 20
+    )
+    if len(ms) == 1:
+        # single tracer
+        return gcov([0, 2, 4], [0, 2, 4], "aa->aaaa", ms.popitem()[-1])
+    # multi-tracer
+    cov = gcov.fullcov(ms["Paa"], ms["Pbb"], ms["Pab"], ells=[0, 2, 4])
+    if truncate:
+        nk = cov.shape[0] // 3
+        cov = cov[:-nk, :-nk]
+    return cov
