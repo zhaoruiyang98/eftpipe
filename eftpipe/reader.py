@@ -111,22 +111,46 @@ def elephant_cov_reader(root, logger: logging.Logger | None = None, z=1.0):
     return cov
 
 
-def bestfit_reader(yaml_file, logger: logging.Logger | None = None, *, tracer):
+def bestfit_reader(
+    yaml_file,
+    logger: logging.Logger | None = None,
+    *,
+    tracer,
+    zeff: float | None = None,
+):
     from .analysis import BestfitModel, Multipole
 
-    model = BestfitModel(yaml_file, remove_window=True)
+    model = BestfitModel(yaml_file, remove_window=True, zeff=zeff)
+    if zeff is not None:
+        from mpi4py import MPI
+
+        if logger and MPI.COMM_WORLD.rank == 0:
+            logger.info("using bestfit model at zeff=%.3f for tracer %s", zeff, tracer)
     k = model.multipoles[tracer].k
     fn = model.Plk_interpolator(tracer)
     P0, P2, P4 = fn([0, 2, 4], k)
     return Multipole.init(k=k, P0=P0, P2=P2, P4=P4).data
 
 
-def bestfit_cov_reader(yaml_file, logger: logging.Logger | None = None, *, tracers):
+def bestfit_cov_reader(
+    yaml_file,
+    logger: logging.Logger | None = None,
+    *,
+    tracers,
+    zeff: float | None = None,
+):
     from .analysis import BestfitModel, Multipole
     from .covariance import Multipole as Mult
     from .covariance import GaussianCovariance
 
-    model = BestfitModel(yaml_file, remove_window=True)
+    model = BestfitModel(yaml_file, remove_window=True, zeff=zeff)
+    if zeff is not None:
+        from mpi4py import MPI
+
+        if logger and MPI.COMM_WORLD.rank == 0:
+            logger.info(
+                "using bestfit model at zeff=%.3f for tracers %s", zeff, tracers
+            )
     truncate = False
     if len(tracers) == 2:
         if "NGC" in tracers[0]:

@@ -744,7 +744,10 @@ class BestfitModel:
     yaml_file: str
     verbose: bool = False
     component: bool = False
+    # evaluate the bestfit model without window
     remove_window: bool = False
+    # evaluate the bestfit model at different zeff
+    zeff: float | None = None
 
     def __post_init__(self):
         from .likelihood import EFTLike
@@ -789,12 +792,15 @@ class BestfitModel:
             hartlap.append(likelihood.hartlap if likelihood.hartlap is not None else 1)
             requires[likename + "_fullchi2"] = None
         # step 3: evaluate full model
-        fullinfo = products.dump_full_model_info()
+        fullinfo = products.full_model_info()
         if self.remove_window:
-            fullinfo = products.full_model_info()
             fullinfo["theory"]["eftpipe.eftlss"]["tracers"]["default"][
                 "with_window"
             ] = False
+        if self.zeff is not None:
+            _tracers_info = fullinfo["theory"]["eftpipe.eftlss"]["tracers"]
+            for x in _tracers_info.values():
+                x["z"] = self.zeff
         with verbose_guard(self.verbose):
             model = get_model(fullinfo)  # type: ignore
             model.add_requirements(requires)
