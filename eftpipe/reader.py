@@ -138,6 +138,7 @@ def bestfit_cov_reader(
     *,
     tracers,
     zeff: float | None = None,
+    rescale_Pshot: float = 1.0,
 ):
     from .analysis import BestfitModel, Multipole
     from .covariance import Multipole as Mult
@@ -185,6 +186,7 @@ def bestfit_cov_reader(
             Pshot = 0.0
         else:
             raise NotImplementedError
+        Pshot *= rescale_Pshot
         ms[key] = Mult(P0=P0 + Pshot, P2=P2, P4=P4)
     gcov = GaussianCovariance(
         kedges=np.linspace(0, 0.3, 30 + 1), volume=(0.43 + 0.41) * 20
