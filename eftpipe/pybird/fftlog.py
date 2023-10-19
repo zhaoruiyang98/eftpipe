@@ -14,7 +14,7 @@ def one(x):
     return 1
 
 
-def CoefWindow(N: int, window: float = 1, left: bool = True, right: bool = True):
+def CoefWindow(N, window=1, left=True, right=True):
     """FFTLog auxiliary function: window sending the FFT coefficients to 0 at the edges. From fast-pt"""
     n = np.arange(-N // 2, N // 2 + 1)
     if window == 1:
@@ -44,39 +44,25 @@ class FFTLog(object):
     """
     A class implementing the FFTLog algorithm.
 
-    Attributes
+    Parameters
     ----------
-    Nmax : int, optional
+    Nmax : int
         maximum number of points used to discretize the function
-    xmin : float, optional
-        minimum of the function to transform
-    xmax : float, optional
-        maximum of the function to transform
-    bias : float, optional
+    xmin : float
+        lower bound of transformation range
+    xmax : float
+        upper bound of transformation range
+    bias : float
         power by which we modify the function as x**bias * f
-
-    Methods
-    -------
-    setx()
-        Calculates the discrete x points for the transform
-
-    setPow()
-        Calculates the power in front of the function
-
-    Coef()
-        Calculates the single coefficients
-
-    sumCoefxPow(xin, f, x, window=1)
-        Sums over the Coef * Pow reconstructing the input function
     """
 
-    def __init__(self, **kwargs):
-        self.Nmax = kwargs["Nmax"]
+    def __init__(self, Nmax, xmin, xmax, bias):
+        self.Nmax = Nmax
         if self.Nmax % 2 != 0:
             raise ValueError(f"expected even Nmax, instead of Nmax={self.Nmax}")
-        self.xmin = kwargs["xmin"]
-        self.xmax = kwargs["xmax"]
-        self.bias = kwargs["bias"]
+        self.xmin = xmin
+        self.xmax = xmax
+        self.bias = bias
         self.dx = np.log(self.xmax / self.xmin) / (self.Nmax - 1.0)
         self.setx()
         self.setPow()
@@ -97,15 +83,7 @@ class FFTLog(object):
     def setCoefFactor(self):
         self._CoefFactor = self.xmin ** (-self.Pow) / float(self.Nmax)
 
-    def Coef(
-        self,
-        xin,
-        f,
-        extrap: str | tuple[str, str] = "extrap",
-        window: float | None = 1,
-        log_interp: bool = False,
-        kernel=one,
-    ):
+    def Coef(self, xin, f, extrap="extrap", window=1, log_interp=False, kernel=one):
         """compute coefficients for FFTLog
 
         Parameters
@@ -114,10 +92,10 @@ class FFTLog(object):
             input x-axis data, values must be real, finite and in strictly increasing order
         f : ndarray
             input y-axis data, the last axis should match xin
-        extrap : str, optional
+        extrap : str or tuple[str, str], optional
             extrapolation mode, by default 'extrap'
-        window : int, optional
-            window parameter, by default 1
+        window : float, optional
+            window parameter, by default 1; cutting off highest frequencies if None
         log_interp : bool, optional
             do interpolation in log-x scale, by default False
 

@@ -1,24 +1,18 @@
 from __future__ import annotations
 import os
 import numpy as np
+import sys
 from cobaya.log import HasLogger
 from numpy import pi, log, exp, newaxis
 from scipy import special
 from scipy.interpolate import interp1d
 from scipy.special import legendre, j1, loggamma
 from scipy.integrate import quad
-from typing import cast, Literal, Protocol, TYPE_CHECKING
 
 # local
 from .fftlog import FFTLog
 from .resumfactor import Qawithhex
 from ..tools import is_main_process
-
-if TYPE_CHECKING:
-    from typing_extensions import TypeAlias
-    from numpy.typing import NDArray
-
-    ndarrayf: TypeAlias = NDArray[np.float64]
 
 
 def cH(Om, a):
@@ -173,7 +167,7 @@ def M22a(n1, n2):
 
 
 def MPC(l, pn):
-    r"""matrix for spherical bessel transform from power spectrum to correlation function
+    R"""matrix for spherical bessel transform from power spectrum to correlation function
     Notes:
     -----
     The explicit expression can be written as:
@@ -487,7 +481,7 @@ Qa = {
 }
 
 # precomputed k/q-arrays, in [h/Mpc] and [Mpc/h]
-def get_kbird(kmax: float = 0.30):
+def get_kbird(kmax = 0.30):
     if kmax > 0.30:
         kbird = np.array([0.001, 0.005, 0.0075, 0.01, 0.0125, 0.015, 0.0175, 0.02])
         _ = np.arange(kbird[-1], kmax + 1e-3, 0.005 / 1)
@@ -513,25 +507,22 @@ class Common(object):
         The maximum output multipole (default Nl)
     """
 
-    Nl: int
-    No: int
-
     def __init__(
         self,
-        Nl: int | None = None,
-        No: int | None = None,
-        kmax: float = 0.3,
-        optiresum: bool = False,
-        kmA: float = 0.7,
-        krA: float = 0.25,
-        ndA: float = 3e-4,
-        kmB: float | None = None,
-        krB: float | None = None,
-        ndB: float | None = None,
-        counterform: Literal["westcoast", "eastcoast"] = "westcoast",
-        with_NNLO: bool = False,
-        kIR: float | None = None,
-        IRcutoff: Literal["all", "resum", "loop"] | bool = False,
+        Nl=None,
+        No=None,
+        kmax=0.3,
+        optiresum=False,
+        kmA=0.7,
+        krA=0.25,
+        ndA=3e-4,
+        kmB=None,
+        krB=None,
+        ndB=None,
+        counterform="westcoast",
+        with_NNLO=False,
+        kIR=None,
+        IRcutoff=False,
     ):
         self.optiresum = optiresum
         # set kmB and ndB when computing cross power spectrum
@@ -551,7 +542,7 @@ class Common(object):
         if IRcutoff is True:
             IRcutoff = "all"
         self.IRcutoff = IRcutoff
-        self.kIR = cast(float, kIR)  # IR cut off when doing the IR-resummation
+        self.kIR = kIR  # IR cut off when doing the IR-resummation
         if Nl is None and No is None:
             # default to 2
             self.Nl = self.No = 2
@@ -610,17 +601,32 @@ class Common(object):
 common = Common()
 
 
-class BirdLike(Protocol):
-    """contains key attributes of Bird"""
+if sys.version_info >= (3, 8):
+    from typing import Protocol, TYPE_CHECKING
 
-    co: Common
-    f: float
-    P11l: ndarrayf
-    Ploopl: ndarrayf
-    Pctl: ndarrayf
-    Pstl: ndarrayf
-    Picc: ndarrayf
-    PctNNLOl: ndarrayf
+    if TYPE_CHECKING:
+        import numpy as np
+        from numpy.typing import NDArray
+        from typing_extensions import TypeAlias
+
+        NDArrayFloat: TypeAlias = NDArray[np.float64]
+
+    class BirdLike(Protocol):
+        """contains key attributes of Bird"""
+
+        co: Common
+        f: float
+        P11l: NDArrayFloat
+        Ploopl: NDArrayFloat
+        Pctl: NDArrayFloat
+        Pstl: NDArrayFloat
+        Picc: NDArrayFloat
+        PctNNLOl: NDArrayFloat
+
+else:
+
+    class BirdLike:
+        pass
 
 
 class BirdSnapshot(BirdLike):
@@ -628,7 +634,7 @@ class BirdSnapshot(BirdLike):
     created by Bird.create_snapshot, do not use this class directly
     """
 
-    def __init__(self, bird: Bird) -> None:
+    def __init__(self, bird):
         self.k = bird.co.k.copy()
         self.ls = [2 * i for i in range(bird.co.Nl)]
         # impl BirdLike
@@ -690,16 +696,7 @@ class Bird:
     """
 
     def __init__(
-        self,
-        kin,
-        Plin,
-        f,
-        DA=None,
-        H=None,
-        z=None,
-        co=common,
-        rdrag: float | None = None,
-        h: float | None = None,
+        self, kin, Plin, f, DA=None, H=None, z=None, co=common, rdrag=None, h=None
     ):
         self.co = co
 
@@ -744,7 +741,7 @@ class Bird:
 
         self.snapshots: dict[str, BirdSnapshot] = {}
 
-    def create_snapshot(self, name: str) -> None:
+    def create_snapshot(self, name):
         """
         Notes
         -----
@@ -1167,7 +1164,7 @@ class NonLinear(HasLogger):
             )
         )
 
-    def Coef(self, bird, window=None, IRcut: bool = False):
+    def Coef(self, bird, window=None, IRcut=False):
         """Perform the FFTLog (i.e. calculate the coefficients of the FFTLog) of the input linear power spectrum in the given a Bird().
 
         Parameters
@@ -1176,7 +1173,7 @@ class NonLinear(HasLogger):
             an object of type Bird()
         """
         k, Pin = bird.kin, bird.Pin
-        extrap = ("extrap",) * 2
+        extrap = ("extrap", "extrap")
         if IRcut:
             idx = np.searchsorted(k, self.co.kIR)
             k, Pin = k[idx:], Pin[idx:]
@@ -1271,12 +1268,7 @@ class Resum(HasLogger):
     """
 
     def __init__(
-        self,
-        LambdaIR: float = 0.2,
-        NFFT: int = 192,
-        co: Common = common,
-        name: str = "pybird.IRresum",
-        snapshot: bool = False,
+        self, LambdaIR=0.2, NFFT=192, co=common, name="pybird.IRresum", snapshot=False
     ):
         self.set_logger(name=name)
         self.co = co
@@ -1462,11 +1454,11 @@ class Resum(HasLogger):
         XpYp = np.concatenate((Xp, XpY))
         return XpYp
 
-    def precomputedCoef(self, XpYp: NDArray, Carray: NDArray, window=None) -> NDArray:
+    def precomputedCoef(self, XpYp, Carray, window=None):
         input = np.einsum("jk,...k->...jk", XpYp, Carray)
         return self.fft.Coef(self.sr, input, extrap="padding", window=window)
 
-    def Ps(self, bird: Bird, window=None):
+    def Ps(self, bird, window=None):
         """This is the main method of the class. Compute the IR-corrections."""
         self.makeQ(bird.f)
 
@@ -1564,19 +1556,19 @@ class APeffect(HasLogger):
 
     def __init__(
         self,
-        Om_AP: float | None = None,
-        z_AP: float | None = None,
-        DA: float | None = None,
-        H: float | None = None,
-        rdrag_AP: float | None = None,
-        h_AP: float | None = None,
-        nbinsmu: int = 200,
-        accboost: int = 1,
-        Nlmax: int | None = None,
-        APst: bool = False,
-        co: Common = common,
-        name: str = "pybird.apeffect",
-        snapshot: bool = False,
+        Om_AP=None,
+        z_AP=None,
+        DA=None,
+        H=None,
+        rdrag_AP=None,
+        h_AP=None,
+        nbinsmu=200,
+        accboost=1,
+        Nlmax=None,
+        APst=False,
+        co=common,
+        name="pybird.apeffect",
+        snapshot=False,
     ):
         self.set_logger(name=name)
         self.co = co
@@ -1719,14 +1711,15 @@ class FiberCollision(HasLogger):
 
     def __init__(
         self,
-        fs: float,
-        Dfc: float,  # = 0.43 / 0.6777,
-        ktrust: float = 0.25,
-        fiberst: bool = False,
-        co: Common = common,
-        name: str = "pybird.fiber",
-        snapshot: bool = False,
-    ) -> None:
+        fs,
+        Dfc,  # = 0.43 / 0.6777,
+        ktrust=0.25,
+        fiberst=False,
+        co=common,
+        name="pybird.fiber",
+        snapshot=False,
+    ):
+        # Dfc = 0.43 / 0.6777,
         self.set_logger(name=name)
         self.ktrust = ktrust
         self.fiberst = fiberst
@@ -1824,7 +1817,7 @@ class FiberCollision(HasLogger):
         return dPcorr
 
     # TODO: stochastic terms? uncorrelated contribution?
-    def fibcolWindow(self, bird: Bird):
+    def fibcolWindow(self, bird):
         """
         Apply window effective method correction to fiber collisions to the bird power spectrum
         """
