@@ -7,51 +7,37 @@ Developed by [Ruiyang Zhao](mailto:zhaoruiyang19@mails.ucas.edu.cn) and [Xiaoyon
 # Dependencies
 - `numpy`, `scipy` and `pandas`
 - `cobaya` for likelihood and logging
-- `typing_extensions` for better type hints
-- `camb` or `classy` boltzamnn code, optional if you only want to run `eftpipe.pybird`
+- `typing_extensions` for type hints, optional
+- `camb` or `classy` boltzamnn code, optional
 - `numba` for better performance, optional
 # Installation
-## Installing all packages for analysis using Anaconda
-EFTPipe provides the theory and likelihood component for bayesian analysis of large-scale structure data. Typically people need extra packages for plotting, i.e., [getdist](https://getdist.readthedocs.io/en/latest/).
-
-You can use the following codes to install all the packages you may need when doing data analysis.
+## Install all relevant packages using Anaconda
+The easiest way of setting up the environment and reproducing analysis results in the paper would be using Anaconda
 ```bash
 git clone git@github.com:zhaoruiyang98/eftpipe.git
 cd eftpipe
 conda env create -f environment.yml
 # or `conda env create -f environment-dev.yml` for development
 ```
-Creating an environment from an environment.yml file is usually very slow, and you may get stuck at solving environment. Alternatively, you can try [mamba](https://mamba.readthedocs.io/en/latest/index.html):
-```bash
-conda install mamba -n base -c conda-forge
-mamba env create -f environment.yml
-# or `mamba env create -f environment-dev.yml` for development
-```
-
-MPI installation guide can be found at cobaya's [website](https://cobaya.readthedocs.io/en/latest/installation.html), please run
+MPI support could be installed by running
 ```shell
 conda install -c conda-forge "mpi4py>=3"
 # or `conda install -c intel "mpi4py>=3"` if you are using intel compiler
 # or `pip install "mpi4py>=3" --upgrade --no-binary :all:` if you want to build from source
 ```
 
-Before running MCMC, you may need install some cosmology codes. Cobaya provides an automatic installer and you can use [that](https://cobaya.readthedocs.io/en/latest/installation_cosmo.html) to install `camb` and `classy`. Otherwise you can run the following code (requires gcc) to install `camb` and `classy` (for macOS user, please make sure your `gcc` points to gcc instead of clang when compiling classy)
+Install classy (for macOS users, please make sure your `gcc` points to gcc instead of clang when compiling classy, or manually edit the `Makefile`)
 ```shell
-pip install "camb>=1.3.5"
 git clone --depth 1 --branch v3.2.0 https://github.com/lesgourg/class_public
-conda install -c conda-forge cython
 cd class_public/
 make
 ```
 ## Minimum installation
-Please run the following commands
+If `numpy, scipy, pandas` and `cobaya` has been installed, run the following codes to install eftpipe locally
 ```shell
-# install eftpipe locally
 git clone https://github.com/zhaoruiyang98/eftpipe.git
 cd eftpipe
 pip install -e .
-# or `pip install -e .[test]` for test
-# or `pip install -e .[dev]` for development
 ```
 # User guide
 Please have a look at configuration files in `example` folder.

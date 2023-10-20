@@ -21,12 +21,11 @@ def read_long_description():
 install_requires = [
     "numpy>=1.20",
     "scipy>=1.6",
-    "cobaya>=3.2.1",
     "pandas>=1.0.1",
-    "typing_extensions>=4.1,<5",
+    "cobaya>=3.2.1,<3.3",
 ]
 
-exclude_dir = ["cobaya", "docs", "figures", "notebook", "notes", "script", "tests"]
+exclude_dir = ["cobaya", "docs", "figures", "notebook", "script", "tests"]
 packages = find_packages(exclude=exclude_dir)
 
 test_requires = [
