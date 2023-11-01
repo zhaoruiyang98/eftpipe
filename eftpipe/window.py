@@ -568,7 +568,7 @@ class WindowMatrix(HasLogger):
         # fmt: off
         Plk = interp1d(
             self.co.k, Plk,
-            axis=-1, kind="cubic", bounds_error=False, fill_value="extrapolate",
+            axis=-1, kind="cubic", bounds_error=False, fill_value="extrapolate",  # type: ignore
         )(self.kavg)
         # fmt: on
         return np.einsum("alkp,l...p->a...k", self.matrix, Plk, optimize=True)
