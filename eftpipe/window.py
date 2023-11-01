@@ -6,10 +6,9 @@ from functools import cached_property
 from typing import Any, cast, NamedTuple, TYPE_CHECKING, Union
 from pathlib import Path
 from cobaya.log import HasLogger
+from numpy import newaxis
 from scipy.interpolate import interp1d
 from scipy.special import spherical_jn
-from numpy import newaxis
-from numpy.typing import NDArray
 from .tools import replace_suffix
 from .tools import root_only
 from .pybird.fftlog import FFTLog
@@ -17,9 +16,10 @@ from .pybird.pybird import Common, common, MPC
 
 if TYPE_CHECKING:
     from typing_extensions import TypeAlias
+    from numpy.typing import NDArray
     from .icc import IntegralConstraint
     from .pybird.pybird import Bird
-    from .etyping import ndarrayf
+    from .typing import ndarrayf
 
 Location: TypeAlias = Union[str, Path]
 

@@ -11,7 +11,7 @@ from .transformer import BirdTransformer
 from .transformer import PlainBird
 
 if TYPE_CHECKING:
-    from numpy.typing import ArrayLike, NDArray
+    from .typing import ndarrayf
 
 
 class Binning(BirdTransformer, HasLogger):
@@ -130,7 +130,7 @@ class Binning(BirdTransformer, HasLogger):
         ]
         self.points = np.array(points)
 
-    def integrBinning(self, P: NDArray) -> NDArray:
+    def integrBinning(self, P: ndarrayf) -> ndarrayf:
         """
         Integrate over each bin of the data k's
         """

@@ -1,7 +1,7 @@
 from __future__ import annotations
+import os
 import sys
 from datetime import datetime
-from pathlib import Path
 from typing import (
     Any,
     Dict,
@@ -15,7 +15,11 @@ from typing import (
 if sys.version_info >= (3, 10):
     from typing import TypeAlias
 else:
-    from typing_extensions import TypeAlias
+    try:
+        from typing_extensions import TypeAlias
+    except ImportError:
+        # typing_extensions is not a hard dependency
+        pass
 
 if TYPE_CHECKING:
     import numpy as np
@@ -23,7 +27,7 @@ if TYPE_CHECKING:
 
     ndarrayf: TypeAlias = NDArray[np.float64]
 
-FilePath: TypeAlias = Union[str, Path]
+FilePath: TypeAlias = Union[str, os.PathLike]
 YamlElement: TypeAlias = Union[str, bool, int, float, None, datetime]
 SimpleYaml: TypeAlias = Union[YamlElement, List["SimpleYaml"], Dict[str, "SimpleYaml"]]
 

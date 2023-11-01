@@ -4,9 +4,9 @@ anything related to analysis
 from __future__ import annotations
 import itertools
 import logging
+import math
 import os
 import re
-import math
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
@@ -29,7 +29,6 @@ from typing import (
     TYPE_CHECKING,
     Union,
 )
-from typing_extensions import TypeAlias
 from cobaya import get_model
 from cobaya.yaml import yaml_dump
 from cobaya.yaml import yaml_dump_file
@@ -44,12 +43,9 @@ from .tools import pairwise, verbose_guard
 
 if TYPE_CHECKING:
     from .parambasis import BirdComponent
-    from .etyping import ndarrayf
+    from .typing import FilePath, ndarrayf
 
-FilePath: TypeAlias = Union[str, os.PathLike]
-MultipoleStyle: TypeAlias = Dict[
-    Union[int, Literal["default"]], "MultipoleStyleElement"
-]
+MultipoleStyle = Dict[Union[int, Literal["default"]], "MultipoleStyleElement"]
 _T = TypeVar("_T")
 
 
@@ -892,9 +888,10 @@ class BestfitModel:
         )
 
         k = np.linspace(0.0005, 0.3, 1000)
-        paint_multipole(Plin.ls, k, Plin, ax=ax, label="linear", ls="-")
-        paint_multipole(Ploop.ls, k, Ploop, ax=ax, label="loop", ls="--")
-        paint_multipole(Pct.ls, k, Pct, ax=ax, label="counter", ls=":")
+        # TODO: ls="-", "--" and ":"
+        paint_multipole(Plin.ls, k, Plin, ax=ax, label="linear")
+        paint_multipole(Ploop.ls, k, Ploop, ax=ax, label="loop")
+        paint_multipole(Pct.ls, k, Pct, ax=ax, label="counter")
         ax.legend(frameon=False)
         ax.set_xlabel(R"$k$ $[h\,\mathrm{Mpc}^{-1}]$")
         ax.set_ylabel(R"$|kP_\ell(k)|$ $[h^{-1}\,\mathrm{Mpc}]^2$")

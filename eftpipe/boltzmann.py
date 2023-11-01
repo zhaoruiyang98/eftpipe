@@ -11,10 +11,10 @@ from scipy.interpolate import interp1d
 from cobaya.log import HasLogger
 
 if TYPE_CHECKING:
-    from numpy.typing import NDArray
     from cobaya.theories.cosmo import BoltzmannBase
     from cobaya.theories.cosmo import PowerSpectrumInterpolator
     from cobaya.theory import Provider
+    from .typing import ndarrayf
 
 
 class BoltzmannInterface(Protocol):
@@ -60,7 +60,7 @@ class BoltzmannInterface(Protocol):
         return {}
 
     @abstractmethod
-    def Pkh(self, kh: NDArray[np.floating]) -> NDArray[np.floating]:
+    def Pkh(self, kh: ndarrayf) -> ndarrayf:
         """Linear power spectrum, accept k in Mpc/h unit, returns in (Mpc/h)^3 unit"""
         ...
 
@@ -133,7 +133,7 @@ class InternalBoltzmannInterface(HasLogger, BoltzmannInterface):
     def get_requirements(self) -> dict[str, Any]:
         raise NotImplementedError
 
-    def Pkh(self, kh: NDArray[np.floating]) -> NDArray[np.floating]:
+    def Pkh(self, kh: ndarrayf) -> ndarrayf:
         # extra_kmin=1e-6 is sufficient
         fn: PowerSpectrumInterpolator = self.provider.get_Pk_interpolator(
             var_pair=self.vars_pairs, nonlinear=False, extrap_kmin=1e-6
@@ -302,7 +302,7 @@ class LinearPowerFile(HasLogger, BoltzmannInterface):
             self.prefix + "alpara": None,
         }
 
-    def Pkh(self, kh: NDArray[np.floating]) -> NDArray[np.floating]:
+    def Pkh(self, kh: ndarrayf) -> ndarrayf:
         return self.plin(kh)
 
     def f(self) -> float:

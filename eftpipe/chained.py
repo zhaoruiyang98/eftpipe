@@ -7,7 +7,7 @@ from .transformer import BirdTransformer
 from .transformer import PlainBird
 
 if TYPE_CHECKING:
-    from .etyping import ndarrayf
+    from .typing import ndarrayf
 
 
 def chain_coeff(l: int) -> float:
