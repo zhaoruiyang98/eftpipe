@@ -17,14 +17,24 @@
     * SGC: 0.774
     * NGC+SGC: 0.770
   * effective redshifts are computed using eq(5) in https://arxiv.org/abs/2007.09010
-* `ascii` folder contains power spectrum measurement of each realization
-* `summary` folder contains:
-  * noric: w/o systematics
-  * ric: w/o systematics, w/ radial integral constraint (ric)
-  * standard: w/ systematics, w/ ric
-  * standard_noric: w/ systematics, ric was subtracted using: standard_noric = standard - (ric - noric)
-  * DR16: DR16 data
-  * DR16_noric: DR16 data, ric was subtracted using: DR16_noric = DR16 - (ric - noric)
+* `data` folder contains:
+  * noric: EZmock pk w/o systematics
+  * ric: EZmock pk w/o systematics, w/ radial integral constraint (ric)
+  * standard: EZmock pk w/ systematics, w/ ric
+  * standard_noric: EZmock pk w/ systematics, ric was subtracted using: standard_noric = standard - (ric - noric)
+  * DR16: eBOSS DR16 data
+  * DR16_noric: eBOSS DR16 data, ric was subtracted using: DR16_noric = DR16 - (ric - noric)
+  * noric_cutsky: EZmock pk w/o systematics, footprint and redshift range have been cutted
+    * effective redshifts:
+      * LRG:
+        * NGC: 0.692
+        * SGC: 0.716
+      * ELG:
+        * NGC: 0.831
+        * SGC: 0.823
+      * X:
+        * NGC: 0.761
+        * SGC: 0.775
 * window functions
   * measured using DR16 random catalogue and noric random catalogue
   * curves below 20 Mpc/h are smoothed by Savitzky–Golay filter

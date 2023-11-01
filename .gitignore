@@ -131,8 +131,6 @@ dmypy.json
 # cache or large products dir
 /cobaya/cache/
 /cobaya/chains/
-/cobaya/chains_firstgen/
-/cobaya/chains_secondgen/
 /tests/regression/**/test_*.npz
 /tests/regression/**/test_*.yml
 /tests/compare/**/test_*.npz
@@ -147,7 +145,3 @@ dmypy.json
 
 # vscode
 /.vscode/
-/debug*
-/cobaya/yamls/
-Arnaud_ELG_data/
-/cobaya/data/BOSS/patchy
