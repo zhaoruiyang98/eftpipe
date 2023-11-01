@@ -10,6 +10,8 @@ Developed by [Ruiyang Zhao](mailto:zhaoruiyang19@mails.ucas.edu.cn) and [Xiaoyon
 - `typing_extensions` for type hints, optional
 - `camb` or `classy` boltzamnn code, optional
 - `numba` for better performance, optional
+
+`cobaya` will be an optional dependency in the future
 # Installation
 ## Install all relevant packages using Anaconda
 The easiest way of setting up the environment and reproducing analysis results in the paper would be using Anaconda
@@ -26,7 +28,7 @@ conda install -c conda-forge "mpi4py>=3"
 # or `pip install "mpi4py>=3" --upgrade --no-binary :all:` if you want to build from source
 ```
 
-Install classy (for macOS users, please make sure your `gcc` points to gcc instead of clang when compiling classy, or manually edit the `Makefile`)
+Install classy (for macOS users, please make sure your `gcc` points to gcc instead of clang when compiling classy, or manually edit the `Makefile` to select the proper compiler)
 ```shell
 git clone --depth 1 --branch v3.2.0 https://github.com/lesgourg/class_public
 cd class_public/
@@ -40,7 +42,7 @@ cd eftpipe
 pip install -e .
 ```
 # User guide
-Please have a look at configuration files in `example` folder.
+Please have a look at notebooks in the `notebook` folder.
 # Compare to upstream PyBird
 Since EFTPipe is developed based on PyBird, it is quite important to keep the modified codes consistent with upstream PyBird repository.
 
