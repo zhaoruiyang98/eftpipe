@@ -5,7 +5,7 @@ from .pybird.pybird import BirdLike
 
 if TYPE_CHECKING:
     from .pybird.pybird import Common
-    from .etyping import ndarrayf
+    from .typing import ndarrayf
 
 
 class BirdTransformer(Protocol):

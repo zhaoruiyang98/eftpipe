@@ -22,9 +22,9 @@ from typing import (
 )
 from cobaya.log import LoggedError
 from cobaya.mpi import is_main_process
-from cobaya.mpi import root_only  # DO NOT delete this line
-from .etyping import SimpleYaml
-from .etyping import SupportsRichComparisonT
+from cobaya.mpi import root_only as root_only
+from .typing import SimpleYaml
+from .typing import SupportsRichComparisonT
 
 if TYPE_CHECKING:
     import numpy.typing as npt

@@ -29,14 +29,12 @@ from scipy.interpolate import interp1d
 
 if TYPE_CHECKING:
     from cobaya.theory import Provider
-    from numpy.typing import ArrayLike, NDArray
-    from typing_extensions import TypeAlias
+    from numpy.typing import ArrayLike
     from .boltzmann import BoltzmannInterface
     from .pybird.pybird import BirdLike
     from .pybird.pybird import BirdSnapshot
     from .parambasis import BirdComponent, EFTBasis
-
-    ndarrayf: TypeAlias = NDArray[np.float64]
+    from .typing import ndarrayf
 
 from .binning import Binning
 from .chained import Chained

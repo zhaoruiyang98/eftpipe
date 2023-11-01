@@ -1,5 +1,5 @@
 from cobaya.mpi import root_only
-from cobaya.log import logger_setup
+from cobaya.log import logger_setup as logger_setup
 
 
 @root_only

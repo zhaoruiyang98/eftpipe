@@ -4,10 +4,7 @@ from dataclasses import dataclass, field
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from numpy.typing import NDArray
-    from typing_extensions import TypeAlias
-
-    ndarrayf: TypeAlias = NDArray[np.float64]
+    from .typing import ndarrayf
 
 # integration of the product of four legendre polynomials
 # \int_{-1}^{1} d\mu L_a(\mu) L_b(\mu) L_c(\mu) L_d(\mu)

@@ -7,7 +7,7 @@ from cobaya.log import HasLogger
 from cobaya.log import LoggedError
 
 if TYPE_CHECKING:
-    from .etyping import ndarrayf
+    from .typing import ndarrayf
 
 
 def eval_callable(s: str, globals: dict[str, Any]):
