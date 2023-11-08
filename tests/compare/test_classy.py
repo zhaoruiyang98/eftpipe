@@ -3,7 +3,7 @@ import cobaya
 import pytest
 from pathlib import Path
 from cobaya.yaml import yaml_load_file
-from eftpipe.boltzmann import CobayaClassyInterface
+from eftpipe.boltzmann import CobayaClassyExtractor
 
 
 def test_compare_classynu_and_classy(
@@ -37,10 +37,10 @@ def test_compare_classynu_and_classy(
     classy_model.logpost(point)
     classynu_model.logpost(point)
 
-    classy_provider = CobayaClassyInterface()
+    classy_provider = CobayaClassyExtractor()
     classy_provider.initialize(z)
     classy_provider.initialize_with_provider(classy_model.provider)
-    classynu_provider = CobayaClassyInterface()
+    classynu_provider = CobayaClassyExtractor()
     classynu_provider.initialize(z)
     classynu_provider.initialize_with_provider(classynu_model.provider)
 
@@ -113,10 +113,10 @@ def test_compare_hierarchy_normal_and_degenerate(
     degenerate_model.logpost(point)
     normal_model.logpost(point)
 
-    degenerate_provider = CobayaClassyInterface()
+    degenerate_provider = CobayaClassyExtractor()
     degenerate_provider.initialize(z)
     degenerate_provider.initialize_with_provider(degenerate_model.provider)
-    normal_provider = CobayaClassyInterface()
+    normal_provider = CobayaClassyExtractor()
     normal_provider.initialize(z)
     normal_provider.initialize_with_provider(normal_model.provider)
 

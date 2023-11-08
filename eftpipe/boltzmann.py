@@ -1,5 +1,5 @@
 """
-boltzmann interface used by eftlss
+extract boltzmann products used by eftlss
 """
 from __future__ import annotations
 import importlib
@@ -17,20 +17,21 @@ if TYPE_CHECKING:
     from .typing import ndarrayf
 
 
-class BoltzmannInterface(Protocol):
-    """Protocol for the Boltzmann interface used by eftlss
+class BoltzmannExtractor(Protocol):
+    """Extracting boltzmann products required by eftlss
 
     Notes
     -----
     The motivation of this protocol is, although cobaya tries to provide a
     unified interface for different Boltzmann codes, usage in some situations
     may still be different. Fortunately, eftlss only relies on a small subset of
-    the functionalities of boltzmann codes, so we create an intermediate layer
-    for specialization.
+    the functionalities of boltzmann codes, so we create an intermediate layer.
     """
 
-    def initialize(self, zeff: float, use_cb: bool, zextra: list[float]) -> None:
-        """This function would be invocked by eftlss in ``initialize`` method
+    def initialize(
+        self, zeff: float, use_cb: bool, zextra: list[float], **kwargs
+    ) -> None:
+        """initialize the extractor, invocked by eftlss in the ``initialize`` method
 
         Parameters
         ----------
@@ -46,7 +47,7 @@ class BoltzmannInterface(Protocol):
         pass
 
     def initialize_with_provider(self, provider: Provider) -> None:
-        """This function would be invocked by eftlss in ``initialize_with_provider`` method
+        """initialize the extractor with provider, invocked by eftlss in the ``initialize_with_provider`` method
 
         Parameters
         ----------
@@ -56,7 +57,7 @@ class BoltzmannInterface(Protocol):
         pass
 
     def get_requirements(self) -> dict[str, Any]:
-        """Cosmological requirements of this interface when used by eftlss"""
+        """Cosmological requirements raised by eftlss"""
         return {}
 
     @abstractmethod
@@ -71,34 +72,20 @@ class BoltzmannInterface(Protocol):
 
     @abstractmethod
     def DA(self) -> float:
-        """Angular diameter distance in Mpc unit, divided by (c/H0)
-
-        used in APeffect
-        """
+        """Angular diameter distance in Mpc unit, divided by (c/H0)"""
         ...
 
     @abstractmethod
     def H(self) -> float:
-        """dimensionless Hubble rate
-
-        used in APeffect
-        """
+        """dimensionless Hubble rate"""
         ...
 
     def h(self) -> float | None:
-        """Hubble parameter H0 / 100
-
-        only used when computing alperp and alpara,
-        return None if only want to use qperp and qpara
-        """
+        """Hubble parameter H0 / 100"""
         return None
 
     def rdrag(self) -> float | None:
-        """Sound horizon at baryon drag epoch in Mpc unit
-
-        only used when computing alperp and alpara,
-        return None if only want to use qperp and qpara
-        """
+        """Sound horizon at baryon drag epoch in Mpc unit"""
         return None
 
     def fsigma8_z(self) -> float:
@@ -110,7 +97,7 @@ class BoltzmannInterface(Protocol):
         return -1
 
 
-class InternalBoltzmannInterface(HasLogger, BoltzmannInterface):
+class CobayaBoltzmannExtractor(HasLogger, BoltzmannExtractor):
     def __init__(self) -> None:
         self.set_logger()
 
@@ -119,6 +106,7 @@ class InternalBoltzmannInterface(HasLogger, BoltzmannInterface):
         zeff: float,
         use_cb: bool = False,
         zextra: list[float] = [],
+        **kwargs,
     ) -> None:
         self.zeff = zeff
         self.use_cb = use_cb
@@ -161,11 +149,12 @@ class InternalBoltzmannInterface(HasLogger, BoltzmannInterface):
     def rdrag(self) -> float:
         return float(self.provider.get_param("rdrag"))
 
+    # FIXME: deal with cb
     def fsigma8_z(self) -> float:
         return float(self.provider.get_fsigma8(self.zeff))
 
 
-class CobayaCambInterface(InternalBoltzmannInterface):
+class CobayaCambExtractor(CobayaBoltzmannExtractor):
     """BoltzmannInterface which uses Cobaya's Camb Provider as backend"""
 
     def get_requirements(self) -> dict[str, Any]:
@@ -186,8 +175,7 @@ class CobayaCambInterface(InternalBoltzmannInterface):
         }
         return requires
 
-    # XXX: warning: f used here is effective f, which is different from that used in classy
-    # possiblely use Omega_m(z)**0.545 instead
+    # FIXME: I'm not sure if it is correct ...
     def f(self) -> float:
         return self.get_fsigma8(self.zeff) / self.get_sigma8_z(self.zeff)
 
@@ -198,7 +186,7 @@ class CobayaCambInterface(InternalBoltzmannInterface):
         return float(self.provider.get_sigma8_z(z))
 
 
-class CobayaClassyInterface(InternalBoltzmannInterface):
+class CobayaClassyExtractor(CobayaBoltzmannExtractor):
     """BoltzmannInterface which uses Cobaya's Classy Provider as backend"""
 
     def initialize_with_provider(self, provider: Provider) -> None:
@@ -253,7 +241,7 @@ class CobayaClassyInterface(InternalBoltzmannInterface):
             raise
 
 
-class LinearPowerFile(HasLogger, BoltzmannInterface):
+class LinearPowerFile(HasLogger, BoltzmannExtractor):
     def __init__(
         self, path: str | os.PathLike, gz: float = 1, prefix: str = ""
     ) -> None:
@@ -288,7 +276,9 @@ class LinearPowerFile(HasLogger, BoltzmannInterface):
         self._returned_DA = False
         self._returned_H = False
 
-    def initialize(self, zeff: float, use_cb: bool, zextra: list[float]) -> None:
+    def initialize(
+        self, zeff: float, use_cb: bool, zextra: list[float], **kwargs
+    ) -> None:
         if use_cb:
             self.mpi_warning("use_cb is ignored for LinearPowerFile")
 
@@ -327,11 +317,14 @@ class LinearPowerFile(HasLogger, BoltzmannInterface):
         return 1
 
 
-def find_boltzmann_interface(name: str, kwargs: dict[str, Any]) -> BoltzmannInterface:
-    if name == "camb":
-        ret = CobayaCambInterface()
+def find_boltzmann_extractor(name, kwargs: dict[str, Any]) -> BoltzmannExtractor:
+    if not isinstance(name, str):
+        # instance
+        return name
+    elif name == "camb":
+        ret = CobayaCambExtractor()
     elif name in ("classy", "classynu"):
-        ret = CobayaClassyInterface()
+        ret = CobayaClassyExtractor()
     else:
         module_name, class_name = name.rsplit(".", 1)
         module = importlib.import_module(module_name)
@@ -341,9 +334,9 @@ def find_boltzmann_interface(name: str, kwargs: dict[str, Any]) -> BoltzmannInte
 
 if TYPE_CHECKING:
 
-    def assert_protocol(x: BoltzmannInterface):
+    def assert_protocol(x: BoltzmannExtractor):
         pass
 
-    assert_protocol(CobayaClassyInterface())
-    assert_protocol(CobayaCambInterface())
+    assert_protocol(CobayaClassyExtractor())
+    assert_protocol(CobayaCambExtractor())
     assert_protocol(LinearPowerFile(""))
