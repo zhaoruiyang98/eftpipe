@@ -2,7 +2,7 @@ import numpy as np
 import cobaya
 import pytest
 from pathlib import Path
-from eftpipe.boltzmann import CobayaClassyInterface, CobayaCambInterface
+from eftpipe.boltzmann import CobayaClassyExtractor, CobayaCambExtractor
 
 
 @pytest.mark.fcompare
@@ -51,10 +51,10 @@ def test_compare_camb_and_classy(
     classy_model.logpost(classy_point)
     camb_model.logpost(camb_point)
 
-    classy_provider = CobayaClassyInterface()
+    classy_provider = CobayaClassyExtractor()
     classy_provider.initialize(z, use_cb=use_cb)
     classy_provider.initialize_with_provider(classy_model.provider)
-    camb_provider = CobayaCambInterface()
+    camb_provider = CobayaCambExtractor()
     camb_provider.initialize(z, use_cb=use_cb)
     camb_provider.initialize_with_provider(camb_model.provider)
 

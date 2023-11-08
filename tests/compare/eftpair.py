@@ -8,7 +8,7 @@ from typing import Any, cast, Dict, Generator, Iterable, Literal
 from typing_extensions import TypedDict, NotRequired
 from numpy import ndarray as NDArray
 from cobaya import get_model
-from eftpipe.boltzmann import CobayaCambInterface
+from eftpipe.boltzmann import CobayaCambExtractor
 from eftpipe.tools import PathContext
 from eftpipe.tools import recursively_update_dict
 from eftpipe.tools import RandomParams
@@ -218,7 +218,7 @@ class PybirdTh:
         self.z = config["z"]
 
     def set_bolzman_provider(self, provider):
-        self.provider = CobayaCambInterface()
+        self.provider = CobayaCambExtractor()
         self.provider.initialize(zeff=self.z)
         self.provider.initialize_with_provider(provider)
 

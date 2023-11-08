@@ -30,7 +30,7 @@ from scipy.interpolate import interp1d
 if TYPE_CHECKING:
     from cobaya.theory import Provider
     from numpy.typing import ArrayLike
-    from .boltzmann import BoltzmannInterface
+    from .boltzmann import BoltzmannExtractor
     from .pybird.pybird import BirdLike
     from .pybird.pybird import BirdSnapshot
     from .parambasis import BirdComponent, EFTBasis
@@ -39,7 +39,7 @@ if TYPE_CHECKING:
 from .binning import Binning
 from .chained import Chained
 from .icc import IntegralConstraint
-from .boltzmann import find_boltzmann_interface
+from .boltzmann import find_boltzmann_extractor
 from .parambasis import find_param_basis
 from .pybird import pybird
 from .tools import bool_or_list
@@ -316,7 +316,7 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
     zextra: list[float]
     basis: EFTBasis
     zeff: float
-    boltzmann: BoltzmannInterface
+    boltzmann: BoltzmannExtractor
     plugins: dict[str, Any]
 
     def __init__(
@@ -350,7 +350,7 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
         self.set_tracer_prefix()
         self.basis = self.build_basis()
         self.zeff = self.tracer_config["z"]
-        self.boltzmann = find_boltzmann_interface(
+        self.boltzmann = find_boltzmann_extractor(
             self.tracer_config.get("provider", "classy"),
             self.tracer_config.get("provider_kwargs", {}),
         )
