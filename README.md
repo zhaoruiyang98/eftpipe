@@ -10,6 +10,7 @@ Developed by [Ruiyang Zhao](mailto:zhaoruiyang19@mails.ucas.edu.cn) and [Xiaoyon
 - `typing_extensions` for type hints, optional
 - `camb` or `classy` boltzamnn code, optional
 - `numba` for better performance, optional
+- `matryoshka` for [emulator](https://github.com/JDonaldM/Matryoshka), optional
 
 `cobaya` will be an optional dependency in the future
 # Installation
@@ -20,6 +21,7 @@ git clone git@github.com:zhaoruiyang98/eftpipe.git
 cd eftpipe
 conda env create -f environment.yml
 # or `conda env create -f environment-dev.yml` for development
+# or `conda env create -f environment-emu-dev.yml` for emulator
 ```
 MPI support could be installed by running
 ```shell
