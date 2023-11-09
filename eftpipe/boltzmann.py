@@ -14,6 +14,7 @@ if TYPE_CHECKING:
     from cobaya.theories.cosmo import BoltzmannBase
     from cobaya.theories.cosmo import PowerSpectrumInterpolator
     from cobaya.theory import Provider
+    from .matryoshka import MatryoshkaCosmo
     from .typing import ndarrayf
 
 
@@ -59,6 +60,10 @@ class BoltzmannExtractor(Protocol):
     def get_requirements(self) -> dict[str, Any]:
         """Cosmological requirements raised by eftlss"""
         return {}
+
+    def calculate(self, **params_values_dict):
+        """do calculation"""
+        pass
 
     @abstractmethod
     def Pkh(self, kh: ndarrayf) -> ndarrayf:
@@ -317,19 +322,54 @@ class LinearPowerFile(HasLogger, BoltzmannExtractor):
         return 1
 
 
+class MatryoshkaBoltzmannExtractor(BoltzmannExtractor):
+    def initialize(
+        self, zeff: float, use_cb: bool, zextra: list[float], **kwargs
+    ) -> None:
+        self.zeff = zeff
+        if use_cb:
+            raise NotImplementedError
+
+    def initialize_with_provider(self, provider: Provider) -> None:
+        self.provider = provider
+
+    def get_requirements(self):
+        return {"matryoshkacosmo": None}
+
+    def _get_cosmo(self) -> MatryoshkaCosmo:
+        return self.provider.get_result("matryoshkacosmo")
+
+    def Pkh(self, kh: ndarrayf) -> ndarrayf:
+        return self._get_cosmo().Pkh(kh, z=self.zeff)
+
+    def f(self) -> float:
+        return self._get_cosmo().f(self.zeff)
+
+    def DA(self) -> float:
+        coeff = 100 / 299792.458 / (1 + self.zeff)
+        return self._get_cosmo().comoving_radial_distance(z=self.zeff) * coeff
+
+    def H(self) -> float:
+        cosmo = self._get_cosmo()
+        return cosmo.Hubble(self.zeff) / cosmo["H0"]
+
+    def h(self) -> float:
+        return self._get_cosmo()["h"]
+
+
 def find_boltzmann_extractor(name, kwargs: dict[str, Any]) -> BoltzmannExtractor:
     if not isinstance(name, str):
         # instance
         return name
-    elif name == "camb":
-        ret = CobayaCambExtractor()
-    elif name in ("classy", "classynu"):
-        ret = CobayaClassyExtractor()
-    else:
-        module_name, class_name = name.rsplit(".", 1)
-        module = importlib.import_module(module_name)
-        ret = getattr(module, class_name)(**kwargs)
-    return ret
+    if name == "camb":
+        return CobayaCambExtractor()
+    if name in ("classy", "classynu"):
+        return CobayaClassyExtractor()
+    if name == "matryoshka":
+        return MatryoshkaBoltzmannExtractor()
+    module_name, class_name = name.rsplit(".", 1)
+    module = importlib.import_module(module_name)
+    return getattr(module, class_name)(**kwargs)
 
 
 if TYPE_CHECKING:

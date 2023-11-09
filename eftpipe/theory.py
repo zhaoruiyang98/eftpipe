@@ -576,6 +576,7 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
     def calculate_power_spectrum(self, state, want_derived=True, **params_values_dict):
         # step 1: bird
         boltzmann = self.boltzmann
+        boltzmann.calculate(**params_values_dict)
         # TODO: make kmin, kmax configurable
         kh = np.logspace(-5, 0, 200)
         pkh = boltzmann.Pkh(kh)
