@@ -43,8 +43,8 @@ class EFTModel:
     Examples
     --------
     >>> from eftpipe.model import EFTModel
-    >>> model = EFTModel(0.845, 1e-4).set_cosmology().set_IRresum().done(ellmax=4)
-    >>> plk = model(1.59, 1.26, 1.67, 0, -7.1, -2.6, -0.36, 0.016, 0, -0.041)
+    >>> model = EFTModel(0.7, 4.5e-5).set_cosmology().set_IRresum().done(ellmax=4)
+    >>> plk = model(2.21, 0.98, 2.45, 0, 0.03, -1.16, 0.19, 0.010, 0, -0.03)
     """
 
     def __init__(

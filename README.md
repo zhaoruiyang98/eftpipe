@@ -30,9 +30,9 @@ conda install -c conda-forge "mpi4py>=3"
 # or `pip install "mpi4py>=3" --upgrade --no-binary :all:` if you want to build from source
 ```
 
-Install classy (for macOS users, please make sure your `gcc` points to gcc instead of clang when compiling classy, or manually edit the `Makefile` to select the proper compiler)
+Install classy
 ```shell
-git clone --depth 1 --branch v3.2.0 https://github.com/lesgourg/class_public
+git clone --depth 1 --branch v3.2.2 https://github.com/lesgourg/class_public
 cd class_public/
 make
 ```
