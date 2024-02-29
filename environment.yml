@@ -3,7 +3,7 @@ channels:
   - conda-forge
   - nodefaults
 dependencies:
-  - python=3.8
+  - python=3.10
   - getdist>=1.3.1
   # getdist dependencies
   - numpy>=1.20
@@ -27,8 +27,5 @@ dependencies:
   - cython<3.0
   - pip
   - pip:
-    # pypi mirrors
-    # - --index-url https://
-    # - --extra-index-url https://
-    - cobaya>=3.2.1,<3.3
+    - cobaya>=3.2.1
     - -e . # editable install of eftpipe

@@ -1,7 +1,56 @@
+[project]
+name = "eftpipe"
+description = "multi-tracer EFTofLSS analysis pipeline"
+readme = "README.md"
+license = { file = "LICENSE" }
+keywords = ["cosmology", "large-scale structures"]
+authors = [
+    { name = "Ruiyang Zhao", email = "zhaoruiyang19@mails.ucas.edu.cn" },
+    { name = "Xiaoyong Mu", email = "mouxiaoyong15@mails.ucas.ac.cn" },
+]
+maintainers = [
+    { name = "Ruiyang Zhao", email = "zhaoruiyang19@mails.ucas.edu.cn" },
+]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Environment :: Console",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Scientific/Engineering :: Astronomy",
+    "Typing :: Typed",
+]
+dynamic = ["version"]
+
+requires-python = ">=3.10"
+dependencies = ["numpy>=1.21", "scipy>=1.6", "pandas>=1.0.1", "cobaya>=3.2.1"]
+
+[project.urls]
+"Homepage" = "https://github.com/zhaoruiyang98/eftpipe"
+"Bug Reports" = "https://github.com/zhaoruiyang98/eftpipe/issues"
+"Source" = "https://github.com/zhaoruiyang98/eftpipe"
+
+[build-system]
+requires = ["setuptools>=61.0.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+packages = ["eftpipe"]
+package-data = { eftpipe = ["*.yaml", "*.bibtex", "py.typed"] }
+
+[tool.setuptools.dynamic]
+version = { attr = "eftpipe.__version__" }
+
+[tool.black]
+line-length = 100
+
 [tool.pytest.ini_options]
 minversion = "6.0"
 testpaths = ["tests"]
 addopts = "-ra --color=yes"
-markers = ["fcompare: show failed comparison",]
+markers = ["fcompare: show failed comparison"]
 # for future coverage test
 # addopts = "-ra --cov --cov-report=xml --cov-config=.coveragerc --color=yes"

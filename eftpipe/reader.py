@@ -21,7 +21,7 @@ def read_commented_csv(
                 names = header[1:].strip().split()
     if not names:
         raise NoHeaderError(f"No commented header found in {path}")
-    kwargs = dict(comment="#", delim_whitespace=True, names=names)
+    kwargs = dict(comment="#", sep=R"\s+", names=names)
     kwargs.update(pandas_kwargs)
     return pd.read_csv(path, **kwargs)  # type: ignore
 
@@ -74,8 +74,7 @@ def elephant_reader(root, logger: logging.Logger | None = None, z=1.0):
         raise ValueError(f"z={z} not in {list(z_snap_mapping.keys())}")
     # average over 10 boxes
     it = (
-        root / f"Box{i}/zspace_halo/zspace_HaloPk_M12p7_M13p2_snap_{isnap}.txt"
-        for i in range(10)
+        root / f"Box{i}/zspace_halo/zspace_HaloPk_M12p7_M13p2_snap_{isnap}.txt" for i in range(10)
     )
     data = [np.loadtxt(file_name) for file_name in it]
     data = np.mean(data, axis=0)
@@ -97,9 +96,7 @@ def elephant_cov_reader(root, logger: logging.Logger | None = None, z=1.0):
     if (isnap := z_snap_mapping.get(z)) is None:
         raise ValueError(f"z={z} not in {list(z_snap_mapping.keys())}")
     file_name = root / f"zspace_HaloGCov_M12p7_M13p2_snap_{isnap}.txt"
-    _, C00, C02, C04, C22, C24, C44 = (
-        np.diag(x) for x in np.loadtxt(file_name, unpack=True)
-    )
+    _, C00, C02, C04, C22, C24, C44 = (np.diag(x) for x in np.loadtxt(file_name, unpack=True))
     # fmt: off
     cov = np.block(
         [[C00, C02, C04],
@@ -149,9 +146,7 @@ def bestfit_cov_reader(
         from mpi4py import MPI
 
         if logger and MPI.COMM_WORLD.rank == 0:
-            logger.info(
-                "using bestfit model at zeff=%.3f for tracers %s", zeff, tracers
-            )
+            logger.info("using bestfit model at zeff=%.3f for tracers %s", zeff, tracers)
     truncate = False
     if len(tracers) == 2:
         if "NGC" in tracers[0]:
@@ -188,9 +183,7 @@ def bestfit_cov_reader(
             raise NotImplementedError
         Pshot *= rescale_Pshot
         ms[key] = Mult(P0=P0 + Pshot, P2=P2, P4=P4)
-    gcov = GaussianCovariance(
-        kedges=np.linspace(0, 0.3, 30 + 1), volume=(0.43 + 0.41) * 20
-    )
+    gcov = GaussianCovariance(kedges=np.linspace(0, 0.3, 30 + 1), volume=(0.43 + 0.41) * 20)
     if len(ms) == 1:
         # single tracer
         return gcov([0, 2, 4], [0, 2, 4], "aa->aaaa", ms.popitem()[-1])
