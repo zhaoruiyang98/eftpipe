@@ -151,13 +151,9 @@ class EFTLSS(Theory):
                 msg = "tracer %s: cross=%r contains unknown tracer names: %r"
                 raise LoggedError(self.log, msg, tracer_name, cross, diff)
         # step 3: check if tracers are using the same 'boltzmann' provider
-        providers = set(
-            config.get("provider", "classy") for config in self.tracers.values()
-        )
+        providers = set(config.get("provider", "classy") for config in self.tracers.values())
         if len(providers) != 1:
-            self.mpi_warning(
-                "Tracers are not sharing the same provider, is this intended?"
-            )
+            self.mpi_warning("Tracers are not sharing the same provider, is this intended?")
 
     def get_requirements(self):
         """
@@ -166,9 +162,7 @@ class EFTLSS(Theory):
         """
         return {leaf_product_name(tracer): {} for tracer in self.tracer_names}
 
-    def must_provide(
-        self, **requirements: dict[str, dict[str, Any]]
-    ) -> dict[str, dict[str, Any]]:
+    def must_provide(self, **requirements: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
         """redirect requirements to EFTLeaf and EFTLeafKernel
 
         For example, ``nonlinear_Plk_grid={{'LRG': {...}, 'ELG': {...}}}`` will
@@ -259,9 +253,7 @@ class EFTLSS(Theory):
         key = ("nonlinear_Plk_gaussian_grid", chained, binned)
         return self.retrieve_product_from_leaf(tracer, key)
 
-    def get_nonlinear_Plk_interpolator(
-        self, tracer: str, chained: bool = False
-    ) -> PlkInterpolator:
+    def get_nonlinear_Plk_interpolator(self, tracer: str, chained: bool = False) -> PlkInterpolator:
         key = ("nonlinear_Plk_interpolator", chained)
         return self.retrieve_product_from_leaf(tracer, key)
 
@@ -271,9 +263,7 @@ class EFTLSS(Theory):
     def get_eft_params_values_dict(self, tracer: str) -> dict[str, float]:
         return self.retrieve_product_from_leaf(tracer, "eft_params_values_dict")
 
-    def get_bird_component(
-        self, tracer: str
-    ) -> tuple[list[int], ndarrayf, BirdComponent]:
+    def get_bird_component(self, tracer: str) -> tuple[list[int], ndarrayf, BirdComponent]:
         return self.retrieve_product_from_leaf(tracer, "bird_component")
 
 
@@ -298,9 +288,7 @@ class LeafKernelShared(Protocol):
         if isinstance(cross := self.cross_type(), Iterable):
             for name in cross:
                 config = self.eftlss.tracers[name]
-                related_prefix.append(
-                    config["prefix"] if config.get("prefix") else name + "_"
-                )
+                related_prefix.append(config["prefix"] if config.get("prefix") else name + "_")
         return find_param_basis(self.tracer_config.get("basis", "westcoast"))(
             prefix=prefix, cross_prefix=related_prefix
         )
@@ -466,9 +454,7 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
             self.plugins["IRresum"] = self.plugins["_IRresum"].initialize(
                 co=self.co, name=self.get_name() + ".IRresum"
             )
-            msg_pool.append(
-                ("IRresum enabled: %s", "optimized" if optiresum else "full")
-            )
+            msg_pool.append(("IRresum enabled: %s", "optimized" if optiresum else "full"))
         if self.with_APeffect:
             self.plugins["APeffect"] = self.plugins["_APeffect"].initialize(
                 co=self.co, name=self.get_name() + ".APeffect"
@@ -554,12 +540,9 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
                     if stored_binning := self._must_provide.get("binning"):
                         # different binning settings are not allowed
                         stored_kout = stored_binning.pop("kout")
-                        binning_wo_kout = {
-                            k: v for k, v in binning.items() if k != "kout"
-                        }
+                        binning_wo_kout = {k: v for k, v in binning.items() if k != "kout"}
                         compatible = (
-                            np.array_equal(kout, stored_kout)
-                            and binning_wo_kout == stored_binning
+                            np.array_equal(kout, stored_kout) and binning_wo_kout == stored_binning
                         )
                         if not compatible:
                             raise LoggedError(
@@ -567,9 +550,7 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
                                 "does not support multiple different binning requirements",
                             )
                     self._must_provide["binning"] = deepcopy(binning)
-                self._must_provide["binned"] = group_lists(
-                    binned, self._must_provide["binned"]
-                )
+                self._must_provide["binned"] = group_lists(binned, self._must_provide["binned"])
                 assert self._must_provide["binned"]  # not possible to be empty
         self.mpi_debug("updated must_provide: %s", self._must_provide)
 
@@ -605,9 +586,7 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
         if self.with_fiber:
             plugins["fiber"].fibcolWindow(bird)
         # step 2: collect birdlike products
-        birdlike_products: dict[
-            tuple[str, str], tuple[list[int], ndarrayf, BirdLike]
-        ] = {}
+        birdlike_products: dict[tuple[str, str], tuple[list[int], ndarrayf, BirdLike]] = {}
         for chained, binned in itertools.product(
             self._must_provide["chained"], self._must_provide["binned"]
         ):
@@ -716,9 +695,7 @@ class EFTLeafKernel(HelperTheory, LeafKernelShared):
                     )
                     krB = kmB
             except KeyError:
-                raise LoggedError(
-                    self.log, "missing km, kr or nd for tracer %s", cross_type
-                )
+                raise LoggedError(self.log, "missing km, kr or nd for tracer %s", cross_type)
         return kmA, krA, ndA, kmB, krB, ndB
 
     def product_name(self) -> str:
@@ -872,9 +849,7 @@ class EFTLeaf(HelperTheory, LeafKernelShared):
                     for key in keyset:
                         ls, k, birdlike = birdlike_products[key]
                         # TODO: requires
-                        PG_table = basis.reduce_Plk_gaussian_table(
-                            birdlike, params_values_dict
-                        )
+                        PG_table = basis.reduce_Plk_gaussian_table(birdlike, params_values_dict)
                         products[(product,) + key] = (ls, k, PG_table)
                 elif product == "nonlinear_Plk_grid":
                     for key in keyset:

@@ -141,9 +141,7 @@ class MatryoshkaCosmo(Mapping):
 
     def efunc(self, z):
         Omega_m, w0 = self["Omega_m"], self["w0"]
-        return np.sqrt(
-            Omega_m * (1.0 + z) ** 3.0 + (1.0 - Omega_m) * (1.0 + z) ** (3.0 + 3.0 * w0)
-        )
+        return np.sqrt(Omega_m * (1.0 + z) ** 3.0 + (1.0 - Omega_m) * (1.0 + z) ** (3.0 + 3.0 * w0))
 
     # mapping interface
     def __getitem__(self, key):

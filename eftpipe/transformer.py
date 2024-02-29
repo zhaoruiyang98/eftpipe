@@ -9,8 +9,7 @@ if TYPE_CHECKING:
 
 
 class BirdTransformer(Protocol):
-    def transform(self, birdlike: BirdLike) -> BirdLike:
-        ...
+    def transform(self, birdlike: BirdLike) -> BirdLike: ...
 
 
 @dataclass

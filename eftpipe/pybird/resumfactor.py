@@ -1,6 +1,7 @@
 """
 PyBird libary auxiliaries
 """
+
 # fmt: off
 # Resummation bulk coefficients Q^{ll'}_{||N-j}(n, \alpha) of the IR-resummation matrices.
 # Q(N-j)(l)(l')(n)(\alpha). see in Resum(object) method Ps(self, bird) for details.

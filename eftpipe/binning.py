@@ -93,9 +93,7 @@ class Binning(BirdTransformer, HasLogger):
             iright = np.searchsorted(kedges, self.kout[-1], side="right") + 1
             kedges = kedges[ileft:iright]
             self.load_binning(self.kout, kedges=kedges)
-            self.mpi_info(
-                "kedges: %.3f, %.3f, ..., %.3f", kedges[0], kedges[1], kedges[-1]
-            )
+            self.mpi_info("kedges: %.3f, %.3f, ..., %.3f", kedges[0], kedges[1], kedges[-1])
 
         self.mpi_info("num of kgrids in each bin: %d", self.points[0].size)
 

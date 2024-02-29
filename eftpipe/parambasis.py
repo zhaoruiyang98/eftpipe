@@ -95,20 +95,14 @@ def reduce_Plk(
         )
         if bird.co.with_NNLO:
             cr4, cr6 = cnnloA
-            bctNNLOAB = np.array(
-                [1 / 4 * b1A**2 / krA**4 * cr4, 1 / 4 * b1A / krA**4 * cr6, 0.0]
-            )
+            bctNNLOAB = np.array([1 / 4 * b1A**2 / krA**4 * cr4, 1 / 4 * b1A / krA**4 * cr6, 0.0])
         else:
             bctNNLOAB = np.zeros(3)
     else:
-        bctAB = np.array(
-            [-cctA - cctB, -(cr1A + cr1B) * f, -(cr2A + cr2B) * f**2, 0.0, 0.0, 0.0]
-        )
+        bctAB = np.array([-cctA - cctB, -(cr1A + cr1B) * f, -(cr2A + cr2B) * f**2, 0.0, 0.0, 0.0])
         if bird.co.with_NNLO:
             ctilde, *_ = cnnloA
-            bctNNLOAB = ctilde * np.array(
-                [-(b1A**2) * f**4, -2 * b1A * f**5, -(f**6)]
-            )
+            bctNNLOAB = ctilde * np.array([-(b1A**2) * f**4, -2 * b1A * f**5, -(f**6)])
         else:
             bctNNLOAB = np.zeros(3)
     bloopAB = np.array(
@@ -143,35 +137,29 @@ def reduce_Plk(
 
 
 class EFTBasis(Protocol):
-    def __init__(self, prefix: str, cross_prefix: list[str]):
-        ...
+    def __init__(self, prefix: str, cross_prefix: list[str]): ...
 
     @classmethod
     def get_name(cls) -> str:
         return cls.__class__.__name__
 
     @classmethod
-    def counterform(cls) -> Literal["westcoast", "eastcoast"]:
-        ...
+    def counterform(cls) -> Literal["westcoast", "eastcoast"]: ...
 
-    def non_gaussian_params(self) -> list[str]:
-        ...
+    def non_gaussian_params(self) -> list[str]: ...
 
-    def gaussian_params(self) -> list[str]:
-        ...
+    def gaussian_params(self) -> list[str]: ...
 
     def reduce_Plk(
         self, bird: BirdLike, params_values_dict: Mapping[str, float]
-    ) -> BirdComponent:
-        ...
+    ) -> BirdComponent: ...
 
     def reduce_Plk_gaussian_table(
         self,
         bird: BirdLike,
         params_values_dict: Mapping[str, float],
         requires: Container[str] | None = None,
-    ) -> dict[str, ndarrayf]:
-        ...
+    ) -> dict[str, ndarrayf]: ...
 
 
 @dataclass(frozen=True)
@@ -246,11 +234,7 @@ class WestCoastBasis(EFTBasis):
         bsA = [param_values[p] for p in self.bsA()]
         bsB = [param_values[p] for p in self.bsB()] or None
         es = [param_values[p] for p in self.es()]
-        cnnloA = (
-            [param_values[p] for p in self.cnnloA()]
-            if bird.co.with_NNLO
-            else (0.0, 0.0)
-        )
+        cnnloA = [param_values[p] for p in self.cnnloA()] if bird.co.with_NNLO else (0.0, 0.0)
         return reduce_Plk(bird, bsA, bsB, es, cnnloA)
 
     # impl
@@ -311,20 +295,11 @@ class WestCoastBasis(EFTBasis):
             if (p := self.prefix + "b3") in requires:
                 PG[p] = Ploopl[:, 3, :] + b1A * Ploopl[:, 7, :]
             if (p := self.prefix + "cct") in requires:
-                PG[p] = (
-                    2.0 * b1A / kmA**2 * Pctl[:, 0, :]
-                    + 2.0 * f / kmA**2 * Pctl[:, 3, :]
-                )
+                PG[p] = 2.0 * b1A / kmA**2 * Pctl[:, 0, :] + 2.0 * f / kmA**2 * Pctl[:, 3, :]
             if (p := self.prefix + "cr1") in requires:
-                PG[p] = (
-                    2.0 * b1A / krA**2 * Pctl[:, 1, :]
-                    + 2.0 * f / krA**2 * Pctl[:, 4, :]
-                )
+                PG[p] = 2.0 * b1A / krA**2 * Pctl[:, 1, :] + 2.0 * f / krA**2 * Pctl[:, 4, :]
             if (p := self.prefix + "cr2") in requires:
-                PG[p] = (
-                    2.0 * b1A / krA**2 * Pctl[:, 2, :]
-                    + 2.0 * f / krA**2 * Pctl[:, 5, :]
-                )
+                PG[p] = 2.0 * b1A / krA**2 * Pctl[:, 2, :] + 2.0 * f / krA**2 * Pctl[:, 5, :]
             if bird.co.with_NNLO:
                 if (p := self.prefix + "cr4") in requires:
                     PG[p] = 1 / 4 * b1A**2 / krA**4 * PctNNLOl[:, 0, :]

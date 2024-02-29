@@ -31,14 +31,10 @@ def bessel_matrix(p: _ComplexOrArrayT, l: int) -> _ComplexOrArrayT:
 
     .. math::
         \int_0^\infty s_1^{2+p} j_l(s_1)\;ds_1
-    
+
     k dependence can be obtained by multiplying  the factor :math:`k^{-3-p}`
     """
-    ret = np.exp(
-        (1.0 + p) * np.log(2.0)
-        + loggamma(0.5 * (3.0 + l + p))
-        - loggamma(0.5 * (l - p))
-    )
+    ret = np.exp((1.0 + p) * np.log(2.0) + loggamma(0.5 * (3.0 + l + p)) - loggamma(0.5 * (l - p)))
     return ret * np.sqrt(pi)
 
 
@@ -63,18 +59,10 @@ class FFTLog2D:
 
         self.dx: float = np.log(self.xmax / self.xmin) / (self.Nxmax - 1)
         self.dy: float = np.log(self.ymax / self.ymin) / (self.Nymax - 1)
-        self.x: NDArray = np.geomspace(
-            self.xmin, self.xmax, self.Nxmax, dtype=np.float64
-        )
-        self.y: NDArray = np.geomspace(
-            self.ymin, self.ymax, self.Nymax, dtype=np.float64
-        )
-        self.xPow: NDArray = (
-            self.xbias + 2 * pi * 1j * np.fft.fftfreq(self.Nxmax, d=self.dx)
-        )
-        self.yPow: NDArray = (
-            self.ybias + 2 * pi * 1j * np.fft.fftfreq(self.Nymax, d=self.dy)
-        )
+        self.x: NDArray = np.geomspace(self.xmin, self.xmax, self.Nxmax, dtype=np.float64)
+        self.y: NDArray = np.geomspace(self.ymin, self.ymax, self.Nymax, dtype=np.float64)
+        self.xPow: NDArray = self.xbias + 2 * pi * 1j * np.fft.fftfreq(self.Nxmax, d=self.dx)
+        self.yPow: NDArray = self.ybias + 2 * pi * 1j * np.fft.fftfreq(self.Nymax, d=self.dy)
 
     def Coef(
         self,

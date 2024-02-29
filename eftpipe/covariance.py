@@ -241,9 +241,7 @@ class GaussianCovariance:
             Pac, Pbd, Pad, Pbc = (multipoles[i] for i in parse_subscripts(subscripts))
         except IndexError:
             raise ValueError("missing input multipole")
-        if any(
-            _.size != self.kedges.size - 1 for _ in (Pac.P0, Pbd.P0, Pad.P0, Pbc.P0)
-        ):
+        if any(_.size != self.kedges.size - 1 for _ in (Pac.P0, Pbd.P0, Pad.P0, Pbc.P0)):
             raise ValueError("input multipoles have incorrect shape")
         ell1, ell2 = np.atleast_1d(ell1), np.atleast_1d(ell2)
         db = {}
