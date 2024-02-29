@@ -1,6 +1,7 @@
 """
 anything related to analysis
 """
+
 from __future__ import annotations
 import itertools
 import logging
@@ -59,9 +60,7 @@ CLASSICAL_STYLE: MultipoleStyle = {
     0: MultipoleStyleElement(line={"c": "k"}, errorbar={"c": "k"}),
     2: MultipoleStyleElement(line={"c": "b"}, errorbar={"c": "b"}),
     4: MultipoleStyleElement(line={"c": "g"}, errorbar={"c": "g"}),
-    "default": MultipoleStyleElement(
-        line={"fmt": "-"}, errorbar={"fmt": ".", "capsize": 2}
-    ),
+    "default": MultipoleStyleElement(line={"fmt": "-"}, errorbar={"fmt": ".", "capsize": 2}),
 }
 
 MODERN_STYLE: MultipoleStyle = {
@@ -203,9 +202,7 @@ class CobayaProducts:
         if params_only:
             params_values_dict = {k: params_values_dict[k] for k in self.all_params()}
         if sampled_only:
-            params_values_dict = {
-                k: params_values_dict[k] for k in self.sampled_params()
-            }
+            params_values_dict = {k: params_values_dict[k] for k in self.sampled_params()}
         return params_values_dict
 
     def bestfit(
@@ -283,9 +280,7 @@ class EFTLikeProducts(CobayaProducts):
         # XXX: hard-coded
         return "_fullchi2"
 
-    def marginalized_params(
-        self, with_marg_prefix: bool = False
-    ) -> dict[str, dict[str, Any]]:
+    def marginalized_params(self, with_marg_prefix: bool = False) -> dict[str, dict[str, Any]]:
         from .likelihood import regularize_prior
 
         # step 1: collect marginalized params config
@@ -575,9 +570,7 @@ class Multipole(Mapping[str, pd.Series]):
 
     def apply_covariance(self, cov: ndarrayf):
         sections = list(
-            itertools.accumulate(
-                self.values(), lambda total, elem: total + elem.size, initial=0
-            )
+            itertools.accumulate(self.values(), lambda total, elem: total + elem.size, initial=0)
         )[1:-1]
         errs = np.split(np.sqrt(cov.diagonal()), sections)
         for ell, yerr in zip(self.ells, errs):
@@ -585,18 +578,14 @@ class Multipole(Mapping[str, pd.Series]):
         return self
 
     # plot
-    def _plot(
-        self, ax, ell, x, y, yerr, style: MultipoleStyle, label: str | None = None
-    ):
+    def _plot(self, ax, ell, x, y, yerr, style: MultipoleStyle, label: str | None = None):
         extra = {}
         if label and ell == min(self.ells):
             extra["label"] = label
         if yerr is None:
             ax.plot(x, y, **style.get(ell, style["default"]).line, **extra)
         else:
-            ax.errorbar(
-                x, y, yerr=yerr, **style.get(ell, style["default"]).errorbar, **extra
-            )
+            ax.errorbar(x, y, yerr=yerr, **style.get(ell, style["default"]).errorbar, **extra)
 
     def plot_pk(self, ax=None, label: str | None = None, compact: bool = True, **style):
         style = update_style(deepcopy(self.style), style)
@@ -646,9 +635,7 @@ class Multipole(Mapping[str, pd.Series]):
             ax = self.plot_pk(ax, label, compact=compact, **style)
             ax.set_xlabel(R"$k$ $[h\,\mathrm{Mpc}^{-1}]$")
             if not compact:
-                ax.set_ylabel(
-                    Rf"$k{self.symbol}_\ell(k)$ $[h^{{-1}}\,\mathrm{{Mpc}}]^2$"
-                )
+                ax.set_ylabel(Rf"$k{self.symbol}_\ell(k)$ $[h^{{-1}}\,\mathrm{{Mpc}}]^2$")
             else:
                 ax.set_ylabel(
                     Rf"$k^{{3/2}}{self.symbol}_\ell(k)$ $[h^{{-1}}\,\mathrm{{Mpc}}]^{{3/2}}$"
@@ -754,8 +741,7 @@ class BestfitModel:
         itrim = len(marg_param_prefix)
         bestfit = products.global_bestfit_if_possible()
         bestfit = {
-            (k[itrim:] if k.startswith(marg_param_prefix) else k): v
-            for k, v in bestfit.items()
+            (k[itrim:] if k.startswith(marg_param_prefix) else k): v for k, v in bestfit.items()
         }
         # step 2: get requirements, tracers and chained
         info = yaml_load_file(self.yaml_file)
@@ -790,9 +776,7 @@ class BestfitModel:
         # step 3: evaluate full model
         fullinfo = products.full_model_info()
         if self.remove_window:
-            fullinfo["theory"]["eftpipe.eftlss"]["tracers"]["default"][
-                "with_window"
-            ] = False
+            fullinfo["theory"]["eftpipe.eftlss"]["tracers"]["default"]["with_window"] = False
         if self.zeff is not None:
             _tracers_info = fullinfo["theory"]["eftpipe.eftlss"]["tracers"]
             for x in _tracers_info.values():
@@ -829,8 +813,7 @@ class BestfitModel:
             for k, h, n in zip(fullchi2, hartlap, ndata)
         }
         self.fullchi2_hartlap = {
-            k: f"{self.model.provider.get_param(k):.3f}/{n}"
-            for k, n in zip(fullchi2, ndata)
+            k: f"{self.model.provider.get_param(k):.3f}/{n}" for k, n in zip(fullchi2, ndata)
         }
 
     def Plk_interpolator(self, tracer: str) -> PlkInterpolator:
@@ -867,9 +850,7 @@ class BestfitModel:
         # ax.grid(c="c", ls="--", lw=1)
         return ax
 
-    def plot_theory(
-        self, tracer: str, ax=None, compact: bool = False, **errorbar_style
-    ):
+    def plot_theory(self, tracer: str, ax=None, compact: bool = False, **errorbar_style):
         if ax is None:
             ax = plt.gca()
         k = np.linspace(0.0005, 0.3, 1000)
@@ -1053,15 +1034,11 @@ class LssConvertor:
 
     def DH_over_rdrag(self) -> float:
         """D_H / r_{drag}"""
-        return self.alpara * (
-            DH(self.zeff, self.omegam_fid) / (self.rdrag_fid * self.h_fid())
-        )
+        return self.alpara * (DH(self.zeff, self.omegam_fid) / (self.rdrag_fid * self.h_fid()))
 
     def DM_over_rdrag(self) -> float:
         """D_M / r_{drag}"""
-        return self.alperp * (
-            DM(self.zeff, self.omegam_fid) / (self.rdrag_fid * self.h_fid())
-        )
+        return self.alperp * (DM(self.zeff, self.omegam_fid) / (self.rdrag_fid * self.h_fid()))
 
     def DV_over_rdrag(self) -> float:
         """D_V / r_{drag}"""
@@ -1088,9 +1065,7 @@ class LssConvertor:
         # fmt: off
         constant = (self.alpara / self.alperp) * DH(self.zeff, self.omegam_fid) / DM(self.zeff, self.omegam_fid)
         # fmt: on
-        return fsolve(
-            lambda om: DH(self.zeff, om) / DM(self.zeff, om) - constant, 0.31
-        )[0]
+        return fsolve(lambda om: DH(self.zeff, om) / DM(self.zeff, om) - constant, 0.31)[0]
 
     def omegam(self):
         return self._omegam
@@ -1189,10 +1164,7 @@ class KaiserModel:
         k = np.atleast_1d(k)
         grid = self.Plk_grid(params_values_dict) * self.k[None, :]
         grid = np.insert(grid, 0, 0, axis=1)
-        retval = (
-            interp1d(np.hstack([0, self.k]), grid, axis=-1, kind="cubic")(k)
-            / k[None, :]
-        )
+        retval = interp1d(np.hstack([0, self.k]), grid, axis=-1, kind="cubic")(k) / k[None, :]
         retval = np.array([retval[self.ells.index(ell)] for ell in ells])
         return retval[0] if is_1d else retval
 
@@ -1215,9 +1187,7 @@ class KaiserModel:
     ) -> dict[str, float]:
         kmin, kmax = krange
         ells = tuple(ells) if isinstance(ells, Iterable) else (ells,)
-        data = np.hstack(
-            [multipole[multipole.symbol + str(ell)][kmin:kmax] for ell in ells]
-        )
+        data = np.hstack([multipole[multipole.symbol + str(ell)][kmin:kmax] for ell in ells])
         ileft, iright = multipole.k.searchsorted([kmin, kmax])  # [kmin, kmax)
         k = multipole.k[ileft:iright]
         Plin = self.Plinear_interpolator(k)
@@ -1250,8 +1220,7 @@ class KaiserModel:
             x0 = [kaiser.default_params[k] for k in varied_params]
             if any(v is None for v in x0):
                 raise ValueError(
-                    f"missing initial point for {varied_params}, "
-                    "please provide initial_point"
+                    f"missing initial point for {varied_params}, " "please provide initial_point"
                 )
             x0 = np.array(x0)
         return dict(zip(varied_params, least_squares(fn, x0).x))

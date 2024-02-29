@@ -371,16 +371,16 @@ class EFTModel:
             model = get_model(info, debug=debug)
             model.add_requirements(
                 {
-                    "nonlinear_Plk_interpolator": {
-                        "x": {"ls": [*range(0, ellmax + 1, 2)]}
-                    },
+                    "nonlinear_Plk_interpolator": {"x": {"ls": [*range(0, ellmax + 1, 2)]}},
                     "Pk_interpolator": {
                         "nonlinear": False,
                         "z": [self.z, *zextra],
                         "k_max": 5,
-                        "vars_pairs": ("delta_nonu", "delta_nonu")
-                        if self.use_cb
-                        else ("delta_tot", "delta_tot"),
+                        "vars_pairs": (
+                            ("delta_nonu", "delta_nonu")
+                            if self.use_cb
+                            else ("delta_tot", "delta_tot")
+                        ),
                     },
                     "sigma8": None,
                 }
@@ -399,9 +399,7 @@ class EFTModel:
     def Plinear(self, z: float | None = None):
         if not self._done:
             raise RuntimeError("need to call done()")
-        vars_pairs = (
-            ("delta_nonu", "delta_nonu") if self.use_cb else ("delta_tot", "delta_tot")
-        )
+        vars_pairs = ("delta_nonu", "delta_nonu") if self.use_cb else ("delta_tot", "delta_tot")
         fn = self.model.provider.get_Pk_interpolator(
             var_pair=vars_pairs, nonlinear=False, extrap_kmin=1e-6
         )
@@ -412,9 +410,9 @@ class EFTModel:
         return self.model.provider.get_param("sigma8")
 
     def f(self):
-        return self.model.theory[
-            "eftpipe.classynu"
-        ].classy.scale_independent_growth_factor_f(self.z)
+        return self.model.theory["eftpipe.classynu"].classy.scale_independent_growth_factor_f(
+            self.z
+        )
 
     def Plk_mm(self, cct: float = 0, cr1: float = 0, cr2: float = 0):
         return self(

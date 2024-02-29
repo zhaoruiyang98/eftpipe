@@ -36,9 +36,7 @@ def find_data_reader(
     )
 
 
-def find_covariance_reader(
-    name: str | None, logger: logging.Logger | None = None, **kwargs
-):
+def find_covariance_reader(name: str | None, logger: logging.Logger | None = None, **kwargs):
     return find_reader_else_default(
         name=name,
         default=lambda path: np.loadtxt(path, **kwargs),
@@ -64,9 +62,7 @@ def extract_multipole_info(names: Iterable[str]) -> tuple[str, list[int]]:
     return symbols.pop(), ells
 
 
-def regularize_float_bound(
-    x: FloatBound_T, n: int, default: float | None = None
-) -> list[float]:
+def regularize_float_bound(x: FloatBound_T, n: int, default: float | None = None) -> list[float]:
     if x is None:
         if default is None:
             raise TypeError("empty bound is not allowed if default is not provided")
@@ -168,9 +164,7 @@ def hartlap(Nreal: int, ndata: int) -> float:
     return (Nreal - ndata - 2) / (Nreal - 1)
 
 
-def flatten(
-    ls: list[int], array, mask: dict[int, slice] | None = None, out=None
-) -> Any:
+def flatten(ls: list[int], array, mask: dict[int, slice] | None = None, out=None) -> Any:
     """
 
     Parameters
@@ -260,9 +254,7 @@ class MultipoleInfo:
         if not_existed_ls := set(ls).difference(ls_tot):
             raise ValueError(f"ls {not_existed_ls} not found in data")
         kmask = parse_kmask(df.index, ls, kmin, kmax)
-        data_vector = np.hstack(
-            [df[symbol + str(ell)].to_numpy()[kmask[ell]] for ell in ls]
-        )
+        data_vector = np.hstack([df[symbol + str(ell)].to_numpy()[kmask[ell]] for ell in ls])
         # kout is the k-grid which the theory code will compute on
         kout = df.index.to_numpy()[slice_union(kmask.values())]
         kout_mask = parse_kmask(kout, ls, kmin, kmax)
@@ -306,9 +298,7 @@ class EFTLike(Likelihood, Marginalizable):
         self.minfodict = {
             t: MultipoleInfo.load(**self.data[t], logger=self.log) for t in self.tracers
         }
-        self.data_vector = np.hstack(
-            [minfo.data_vector for minfo in self.minfodict.values()]
-        )
+        self.data_vector = np.hstack([minfo.data_vector for minfo in self.minfodict.values()])
         self.ndata = self.data_vector.size
         for t, minfo in self.minfodict.items():
             self.binning[t]["kout"] = minfo.kout
@@ -444,8 +434,7 @@ class EFTLike(Likelihood, Marginalizable):
     def initialize_with_provider(self, provider):
         super().initialize_with_provider(provider)
         self.eft_bases: list[EFTBasis] = [
-            self.provider.model.theory["eftpipe.eftlss." + t].basis
-            for t in self.tracers
+            self.provider.model.theory["eftpipe.eftlss." + t].basis for t in self.tracers
         ]
         # setup prior after prefix is set
         if self.marg:
@@ -460,9 +449,7 @@ class EFTLike(Likelihood, Marginalizable):
 
     def set_cache(self) -> None:
         self._PNG_cache = np.zeros(self.data_vector.size)
-        sizelist: list[int] = [
-            minfo.data_vector.size for minfo in self.minfodict.values()
-        ]
+        sizelist: list[int] = [minfo.data_vector.size for minfo in self.minfodict.values()]
         self._istart_iend_cache: list[tuple[int, int]] = list(
             pairwise(itertools.accumulate(sizelist, initial=0))
         )
@@ -526,9 +513,7 @@ class EFTLike(Likelihood, Marginalizable):
                     plk = fn(minfo.kout)
                     # print(minfo.kout)
                 if not with_binning and not with_interp:
-                    flatten(
-                        minfo.ls, plk, None, out=self._PG_cache[bG_idx[bG], istart:iend]
-                    )
+                    flatten(minfo.ls, plk, None, out=self._PG_cache[bG_idx[bG], istart:iend])
                 else:
                     flatten(
                         minfo.ls,
@@ -551,22 +536,14 @@ class EFTLike(Likelihood, Marginalizable):
         ):
             # TODO: ells trim
             if with_binning:
-                _, _, plk = self.provider.get_nonlinear_Plk_grid(
-                    t, chained=chained, binned=True
-                )
-                flatten(
-                    minfo.ls, plk, minfo.kout_mask, out=self._PNG_cache[istart:iend]
-                )
+                _, _, plk = self.provider.get_nonlinear_Plk_grid(t, chained=chained, binned=True)
+                flatten(minfo.ls, plk, minfo.kout_mask, out=self._PNG_cache[istart:iend])
             elif with_interp:
                 fn = self.provider.get_nonlinear_Plk_interpolator(t, chained=chained)
                 plk = fn(minfo.ls, minfo.kout)
-                flatten(
-                    minfo.ls, plk, minfo.kout_mask, out=self._PNG_cache[istart:iend]
-                )
+                flatten(minfo.ls, plk, minfo.kout_mask, out=self._PNG_cache[istart:iend])
             else:
-                _, _, plk = self.provider.get_nonlinear_Plk_grid(
-                    t, chained=chained, binned=False
-                )
+                _, _, plk = self.provider.get_nonlinear_Plk_grid(t, chained=chained, binned=False)
                 flatten(minfo.ls, plk, None, out=self._PNG_cache[istart:iend])
         # be careful, return a reference
         return self._PNG_cache
@@ -587,18 +564,14 @@ class EFTLike(Likelihood, Marginalizable):
         return retval
 
     # override
-    def update_prior(
-        self, prior: dict[str, dict[str, Any]]
-    ) -> dict[str, dict[str, float | str]]:
+    def update_prior(self, prior: dict[str, dict[str, Any]]) -> dict[str, dict[str, float | str]]:
         return super().update_prior(regularize_prior(prior))
 
     def calculate(self, state, want_derived=True, **params_values_dict):
         return_bGbest = True if self.required_bGbest_related_derived_params() else False
         fullchi2, bGbest = -1, defaultdict(lambda: 0.0)
         if self.marg:
-            tmp = self.marginalized_logp(
-                return_bGbest=return_bGbest, jeffreys=self.jeffreys
-            )
+            tmp = self.marginalized_logp(return_bGbest=return_bGbest, jeffreys=self.jeffreys)
             if isinstance(tmp, tuple):
                 logp, fullchi2, bGbest = tmp
             else:

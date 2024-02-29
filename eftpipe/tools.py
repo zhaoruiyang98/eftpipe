@@ -50,15 +50,12 @@ class SampledParamsMixin:
     @property
     def sampled_params(self) -> list[str]:
         input_params = set(self.input_params)
-        sampled_params = set(
-            self.provider.model.parameterization.sampled_params().keys()
-        )
+        sampled_params = set(self.provider.model.parameterization.sampled_params().keys())
         return list(input_params.intersection(sampled_params))
 
     if TYPE_CHECKING:
 
-        def __getattr__(self, __name: str) -> Any:
-            ...
+        def __getattr__(self, __name: str) -> Any: ...
 
 
 def update_path_in_dict(
@@ -179,18 +176,14 @@ def verbose_guard(verbose: bool):
 class Initializer(Generic[_T]):
     """delayed initialization"""
 
-    def __init__(
-        self, cls: Callable[..., _T], dct: dict[str, Any], logger: str | Logger
-    ) -> None:
+    def __init__(self, cls: Callable[..., _T], dct: dict[str, Any], logger: str | Logger) -> None:
         args: list[str] = []
         kwargs: dict[str, Any] = {}
         for k, v in inspect.signature(cls).parameters.items():
             if v.kind is v.VAR_KEYWORD:
                 continue
             if v.kind is v.VAR_POSITIONAL:
-                raise LoggedError(
-                    logger, "%s does not support *args", self.__class__.__name__
-                )
+                raise LoggedError(logger, "%s does not support *args", self.__class__.__name__)
             default = v.default
             if default is v.empty:
                 args.append(k)
@@ -295,9 +288,7 @@ class RandomParams:
         self.count += 1
         return res
 
-    def fix(
-        self, names: Iterable[str] | None = None, groups: Iterable[str] | None = None
-    ):
+    def fix(self, names: Iterable[str] | None = None, groups: Iterable[str] | None = None):
         if not (names or groups):
             return
         if names is None:

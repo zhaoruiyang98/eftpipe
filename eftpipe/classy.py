@@ -112,8 +112,7 @@ class classynu(classy):
         if hierarchy in ("normal", "inverted"):
             if (N_ur is not None) or (N_ncdm is not None):
                 self.mpi_info(
-                    "N_ur and N_ncdm settings are overrided for "
-                    "neutrino hierarchy '%s'",
+                    "N_ur and N_ncdm settings are overrided for neutrino hierarchy '%s'",
                     hierarchy,
                 )
             N_ur = 0.00641
@@ -123,8 +122,7 @@ class classynu(classy):
                 N_ur = 2.0328
                 N_ncdm = 1
                 self.mpi_warning(
-                    "default settings N_ncdm=1, N_ur=2.0328, "
-                    "Planck18 baseline is used",
+                    "default settings N_ncdm=1, N_ur=2.0328, Planck18 baseline is used",
                 )
         self._N_ur = N_ur
         self._N_ncdm = N_ncdm
@@ -137,9 +135,7 @@ class classynu(classy):
         if "mnu" in input_params and "m_ncdm" in input_params:
             raise LoggedError(self.log, "mnu and m_ncdm cannot appear at the same time")
         if self._hieararchy != "degenerate" and "m_ncdm" in input_params:
-            raise LoggedError(
-                self.log, "m_ncdm is only supported for degenerate hierarchy"
-            )
+            raise LoggedError(self.log, "m_ncdm is only supported for degenerate hierarchy")
 
     # override
     def set(self, params_values_dict):

@@ -76,9 +76,7 @@ class FFTLog(object):
     def setPow(self):
         self.Pow = np.empty(self.Nmax + 1, dtype=complex)
         for i in range(self.Nmax + 1):
-            self.Pow[i] = self.bias + 1j * 2.0 * pi / (self.Nmax * self.dx) * (
-                i - self.Nmax / 2.0
-            )
+            self.Pow[i] = self.bias + 1j * 2.0 * pi / (self.Nmax * self.dx) * (i - self.Nmax / 2.0)
 
     def setCoefFactor(self):
         self._CoefFactor = self.xmin ** (-self.Pow) / float(self.Nmax)

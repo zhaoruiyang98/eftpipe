@@ -147,8 +147,7 @@ class Window(HasLogger):
         self.co: Common = co
         if window_fourier_file is None and window_configspace_file is None:
             raise ValueError(
-                "Window requires window_fourier_file "
-                "or window_configspace_file or both"
+                "Window requires window_fourier_file or window_configspace_file or both"
             )
         self.window_fourier_file = (
             Path(window_fourier_file).resolve() if window_fourier_file else None
@@ -170,8 +169,7 @@ class Window(HasLogger):
         Nl = Nl if Nl else self.co.Nl
         if Na > self.co.Nl or Nl > self.co.Nl:
             raise ValueError(
-                f"request Na={Na}, Nl={Nl} "
-                f"while bird only compute Nl up to {self.co.Nl}"
+                f"request Na={Na}, Nl={Nl} while bird only compute Nl up to {self.co.Nl}"
             )
         if Na > Nl:
             raise ValueError(f"dangerous settings Na={Na}, Nl={Nl}")
@@ -249,9 +247,7 @@ class Window(HasLogger):
                         meta = json.load(f)
                     # copy meta info from previous file
                     if self.meta["window_configspace_file"] is None:
-                        self.meta["window_configspace_file"] = meta[
-                            "window_configspace_file"
-                        ]
+                        self.meta["window_configspace_file"] = meta["window_configspace_file"]
                     if meta != self.meta:
                         raise MetaInfoError(
                             f"inconsistent meta info\n"
@@ -282,9 +278,7 @@ class Window(HasLogger):
             if swindow_config_space.shape[-1] > (1 + Nq):
                 swindow_config_space = swindow_config_space[:, : 1 + Nq]
         except OSError as ex:
-            raise OSError(
-                f"Error: can't load mask file: " f"{self.window_configspace_file}"
-            )
+            raise OSError(f"Error: can't load mask file: {self.window_configspace_file}")
         except IndexError as ex:
             raise TypeError(f"loaded config-space mask has unexpected shape") from ex
 
@@ -340,17 +334,14 @@ class Window(HasLogger):
             * (1j) ** (2 * Nls)[newaxis, :, newaxis, newaxis]
             * self.fft.Coef(
                 sw,
-                Qal[:, :, newaxis, :]
-                * np.ones(self.co.k.size)[newaxis, newaxis, :, newaxis],
+                Qal[:, :, newaxis, :] * np.ones(self.co.k.size)[newaxis, newaxis, :, newaxis],
                 window=self.meta["window_param"],
                 extrap="padding",
                 kernel=kernel,
             )
         )
 
-        Wal = self.p**2 * np.real(
-            np.einsum("alkn,np,ln->alkp", self.Coef, self.pPow, self.M)
-        )
+        Wal = self.p**2 * np.real(np.einsum("alkn,np,ln->alkp", self.Coef, self.pPow, self.M))
 
         return Wal
 
@@ -557,9 +548,7 @@ class WindowMatrix(HasLogger):
     def kavg(self):
         # hard-coded for test
         return np.linspace(0, 0.4, 400)[:300]
-        kedges = np.linspace(
-            self.inpoles.kstart, self.inpoles.kend, self.inpoles.nbin + 1
-        )
+        kedges = np.linspace(self.inpoles.kstart, self.inpoles.kend, self.inpoles.nbin + 1)
         khigh = kedges[1:]
         klow = kedges[:-1]
         return (1 / 4 * (khigh**4 - klow**4)) / (1 / 3 * (khigh**3 - klow**3))

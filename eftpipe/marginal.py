@@ -182,10 +182,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         .. math::
             F_{1,i} = -P_{G,\alpha}^i C_{\alpha\beta}^{-1} (P_{NG,\aplha} - D_{\alpha}) + \sigma_{ij}^{-1} \mu_{G,j}
         """
-        return (
-            -np.einsum("ia,ab,b->i", PG, invcov, PNG - dvector, optimize=True)
-            + sigma_inv @ mu_G
-        )
+        return -np.einsum("ia,ab,b->i", PG, invcov, PNG - dvector, optimize=True) + sigma_inv @ mu_G
 
     def calc_F0(self, PNG, invcov, dvector, mu_G, sigma_inv) -> ndarrayf:
         R"""calculate F0
@@ -198,9 +195,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         res = PNG - dvector
         return res @ invcov @ res + mu_G @ sigma_inv @ mu_G
 
-    def update_prior(
-        self, prior: dict[str, dict[str, Any]]
-    ) -> dict[str, dict[str, float | str]]:
+    def update_prior(self, prior: dict[str, dict[str, Any]]) -> dict[str, dict[str, float | str]]:
         """update prior to standard form and sort it"""
         marginalizable_params = self.marginalizable_params()
         for key in prior.keys():
@@ -227,9 +222,7 @@ class Marginalizable(HasLogger if TYPE_CHECKING else object):
         idx = [marginalizable_params.index(name) for name in newdct.keys()]
         outdct = {
             name: dct
-            for _, dct, name in sorted(
-                zip(idx, newdct.values(), newdct.keys()), key=lambda t: t[0]
-            )
+            for _, dct, name in sorted(zip(idx, newdct.values(), newdct.keys()), key=lambda t: t[0])
         }
         if nscale_inf != 0 and nscale_inf != len(outdct):
             raise LoggedError(

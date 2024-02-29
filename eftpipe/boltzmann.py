@@ -1,6 +1,7 @@
 """
 extract boltzmann products used by eftlss
 """
+
 from __future__ import annotations
 import importlib
 import os
@@ -29,9 +30,7 @@ class BoltzmannExtractor(Protocol):
     the functionalities of boltzmann codes, so we create an intermediate layer.
     """
 
-    def initialize(
-        self, zeff: float, use_cb: bool, zextra: list[float], **kwargs
-    ) -> None:
+    def initialize(self, zeff: float, use_cb: bool, zextra: list[float], **kwargs) -> None:
         """initialize the extractor, invocked by eftlss in the ``initialize`` method
 
         Parameters
@@ -116,9 +115,7 @@ class CobayaBoltzmannExtractor(HasLogger, BoltzmannExtractor):
         self.zeff = zeff
         self.use_cb = use_cb
         self.zextra = list(zextra)
-        self.vars_pairs = (
-            ("delta_nonu", "delta_nonu") if use_cb else ("delta_tot", "delta_tot")
-        )
+        self.vars_pairs = ("delta_nonu", "delta_nonu") if use_cb else ("delta_tot", "delta_tot")
 
     def initialize_with_provider(self, provider: Provider) -> None:
         self.provider: BoltzmannBase = provider  # type: ignore
@@ -247,9 +244,7 @@ class CobayaClassyExtractor(CobayaBoltzmannExtractor):
 
 
 class LinearPowerFile(HasLogger, BoltzmannExtractor):
-    def __init__(
-        self, path: str | os.PathLike, gz: float = 1, prefix: str = ""
-    ) -> None:
+    def __init__(self, path: str | os.PathLike, gz: float = 1, prefix: str = "") -> None:
         self.set_logger()
         k, pk = np.loadtxt(path, unpack=True)
         self.mpi_info("loading linear power spectrum from %s", path)
@@ -281,9 +276,7 @@ class LinearPowerFile(HasLogger, BoltzmannExtractor):
         self._returned_DA = False
         self._returned_H = False
 
-    def initialize(
-        self, zeff: float, use_cb: bool, zextra: list[float], **kwargs
-    ) -> None:
+    def initialize(self, zeff: float, use_cb: bool, zextra: list[float], **kwargs) -> None:
         if use_cb:
             self.mpi_warning("use_cb is ignored for LinearPowerFile")
 
@@ -323,9 +316,7 @@ class LinearPowerFile(HasLogger, BoltzmannExtractor):
 
 
 class MatryoshkaBoltzmannExtractor(BoltzmannExtractor):
-    def initialize(
-        self, zeff: float, use_cb: bool, zextra: list[float], **kwargs
-    ) -> None:
+    def initialize(self, zeff: float, use_cb: bool, zextra: list[float], **kwargs) -> None:
         self.zeff = zeff
         if use_cb:
             raise NotImplementedError

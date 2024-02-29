@@ -1,4 +1,5 @@
 """Integral Constraint Corrections"""
+
 from __future__ import annotations
 
 import json
@@ -33,8 +34,7 @@ except ImportError:
         l1, l2, s1, s2 = (np.unique(_) for _ in arr.T[:4])
         create_table = lambda t: {x: i for i, x in enumerate(t)}
         table = {
-            name: create_table(arr)
-            for name, arr in zip(["l1", "l2", "s1", "s2"], [l1, l2, s1, s2])
+            name: create_table(arr) for name, arr in zip(["l1", "l2", "s1", "s2"], [l1, l2, s1, s2])
         }
         ret = np.zeros(shape=(l1.size, l2.size, s1.size, s2.size), dtype="f8")
         for vl1, vl2, vs1, vs2, value in arr:
@@ -89,9 +89,7 @@ def read_configspace_IC_file(file: str | Path, info=print, warning=print):
 
             info("may take ~ 1 minutes")
             colnames = ["l1", "l2", "s1", "s2", "value"]
-            df = pd.read_csv(
-                file, names=colnames, delim_whitespace=True, engine="c", comment="#"
-            )
+            df = pd.read_csv(file, names=colnames, delim_whitespace=True, engine="c", comment="#")
             ret = df.to_numpy()
         except ImportError:
             info("may take ~ 10 minutes")
@@ -258,8 +256,7 @@ class IntegralConstraint(HasLogger):
         Nl = Nl or self.co.Nl
         if Na > self.co.Nl or Nl > self.co.Nl:
             raise ValueError(
-                f"request Na={Na}, Nl={Nl} "
-                f"while bird only compute Nl up to {self.co.Nl}"
+                f"request Na={Na}, Nl={Nl} while bird only compute Nl up to {self.co.Nl}"
             )
         if Na > Nl:
             raise ValueError(f"dangerous settings Na={Na} > Nl={Nl}")
@@ -345,13 +342,9 @@ class IntegralConstraint(HasLogger):
                         meta = json.load(f)
                     # copy meta info from previous file
                     if self.meta["icc_configspace_SN_file"] is None:
-                        self.meta["icc_configspace_SN_file"] = meta[
-                            "icc_configspace_SN_file"
-                        ]
+                        self.meta["icc_configspace_SN_file"] = meta["icc_configspace_SN_file"]
                     if self.meta["icc_configspace_IC_file"] is None:
-                        self.meta["icc_configspace_IC_file"] = meta[
-                            "icc_configspace_IC_file"
-                        ]
+                        self.meta["icc_configspace_IC_file"] = meta["icc_configspace_IC_file"]
                     if meta != self.meta:
                         raise MetaInfoError(
                             f"inconsistent meta info\n"
@@ -384,9 +377,7 @@ class IntegralConstraint(HasLogger):
                 f"Error: cannot load icc_configspace_SN_file from {self.icc_configspace_SN_file}"
             )
         except IndexError as ex:
-            raise TypeError(
-                f"loaded icc_configspace_SN_file has unexpected shape"
-            ) from ex
+            raise TypeError(f"loaded icc_configspace_SN_file has unexpected shape") from ex
 
         s = data[:, 0]
         xi = data[:, 1:].T
@@ -403,11 +394,7 @@ class IntegralConstraint(HasLogger):
         # a, n
         mat = np.array([bessel_matrix(fft.Pow, ell) for ell in range(0, 2 * Na, 2)])
         PSN: NDArray = np.einsum("an,kn,an->ak", coef, power, mat, optimize=True).real
-        PSN *= (
-            4
-            * np.pi
-            * np.array([(-1j) ** ell for ell in range(0, 2 * Na, 2)]).real[:, newaxis]
-        )
+        PSN *= 4 * np.pi * np.array([(-1j) ** ell for ell in range(0, 2 * Na, 2)]).real[:, newaxis]
         return PSN
 
     def _compute_Wal(self):

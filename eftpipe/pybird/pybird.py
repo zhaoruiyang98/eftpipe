@@ -28,9 +28,7 @@ def DgN(Om, a):
 def fN(Om, z):
     """LCDM growth rate"""
     a = 1.0 / (1.0 + z)
-    return (Om * (5 * a - 3 * DgN(Om, a))) / (
-        2.0 * (a**3 * (1 - Om) + Om) * DgN(Om, a)
-    )
+    return (Om * (5 * a - 3 * DgN(Om, a))) / (2.0 * (a**3 * (1 - Om) + Om) * DgN(Om, a))
 
 
 def Hubble(Om, z):
@@ -74,13 +72,7 @@ def fllp_IR(l, lp, k, q, Dfc):
     if l == lp:
         return (q / k) * W2D(q * Dfc) * (q / k) ** l
     else:
-        return (
-            (q / k)
-            * W2D(q * Dfc)
-            * (2.0 * l + 1.0)
-            / 2.0
-            * Hllp(max(l, lp), min(l, lp), q / k)
-        )
+        return (q / k) * W2D(q * Dfc) * (2.0 * l + 1.0) / 2.0 * Hllp(max(l, lp), min(l, lp), q / k)
 
 
 def fllp_UV(l, lp, k, q, Dfc):
@@ -90,9 +82,7 @@ def fllp_UV(l, lp, k, q, Dfc):
     if l == lp:
         return W2D(q * Dfc) * (k / q) ** l
     else:
-        return (
-            W2D(q * Dfc) * (2.0 * l + 1.0) / 2.0 * Hllp(max(l, lp), min(l, lp), k / q)
-        )
+        return W2D(q * Dfc) * (2.0 * l + 1.0) / 2.0 * Hllp(max(l, lp), min(l, lp), k / q)
 
 
 # powers of mu to Legendre polynomials
@@ -179,9 +169,7 @@ def MPC(l, pn):
     """
     # return pi**-1.5 * 2.**(-2. * pn) * gamma(1.5 + l / 2. - pn) / gamma(l / 2. + pn)
     return (
-        pi**-1.5
-        * 2.0 ** (-2.0 * pn)
-        * exp(loggamma(1.5 + l / 2.0 - pn) - loggamma(l / 2.0 + pn))
+        pi**-1.5 * 2.0 ** (-2.0 * pn) * exp(loggamma(1.5 + l / 2.0 - pn) - loggamma(l / 2.0 + pn))
     )
 
 
@@ -580,9 +568,7 @@ class Common(object):
         for i in range(self.Nl):
             l = 2 * i
             self.l11[i] = np.array([mu[0][l], mu[2][l], mu[4][l]])
-            self.lct[i] = np.array(
-                [mu[0][l], mu[2][l], mu[4][l], mu[2][l], mu[4][l], mu[6][l]]
-            )
+            self.lct[i] = np.array([mu[0][l], mu[2][l], mu[4][l], mu[2][l], mu[4][l], mu[6][l]])
             self.lctNNLO[i] = np.array([mu[4][l], mu[6][l], mu[8][l]])
             self.l22[i] = np.array(
                 [
@@ -593,9 +579,7 @@ class Common(object):
                     + [mu[6][l], mu[4][l], mu[6][l], mu[4][l], mu[6][l], mu[8][l]]
                 ]
             )
-            self.l13[i] = np.array(
-                [2 * [mu[0][l]] + 4 * [mu[2][l]] + 3 * [mu[4][l]] + [mu[6][l]]]
-            )
+            self.l13[i] = np.array([2 * [mu[0][l]] + 4 * [mu[2][l]] + 3 * [mu[4][l]] + [mu[6][l]]])
 
 
 common = Common()
@@ -695,9 +679,7 @@ class Bird:
         To store the correlation function multipole full linear part and full loop part (the loop including the counterterms)
     """
 
-    def __init__(
-        self, kin, Plin, f, DA=None, H=None, z=None, co=common, rdrag=None, h=None
-    ):
+    def __init__(self, kin, Plin, f, DA=None, H=None, z=None, co=common, rdrag=None, h=None):
         self.co = co
 
         self.f: float = f  # fN(Omega_m, z)
@@ -799,15 +781,11 @@ class Bird:
             + f1**2 * self.P13l[:, 6]
         )  # *b1
         self.Ploopl[:, 2] = (
-            f1 * self.P22l[:, 10]
-            + f1**2 * self.P22l[:, 16]
-            + f1**2 * self.P22l[:, 17]
+            f1 * self.P22l[:, 10] + f1**2 * self.P22l[:, 16] + f1**2 * self.P22l[:, 17]
         )  # *b2
         self.Ploopl[:, 3] = f1 * self.P13l[:, 4]  # *b3
         self.Ploopl[:, 4] = (
-            f1 * self.P22l[:, 11]
-            + f1**2 * self.P22l[:, 18]
-            + f1**2 * self.P22l[:, 19]
+            f1 * self.P22l[:, 11] + f1**2 * self.P22l[:, 18] + f1**2 * self.P22l[:, 19]
         )  # *b4
         self.Ploopl[:, 5] = (
             self.P22l[:, 0]
@@ -974,9 +952,7 @@ class NonLinear(HasLogger):
                     )
                     save = False
             except:
-                self.mpi_warning(
-                    "Can't load loop matrices at %s, computing new matrices.", path
-                )
+                self.mpi_warning("Can't load loop matrices at %s, computing new matrices.", path)
                 load = False
 
         if load is False:
@@ -1010,18 +986,12 @@ class NonLinear(HasLogger):
         self.setsPow()
 
         # To speed-up matrix multiplication:
-        self.optipathP13 = np.einsum_path(
-            "nk,bn->bk", self.kPow, self.M13, optimize="optimal"
-        )[0]
+        self.optipathP13 = np.einsum_path("nk,bn->bk", self.kPow, self.M13, optimize="optimal")[0]
         self.optipathP22 = np.einsum_path(
             "nk,mk,bnm->bk", self.kPow, self.kPow, self.M22, optimize="optimal"
         )[0]
-        self.optipathC11 = np.einsum_path(
-            "ns,ln->ls", self.sPow, self.Mcf11, optimize="optimal"
-        )[0]
-        self.optipathCct = np.einsum_path(
-            "ns,ln->ls", self.sPow, self.Mcfct, optimize="optimal"
-        )[0]
+        self.optipathC11 = np.einsum_path("ns,ln->ls", self.sPow, self.Mcf11, optimize="optimal")[0]
+        self.optipathCct = np.einsum_path("ns,ln->ls", self.sPow, self.Mcfct, optimize="optimal")[0]
         self.optipathCctNNLO = np.einsum_path(
             "ns,ln->ls", self.sPow, self.McfctNNLO, optimize="optimal"
         )[0]
@@ -1083,9 +1053,7 @@ class NonLinear(HasLogger):
 
     def setMcfctNNLO(self):
         ns = -0.5 * self.fft.Pow
-        self.McfctNNLO = MPC(
-            2 * np.arange(self.co.Nl)[:, None], ns - 2.0
-        )  # * 1j**(2*l)
+        self.McfctNNLO = MPC(2 * np.arange(self.co.Nl)[:, None], ns - 2.0)  # * 1j**(2*l)
 
     def setkPow(self):
         """Compute the k's to the powers of the FFTLog to evaluate the loop power spectrum. Called at the instantiation of the class."""
@@ -1106,9 +1074,7 @@ class NonLinear(HasLogger):
     def makeP22(self, CoefkPow, bird):
         """Perform the 22-loop power spectrum matrix multiplications"""
         bird.P22 = self.co.k**3 * np.real(
-            np.einsum(
-                "nk,mk,bnm->bk", CoefkPow, CoefkPow, self.M22, optimize=self.optipathP22
-            )
+            np.einsum("nk,mk,bnm->bk", CoefkPow, CoefkPow, self.M22, optimize=self.optipathP22)
         )
 
     def makeP13(self, CoefkPow, bird):
@@ -1116,16 +1082,12 @@ class NonLinear(HasLogger):
         bird.P13 = (
             self.co.k**3
             * bird.P11
-            * np.real(
-                np.einsum("nk,bn->bk", CoefkPow, self.M13, optimize=self.optipathP13)
-            )
+            * np.real(np.einsum("nk,bn->bk", CoefkPow, self.M13, optimize=self.optipathP13))
         )
 
     def makeC11(self, CoefsPow, bird):
         """Perform the 11-loop correlation function matrix multiplications"""
-        bird.C11 = np.real(
-            np.einsum("ns,ln->ls", CoefsPow, self.Mcf11, optimize=self.optipathC11)
-        )
+        bird.C11 = np.real(np.einsum("ns,ln->ls", CoefsPow, self.Mcf11, optimize=self.optipathC11))
 
     def makeCct(self, CoefsPow, bird):
         """Perform the counterterm correlation function matrix multiplications"""
@@ -1135,9 +1097,7 @@ class NonLinear(HasLogger):
 
     def makeCctNNLO(self, CoefsPow, bird):
         bird.CctNNLO = self.co.s**-4 * np.real(
-            np.einsum(
-                "ns,ln->ls", CoefsPow, self.McfctNNLO, optimize=self.optipathCctNNLO
-            )
+            np.einsum("ns,ln->ls", CoefsPow, self.McfctNNLO, optimize=self.optipathCctNNLO)
         )
 
     def makeC22(self, CoefsPow, bird):
@@ -1267,9 +1227,7 @@ class Resum(HasLogger):
         s's to the powers on which to perform the FFTLog to evaluate the IR-filters X and Y
     """
 
-    def __init__(
-        self, LambdaIR=0.2, NFFT=192, co=common, name="pybird.IRresum", snapshot=False
-    ):
+    def __init__(self, LambdaIR=0.2, NFFT=192, co=common, name="pybird.IRresum", snapshot=False):
         self.set_logger(name=name)
         self.co = co
         self.LambdaIR = LambdaIR
@@ -1280,9 +1238,7 @@ class Resum(HasLogger):
             self.idlow = np.where(self.co.s > self.sLow)[0][0]
             self.idhigh = np.where(self.co.s > self.sHigh)[0][0]
             self.sbao = self.co.s[self.idlow : self.idhigh]
-            self.snobao = np.concatenate(
-                [self.co.s[: self.idlow], self.co.s[self.idhigh :]]
-            )
+            self.snobao = np.concatenate([self.co.s[: self.idlow], self.co.s[self.idhigh :]])
             self.sr = self.sbao
         else:
             self.sr = self.co.s
@@ -1417,9 +1373,7 @@ class Resum(HasLogger):
                         if self.NIR == 8:
                             self.Q[a][l][lpr][u] = Qa[1 - a][2 * l][2 * lpr][u](f)
                         elif self.NIR == 16:
-                            self.Q[a][l][lpr][u] = Qawithhex[1 - a][2 * l][2 * lpr][u](
-                                f
-                            )
+                            self.Q[a][l][lpr][u] = Qawithhex[1 - a][2 * l][2 * lpr][u](f)
                         elif self.NIR == 20:
                             raise NotImplementedError
                         else:
@@ -1432,9 +1386,7 @@ class Resum(HasLogger):
         if not self.co.optiresum:
             return cf
 
-        cfnobao = np.concatenate(
-            [cf[..., : self.idlow], cf[..., self.idhigh :]], axis=-1
-        )
+        cfnobao = np.concatenate([cf[..., : self.idlow], cf[..., self.idhigh :]], axis=-1)
         nobao = (
             interp1d(
                 self.snobao,
@@ -1484,13 +1436,9 @@ class Resum(HasLogger):
         for l, cl in enumerate(extracted_Cloopl):
             for i, cli in enumerate(cl):
                 for j, xy in enumerate(XpYp):
-                    IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(
-                        CoefArray[l, i, j, :]
-                    )
+                    IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(CoefArray[l, i, j, :])
                     for v in range(self.Na):
-                        self.IRloop[
-                            l, i, j * self.Na + v, self.co.Nklow :
-                        ] = IRcorrUnsorted[v]
+                        self.IRloop[l, i, j * self.Na + v, self.co.Nklow :] = IRcorrUnsorted[v]
         self.IR11resum = np.einsum("lpn,pnk,pi->lik", self.Q[0], self.IR11, self.co.l11)
         self.IRctresum = np.einsum("lpn,pnk,pi->lik", self.Q[1], self.IRct, self.co.lct)
         self.IRloopresum = np.einsum("lpn,pink->lik", self.Q[1], self.IRloop)
@@ -1503,9 +1451,7 @@ class Resum(HasLogger):
                 for j, xy in enumerate(XpYp):
                     IRcorrUnsorted = self.k2p[j] * self.IRnWithCoef(CoefArray[l, j, :])
                     for v in range(self.Na):
-                        self.IRctNNLO[
-                            l, j * self.Na + v, self.co.Nklow :
-                        ] = IRcorrUnsorted[v]
+                        self.IRctNNLO[l, j * self.Na + v, self.co.Nklow :] = IRcorrUnsorted[v]
             self.IRctNNLOresum = np.einsum(
                 "lpn,pnk,pi->lik", self.Q[1], self.IRctNNLO, self.co.lctNNLO
             )
@@ -1595,14 +1541,10 @@ class APeffect(HasLogger):
         self.Nlmax = self.Nlmax if Nlmax else self.co.Nl
         if self.Nlmax > self.co.Nl:
             raise ValueError(
-                f"request Nlmax={self.Nlmax}, "
-                f"while bird only compute Nl up to {self.co.Nl}"
+                f"request Nlmax={self.Nlmax}, " f"while bird only compute Nl up to {self.co.Nl}"
             )
         self.arrayLegendremugrid = np.array(
-            [
-                (2 * l + 1) / 2.0 * legendre(l)(self.mugrid)
-                for l in 2 * np.arange(self.Nlmax)
-            ]
+            [(2 * l + 1) / 2.0 * legendre(l)(self.mugrid) for l in 2 * np.arange(self.Nlmax)]
         )
         self.logstate()
         self.snapshot = snapshot
@@ -1650,9 +1592,7 @@ class APeffect(HasLogger):
             fill_value="extrapolate",  # type: ignore
         )(kp)
         Pkmu = np.einsum("lpkm,lkm->pkm", Pkint, arrayLegendremup, optimize=True)
-        Integrandmu = np.einsum(
-            "pkm,lkm->lpkm", Pkmu, self.arrayLegendremugrid, optimize=True
-        )
+        Integrandmu = np.einsum("pkm,lkm->lpkm", Pkmu, self.arrayLegendremugrid, optimize=True)
         return 2 * np.trapz(Integrandmu, x=self.mugrid, axis=-1)
 
     def AP(self, bird: Bird, q=None):

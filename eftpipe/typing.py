@@ -33,16 +33,12 @@ SimpleYaml: TypeAlias = Union[YamlElement, List["SimpleYaml"], Dict[str, "Simple
 
 
 class SupportsDunderLT(Protocol):
-    def __lt__(self, __other: Any) -> bool:
-        ...
+    def __lt__(self, __other: Any) -> bool: ...
 
 
 class SupportsDunderGT(Protocol):
-    def __gt__(self, __other: Any) -> bool:
-        ...
+    def __gt__(self, __other: Any) -> bool: ...
 
 
 SupportsRichComparison: TypeAlias = Union[SupportsDunderLT, SupportsDunderGT]
-SupportsRichComparisonT = TypeVar(
-    "SupportsRichComparisonT", bound=SupportsRichComparison
-)
+SupportsRichComparisonT = TypeVar("SupportsRichComparisonT", bound=SupportsRichComparison)
