@@ -1,7 +1,8 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/zhaoruiyang98/eftpipe/blob/main/LICENSE)
 # eftpipe
 > [!WARNING]  
-> The code still needs to be cleaned up, expected to finish before mid-July. Future developments would be moved to [desilike](https://github.com/cosmodesi/desilike).
+> The code still needs to be cleaned up, expected to finish before mid-July.
+> Future developments will be moved to [desilike](https://github.com/cosmodesi/desilike).
 
 A Python package for doing the multi-tracer EFT analysis (arXiv: [2308.06206](https://arxiv.org/abs/2308.06206)).
 
