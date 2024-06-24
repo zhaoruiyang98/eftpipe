@@ -1,1 +1,1 @@
-**Notes: This folder is used for test only.**
+**Notes: These files are only used for test.**

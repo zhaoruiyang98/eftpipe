@@ -4,7 +4,6 @@
 
 # PyBird: Python code for Biased tracers in redshift space
 * Written by [Pierre Zhang](mailto:pierrexyz@protonmail.com) and [Guido D'Amico](mailto:damico.guido@gmail.com)
-* Modified by [Ruiyang Zhao](mailto:zhaoruiyang19@mails.ucas.edu.cn) for extension
 * License: MIT
 
 ## General info

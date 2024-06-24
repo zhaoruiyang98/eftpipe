@@ -1,1 +1,0 @@
-- noric window are just rescaled by "data window" * I_data / I_noric, where I is the normalization factor

@@ -1,3 +1,0 @@
-- directory `raw` contains all raw data
-- radial integral constraint has been subtracted from mock and data
-- if the name of data/cov file doesn't contain Q, it defaults to power spectrum
