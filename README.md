@@ -3,7 +3,7 @@
 > [!WARNING]  
 > The code still needs to be cleaned up, expected to finish before mid-July.
 > 
-> Future developments will be moved to [desilike](https://github.com/cosmodesi/desilike).
+> Future developments will be moved to [desilike](https://github.com/cosmodesi/desilike), and all changes will be directly submitted to the upstream [PyBird](https://github.com/pierrexyz/pybird) repo.
 
 A Python package for doing the multi-tracer EFT analysis (arXiv: [2308.06206](https://arxiv.org/abs/2308.06206)).
 
@@ -51,6 +51,6 @@ pip install -e .
 ```
 
 ## Acknowledgements
-- Pierre Zhang and Guido D'Amico for developing [PyBird](https://github.com/pierrexyz/pybird). eftpipe heavily relies on PyBird. For the purpose of extension, we include it as a subpackage. Please have a look at [README](https://github.com/zhaoruiyang98/eftpipe/blob/main/eftpipe/pybird/README.md) for detailed information and citation.
+- Pierre Zhang and Guido D'Amico for developing PyBird and make this wonderful code public. eftpipe heavily relies on PyBird. For the purpose of extension, we include it as a subpackage. Please have a look at [README](https://github.com/zhaoruiyang98/eftpipe/blob/main/eftpipe/pybird/README.md) for detailed information and citation.
 - Cheng Zhao for providing EZmock catalogues.
 - Arnaud de Mattia for developing the [pypower](https://github.com/cosmodesi/pypower) package, which is used for power spectrum estimation in this work.
