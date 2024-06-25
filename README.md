@@ -51,6 +51,6 @@ pip install -e .
 ```
 
 ## Acknowledgements
-- Pierre Zhang and Guido D'Amico for developing PyBird and make this wonderful code public. eftpipe heavily relies on PyBird. For the purpose of extension, we include it as a subpackage. Please have a look at [README](https://github.com/zhaoruiyang98/eftpipe/blob/main/eftpipe/pybird/README.md) for detailed information and citation.
+- Pierre Zhang and Guido D'Amico for developing PyBird and making this wonderful code public. eftpipe heavily relies on PyBird. For the purpose of extension, we include it as a subpackage. Please have a look at [README](https://github.com/zhaoruiyang98/eftpipe/blob/main/eftpipe/pybird/README.md) for detailed information and citation.
 - Cheng Zhao for providing EZmock catalogues.
 - Arnaud de Mattia for developing the [pypower](https://github.com/cosmodesi/pypower) package, which is used for power spectrum estimation in this work.
