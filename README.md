@@ -40,6 +40,7 @@ Install classy
 git clone --depth 1 --branch v3.2.2 https://github.com/lesgourg/class_public
 cd class_public/
 # For mac user: you have to edit class_public/Makefile line21 by hand to set CC to the path to your gcc compiler (gcc points to clang on mac by default)
+# If you are using gcc>=15, you also have to change line46 to "CCFLAG = -g -fPIC -std=gnu17"
 make
 ```
 ### Minimum installation
