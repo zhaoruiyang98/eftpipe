@@ -1,7 +1,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://github.com/zhaoruiyang98/eftpipe/blob/main/LICENSE)
 # eftpipe
 > [!WARNING]  
-> Future developments will be moved to [desilike](https://github.com/cosmodesi/desilike), and all changes will be directly submitted to the upstream [PyBird](https://github.com/pierrexyz/pybird) repo.
+> The same cross correlation model has been implemented in [desilike](https://github.com/cosmodesi/desilike), which is a very modern cosmology analysis framework I recommend to use. In the future, changes may be directly submitted to the upstream [PyBird](https://github.com/pierrexyz/pybird) repo.
 
 A Python package for doing the multi-tracer EFT analysis (arXiv: [2308.06206](https://arxiv.org/abs/2308.06206)).
 
